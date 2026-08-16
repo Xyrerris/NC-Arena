@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, lint, boundaries, tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # This step is also the module-boundary gate (ARCHITECTURE.md §4). The rule is
+      # `error`, so an illegal import from src/features into core/db or core/network
+      # fails here. Verified deliberately in Phase 0 rather than assumed.
+      - name: Lint
+        run: npm run lint
+
+      - name: Format
+        run: npm run format
+
+      - name: Test
+        run: npm test
+
+      # Catches the Expo SDK version-mismatch class of failure, which otherwise only
+      # surfaces at native build time and gets diagnosed by hand.
+      - name: Expo doctor
+        run: npx expo-doctor
+# Not here yet, and deliberately so:
+#
+#   * EAS Build of the development profile — needs an EXPO_TOKEN repository secret and an
+#     Expo account. Add the job when the account exists; the eas.json profiles are already
+#     written.
+#   * Maestro flows and screenshot diffs on an emulator — Phase 1 measures what that
+#     costs before it is wired in as a PR gate (ARCHITECTURE.md §10).

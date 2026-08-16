@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#07100d;font-family:Barlow,system-ui,sans-serif}a{color:#5fd6a2}a:hover{color:#8ce6c1}*{box-sizing:border-box}::-webkit-scrollbar{width:0}</style></helmet>
+<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;gap:56px;padding:56px 40px;background:radial-gradient(120% 80% at 50% 0%,#12241d 0%,#07100d 60%)">
+<div style="display:flex;flex-direction:column;gap:14px;max-width:300px">
+<div style="font:700 11px/1 Barlow;letter-spacing:.22em;color:#5fd6a2;text-transform:uppercase">Arena Scout</div>
+<div style="font:500 30px/1.15 Cinzel,serif;color:#e8efec">Scout before<br>you swing.</div>
+<p style="margin:0;font:400 13.5px/1.65 Barlow;color:rgba(232,239,236,.5);text-wrap:pretty">A stat book for the arena. Browse the registered roster, open any player to read their raw combat values, and flip to <em style="color:rgba(232,239,236,.72);font-style:normal">vs You</em> to see where your avatar stands and how the head-to-head has actually gone.</p>
+<div style="height:1px;background:rgba(95,214,162,.16);margin:6px 0"></div>
+<div style="font:400 11.5px/1.7 'JetBrains Mono',monospace;color:rgba(232,239,236,.38)">tap a row → detail<br>toggle → head-to-head<br>every huge stat shown twice</div>
+</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+
+<div style="min-height:100%;background:#08120f;padding:58px 0 28px">
+<sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+<div style="padding:6px 22px 0">
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<div style="font:700 28px/1.1 Cinzel,serif;color:#e8efec;letter-spacing:.02em">Arena</div>
+<div style="font:500 10.5px/1 'JetBrains Mono',monospace;color:rgba(95,214,162,.75);letter-spacing:.12em">SEASON 41</div>
+</div>
+<div style="margin-top:2px;font:400 12px/1.5 Barlow;color:rgba(232,239,236,.4)">{{ count }} registered players</div>
+
+<div style="margin-top:20px;padding:16px 18px;border-radius:18px;background:linear-gradient(160deg,rgba(95,214,162,.14),rgba(95,214,162,.03));border:1px solid rgba(95,214,162,.22)">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div>
+<div style="font:500 10px/1 Barlow;letter-spacing:.2em;color:rgba(95,214,162,.8)">YOUR AVATAR</div>
+<div style="margin-top:7px;font:700 20px/1 Cinzel,serif;color:#e8efec">{{ me.name }}</div>
+</div>
+<div style="text-align:right">
+<div style="font:500 10px/1 Barlow;letter-spacing:.16em;color:rgba(232,239,236,.4)">CP</div>
+<div style="margin-top:6px;font:500 19px/1 'JetBrains Mono',monospace;color:#5fd6a2">{{ me.cpFull }}</div>
+</div>
+</div>
+<div style="margin-top:14px;display:flex;gap:26px">
+<div><div style="font:500 9.5px/1 Barlow;letter-spacing:.16em;color:rgba(232,239,236,.35)">RANK</div><div style="margin-top:5px;font:600 15px/1 Barlow;color:#e8efec">#{{ me.rank }}</div></div>
+<div><div style="font:500 9.5px/1 Barlow;letter-spacing:.16em;color:rgba(232,239,236,.35)">SCORE</div><div style="margin-top:5px;font:600 15px/1 Barlow;color:#e8efec">{{ me.score }}</div></div>
+<div><div style="font:500 9.5px/1 Barlow;letter-spacing:.16em;color:rgba(232,239,236,.35)">RECORD</div><div style="margin-top:5px;font:600 15px/1 Barlow;color:#e8efec">{{ me.record }}</div></div>
+</div>
+</div>
+
+<input value="{{ q }}" onChange="{{ onQuery }}" placeholder="Search player" style="margin-top:20px;width:100%;height:44px;padding:0 16px;border-radius:12px;border:1px solid rgba(232,239,236,.12);background:#0e1a16;color:#e8efec;font:400 14px/1 Barlow;outline:none" />
+
+<div style="margin-top:14px;display:flex;gap:8px">
+<sc-for list="{{ sorts }}" as="s" hint-placeholder-count="3">
+<button onClick="{{ s.pick }}" style="border:none;cursor:pointer;padding:8px 14px;border-radius:9999px;font:600 11px/1 Barlow;letter-spacing:.1em;text-transform:uppercase;background:{{ s.bg }};color:{{ s.fg }}">{{ s.label }}</button>
+</sc-for>
+</div>
+</div>
+
+<div style="margin-top:8px;display:flex;flex-direction:column">
+<sc-for list="{{ rows }}" as="p" hint-placeholder-count="8">
+<button onClick="{{ p.open }}" style="cursor:pointer;text-align:left;border:none;border-bottom:1px solid rgba(232,239,236,.07);background:transparent;padding:16px 22px;display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:14px">
+<div style="font:500 13px/1 'JetBrains Mono',monospace;color:rgba(95,214,162,.6)">{{ p.rank }}</div>
+<div>
+<div style="font:600 16px/1.2 Barlow;color:#e8efec">{{ p.name }}</div>
+<div style="margin-top:5px;font:400 11.5px/1 'JetBrains Mono',monospace;color:rgba(232,239,236,.42)">CP {{ p.cpFull }}</div>
+</div>
+<div style="text-align:right">
+<div style="font:600 13px/1 Barlow;color:{{ p.recordColor }}">{{ p.record }}</div>
+<div style="margin-top:6px;font:400 11px/1 Barlow;color:rgba(232,239,236,.34)">{{ p.score }} pts</div>
+</div>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+<div style="padding:4px 22px 0">
+<button onClick="{{ back }}" style="cursor:pointer;border:none;background:transparent;padding:0;font:600 12px/1 Barlow;letter-spacing:.12em;color:rgba(95,214,162,.8)">← ROSTER</button>
+
+<div style="margin-top:22px">
+<div style="font:500 10px/1 Barlow;letter-spacing:.2em;color:rgba(232,239,236,.35)">RANK #{{ sel.rank }}</div>
+<div style="margin-top:9px;font:700 32px/1.05 Cinzel,serif;color:#e8efec">{{ sel.name }}</div>
+<div style="margin-top:10px;display:flex;align-items:baseline;gap:10px">
+<span style="font:500 11px/1 Barlow;letter-spacing:.18em;color:rgba(232,239,236,.4)">CP</span>
+<span style="font:500 22px/1 'JetBrains Mono',monospace;color:#5fd6a2">{{ sel.cpFull }}</span>
+<span style="font:400 12px/1 Barlow;color:rgba(232,239,236,.4)">{{ sel.cpShort }}</span>
+</div>
+</div>
+
+<div style="margin-top:22px;display:flex;padding:4px;border-radius:12px;background:#0e1a16;border:1px solid rgba(232,239,236,.09)">
+<button onClick="{{ showStats }}" style="flex:1;cursor:pointer;border:none;padding:10px 0;border-radius:9px;font:600 12px/1 Barlow;letter-spacing:.1em;background:{{ tabStats.bg }};color:{{ tabStats.fg }}">STATS</button>
+<button onClick="{{ showVs }}" style="flex:1;cursor:pointer;border:none;padding:10px 0;border-radius:9px;font:600 12px/1 Barlow;letter-spacing:.1em;background:{{ tabVs.bg }};color:{{ tabVs.fg }}">VS YOU</button>
+</div>
+</div>
+
+<sc-if value="{{ isStats }}" hint-placeholder-val="{{ true }}">
+<div style="padding:8px 22px 0;display:flex;flex-direction:column">
+<sc-for list="{{ sel.stats }}" as="st" hint-placeholder-count="5">
+<div style="padding:20px 0;border-bottom:1px solid rgba(232,239,236,.07);display:flex;align-items:flex-end;justify-content:space-between;gap:16px">
+<div>
+<div style="font:600 11px/1 Barlow;letter-spacing:.2em;color:rgba(232,239,236,.42)">{{ st.label }}</div>
+<div style="margin-top:11px;font:400 12px/1 'JetBrains Mono',monospace;color:rgba(232,239,236,.5)">{{ st.full }}</div>
+</div>
+<div style="font:500 30px/1 Barlow;color:#e8efec;white-space:nowrap">{{ st.short }}</div>
+</div>
+</sc-for>
+<div style="margin-top:18px;font:400 11.5px/1.6 'JetBrains Mono',monospace;color:rgba(232,239,236,.3)">exact value left · rounded value right</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isVs }}" hint-placeholder-val="{{ false }}">
+<div style="padding:20px 22px 0">
+<div style="padding:16px 18px;border-radius:16px;background:#0e1a16;border:1px solid rgba(232,239,236,.09);display:flex;align-items:center;justify-content:space-between">
+<div>
+<div style="font:500 10px/1 Barlow;letter-spacing:.18em;color:rgba(232,239,236,.4)">HEAD TO HEAD</div>
+<div style="margin-top:8px;font:400 12px/1 Barlow;color:rgba(232,239,236,.5)">{{ sel.h2hNote }}</div>
+</div>
+<div style="font:600 22px/1 Barlow;color:{{ sel.recordColor }}">{{ sel.record }}</div>
+</div>
+
+<div style="margin-top:8px;display:flex;flex-direction:column">
+<sc-for list="{{ compare }}" as="c" hint-placeholder-count="5">
+<div style="padding:18px 0;border-bottom:1px solid rgba(232,239,236,.07)">
+<div style="display:flex;align-items:baseline;justify-content:space-between">
+<div style="font:600 11px/1 Barlow;letter-spacing:.2em;color:rgba(232,239,236,.42)">{{ c.label }}</div>
+<div style="font:600 12px/1 Barlow;color:{{ c.color }}">{{ c.delta }}</div>
+</div>
+<div style="margin-top:12px;display:flex;flex-direction:column;gap:9px">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:34px;font:500 10px/1 Barlow;letter-spacing:.12em;color:rgba(232,239,236,.35)">YOU</div>
+<div style="flex:1;height:8px;border-radius:9999px;background:rgba(232,239,236,.08)"><div style="height:8px;border-radius:9999px;background:rgba(232,239,236,.55);width:{{ c.mineW }}"></div></div>
+<div style="width:76px;text-align:right;font:500 14px/1 Barlow;color:#e8efec">{{ c.mine }}</div>
+</div>
+<div style="display:flex;align-items:center;gap:12px">
+<div style="width:34px;font:500 10px/1 Barlow;letter-spacing:.12em;color:rgba(95,214,162,.7)">THEM</div>
+<div style="flex:1;height:8px;border-radius:9999px;background:rgba(232,239,236,.08)"><div style="height:8px;border-radius:9999px;background:#5fd6a2;width:{{ c.theirW }}"></div></div>
+<div style="width:76px;text-align:right;font:500 14px/1 Barlow;color:#5fd6a2">{{ c.theirs }}</div>
+</div>
+</div>
+<div style="margin-top:11px;display:flex;justify-content:space-between;font:400 10.5px/1 'JetBrains Mono',monospace;color:rgba(232,239,236,.3)">
+<span>{{ c.mineFull }}</span><span>{{ c.theirsFull }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:18px;font:400 11.5px/1.6 'JetBrains Mono',monospace;color:rgba(232,239,236,.3)">{{ verdict }}</div>
+</div>
+</sc-if>
+</sc-if>
+</div>
+</x-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;1000px&quot;},&quot;shortUnit&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;B&quot;,&quot;M&quot;,&quot;e9&quot;],&quot;default&quot;:&quot;B&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Numbers&quot;}}">
+const ME = { name: 'Krios', cp: 2145880, atk: 1184530912, def: 902114887, crit: 58.4127, hit: 1421009663, spd: 1108422510, score: 1842, rank: 12, wins: 0, losses: 0 };
+
+const DB = [
+  { name: 'Valkros', cp: 3084221, atk: 2418904113, def: 1554320778, crit: 71.2043, hit: 2210884019, spd: 1902551440, score: 2415, wins: 1, losses: 6 },
+  { name: 'Nyxaria', cp: 2891044, atk: 2204118650, def: 1488002391, crit: 68.8412, hit: 2043117289, spd: 1811440227, score: 2288, wins: 2, losses: 5 },
+  { name: 'Hollowmark', cp: 2664509, atk: 1998450221, def: 1402887140, crit: 66.1188, hit: 1904220884, spd: 1702118449, score: 2154, wins: 3, losses: 4 },
+  { name: 'Sable Rook', cp: 2503117, atk: 1877320441, def: 1330491028, crit: 64.5501, hit: 1811009227, spd: 1640228117, score: 2071, wins: 4, losses: 4 },
+  { name: 'Ashen Vow', cp: 2402884, atk: 1780114553, def: 1288740119, crit: 63.0912, hit: 1740882009, spd: 1588117402, score: 2008, wins: 5, losses: 3 },
+  { name: 'Umbriel', cp: 2311770, atk: 1702884019, def: 1201448870, crit: 61.7740, hit: 1668440115, spd: 1502008773, score: 1954, wins: 4, losses: 2 },
+  { name: 'Garrowyn', cp: 2244019, atk: 1640117228, def: 1150884402, crit: 60.4418, hit: 1602118440, spd: 1441770228, score: 1911, wins: 6, losses: 2 },
+  { name: 'Thren Kal', cp: 2188445, atk: 1580442117, def: 1102338809, crit: 59.8804, hit: 1544009118, spd: 1388440921, score: 1877, wins: 5, losses: 2 },
+  { name: 'Isolde', cp: 2098117, atk: 1490118004, def: 1044877213, crit: 58.1120, hit: 1470228117, spd: 1320884440, score: 1808, wins: 7, losses: 1 },
+  { name: 'Corvane', cp: 2011884, atk: 1408774219, def: 988441170, crit: 56.7003, hit: 1402118009, spd: 1268009447, score: 1762, wins: 8, losses: 1 },
+  { name: 'Petravale', cp: 1944228, atk: 1340228117, def: 940118884, crit: 55.2418, hit: 1338440227, spd: 1204117880, score: 1704, wins: 9, losses: 0 },
+  { name: 'Skarn', cp: 1877009, atk: 1288117440, def: 902114220, crit: 54.0117, hit: 1270884118, spd: 1150228004, score: 1651, wins: 8, losses: 2 },
+  { name: 'Lirien', cp: 1802447, atk: 1211884009, def: 858447119, crit: 52.8840, hit: 1208117445, spd: 1088440119, score: 1598, wins: 11, losses: 0 },
+  { name: 'Dunmoor', cp: 1744118, atk: 1150447882, def: 812118004, crit: 51.4402, hit: 1144228117, spd: 1024117889, score: 1552, wins: 10, losses: 1 }
+];
+
+class Component extends DCLogic {
+  state = { view: 'list', sel: null, tab: 'stats', q: '', sort: 'rank' };
+
+  full(n) { return Math.round(n).toLocaleString('en-US'); }
+
+  short(n) {
+    const unit = this.props.shortUnit ?? 'B';
+    if (unit === 'e9') return (n / 1e9).toFixed(3) + 'e9';
+    if (unit === 'M') return Math.round(n / 1e6).toLocaleString('en-US') + ' M';
+    const v = n / 1e9;
+    return (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + ' B';
+  }
+
+  statsOf(p) {
+    return [
+      { label: 'ATK', full: this.full(p.atk), short: this.short(p.atk) },
+      { label: 'DEF', full: this.full(p.def), short: this.short(p.def) },
+      { label: 'CRIT', full: p.crit.toFixed(4) + ' %', short: p.crit.toFixed(1) + '%' },
+      { label: 'HIT', full: this.full(p.hit), short: this.short(p.hit) },
+      { label: 'SPD', full: this.full(p.spd), short: this.short(p.spd) }
+    ];
+  }
+
+  decorate(p, rank) {
+    const won = p.wins > 0;
+    return Object.assign({}, p, {
+      rank: String(rank).padStart(2, '0'),
+      cpFull: this.full(p.cp),
+      cpShort: (p.cp / 1e6).toFixed(2) + ' M',
+      record: p.wins + 'W · ' + p.losses + 'L',
+      recordColor: p.wins > p.losses ? '#5fd6a2' : p.wins < p.losses ? '#e0705f' : 'rgba(232,239,236,.6)',
+      h2hNote: p.wins + p.losses === 0 ? 'never fought' : 'you won ' + p.wins + ' of ' + (p.wins + p.losses) + ' matches',
+      stats: this.statsOf(p),
+      _won: won,
+      open: () => this.setState({ view: 'detail', sel: DB.findIndex(x => x.name === p.name), tab: 'stats' })
+    });
+  }
+
+  renderVals() {
+    const ranked = DB.map((p, i) => this.decorate(p, i + 1));
+    const q = this.state.q.trim().toLowerCase();
+    let rows = q ? ranked.filter(p => p.name.toLowerCase().includes(q)) : ranked.slice();
+    if (this.state.sort === 'cp') rows.sort((a, b) => b.cp - a.cp);
+    if (this.state.sort === 'wins') rows.sort((a, b) => b.wins - a.wins);
+
+    const on = { background: '#5fd6a2', color: '#08120f' };
+    const off = { background: 'rgba(232,239,236,.07)', color: 'rgba(232,239,236,.6)' };
+    const chip = (key, label) => {
+      const s = this.state.sort === key ? on : off;
+      return { label, bg: s.background, fg: s.color, pick: () => this.setState({ sort: key }) };
+    };
+
+    const sel = this.state.sel != null ? ranked[this.state.sel] : null;
+    let compare = [], verdict = '';
+    if (sel) {
+      const keys = [['ATK', 'atk'], ['DEF', 'def'], ['CRIT', 'crit'], ['HIT', 'hit'], ['SPD', 'spd']];
+      let ahead = 0;
+      compare = keys.map(([label, k]) => {
+        const mine = ME[k], theirs = sel[k];
+        const max = Math.max(mine, theirs);
+        const pct = ((theirs - mine) / mine) * 100;
+        if (mine >= theirs) ahead++;
+        const isPct = k === 'crit';
+        return {
+          label,
+          mine: isPct ? mine.toFixed(1) + '%' : this.short(mine),
+          theirs: isPct ? theirs.toFixed(1) + '%' : this.short(theirs),
+          mineFull: isPct ? mine.toFixed(4) + ' %' : this.full(mine),
+          theirsFull: isPct ? theirs.toFixed(4) + ' %' : this.full(theirs),
+          mineW: (mine / max * 100).toFixed(1) + '%',
+          theirW: (theirs / max * 100).toFixed(1) + '%',
+          delta: (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%',
+          color: pct >= 0 ? '#e0705f' : '#5fd6a2'
+        };
+      });
+      verdict = 'you lead in ' + ahead + ' of 5 stats · delta shown from your values';
+    }
+
+    const tab = k => this.state.tab === k
+      ? { bg: 'rgba(95,214,162,.16)', fg: '#5fd6a2' }
+      : { bg: 'transparent', fg: 'rgba(232,239,236,.45)' };
+
+    return {
+      isList: this.state.view === 'list',
+      isDetail: this.state.view === 'detail',
+      isStats: this.state.tab === 'stats',
+      isVs: this.state.tab === 'vs',
+      count: DB.length + 1,
+      me: this.decorate(Object.assign({}, ME, { wins: 0, losses: 0 }), ME.rank),
+      rows,
+      sel,
+      compare,
+      verdict,
+      q: this.state.q,
+      onQuery: e => this.setState({ q: e.target.value }),
+      sorts: [chip('rank', 'Rank'), chip('cp', 'CP'), chip('wins', 'My wins')],
+      tabStats: tab('stats'),
+      tabVs: tab('vs'),
+      showStats: () => this.setState({ tab: 'stats' }),
+      showVs: () => this.setState({ tab: 'vs' }),
+      back: () => this.setState({ view: 'list', sel: null, tab: 'stats' })
+    };
+  }
+}
+
+</script>
+</body>
+</html>

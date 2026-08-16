@@ -1,0 +1,10 @@
+# The Claude Design prototype is an imported artefact and the UI source of truth.
+# Reformatting it would make a future re-import undiffable.
+design/
+
+node_modules/
+.expo/
+dist/
+android/
+ios/
+package-lock.json
