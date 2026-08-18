@@ -4,6 +4,10 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    // TypeScript 6 no longer auto-includes every node_modules/@types package, so the two
+    // that contribute globals rather than module types are named. Without this, `describe`
+    // and `expect` are unresolved and `npm run typecheck` fails on every test file.
+    "types": ["jest", "node"],
     "paths": {
       "@/*": ["./src/*"]
     }

@@ -134,6 +134,174 @@ phase that writes real feature code.
 re-run the failing-import test above. The criterion is met when that command exits non-zero
 with an ARCHITECTURE.md §4 message — not before.
 
+**Re-verified 2026-08-18** while building Phase 2. Unchanged: the same illegal import still
+exits 0, and `npx eslint .` still prints the v7 deprecation warnings on every run. Phase 2
+wrote no feature code, so nothing shipped unguarded — but Phase 3 does, and this is now the
+oldest open item blocking it.
+
+---
+
+## ADR-0007 — Phase 0 left two toolchain gaps that only a real test could find
+
+**Date:** 2026-08-18 · **Status:** accepted · **Phase:** 2
+
+**Context.** Phase 0 configured the Jest projects and the typecheck, but shipped with
+`jest --passWithNoTests` and zero test files. Both configurations were therefore
+declared and never executed. The first Phase 2 test run failed twice before it ran:
+
+```
+Cannot find module 'babel-preset-expo'      # jest.config.js referenced it; nothing declared it
+error TS2593: Cannot find name 'describe'   # TypeScript 6 no longer auto-includes @types/*
+```
+
+`babel-preset-expo` existed only nested under `node_modules/expo/`, which Babel cannot
+resolve from the project root. And TypeScript 6.0.3 does not pull every
+`node_modules/@types` package in without a `types` entry, so `@types/jest` was installed
+and inert.
+
+**Decision.** Declare `babel-preset-expo` as a devDependency (build-time only — it is
+never bundled) and add `"types": ["jest", "node"]` to `tsconfig.json`.
+
+**Consequences.** A configuration nobody has run is a configuration nobody has checked.
+This is the same class of finding as ADR-0006, and the same lesson: the Phase 0 exit
+criteria were written as "verify it fails" for a reason, and the two criteria that were
+not written that way are the two that were wrong. Phase 1 should assume its own test
+scaffolding is unproven until a test fails for the right reason.
+
+---
+
+## ADR-0008 — One ranked list of 15, viewer at rank 9
+
+**Date:** 2026-08-18 · **Status:** accepted · **Phase:** 2
+
+**Context.** ARCHITECTURE.md §7 and prototype defect 4: the prototype ranks 14 players
+1–14, gives the viewer an independent `rank: 12`, and reports `count = DB.length + 1 = 15`.
+Three numbers that cannot all be true.
+
+**Decision.** `assets/seed.json` is one ranked list of 15 with the viewer flagged rather
+than stored separately. Ordering is score descending — the order the prototype's own `DB`
+array is already in. Krios (score 1842, CP 2,145,880) lands at **rank 9**, and the count
+of 15 turns out to have been right by accident.
+
+The merge was checked against combat power as well as score: both orderings produce the
+identical sequence for all 15, so the single list is not an artefact of picking a key.
+`localSeedRosterSource` asserts the ranks form a contiguous `1..n` on every load, so the
+inconsistency cannot walk back in through a hand-edited seed.
+
+**Consequences.** The "registered players" count is now `players.length`, not
+`length + 1`. Player ids are opaque and deliberately non-ordinal (`plr_9d41c0`), so
+nothing can derive an id from a name or a rank — which is the prototype's actual
+navigation bug (defect 2), not just its symptom.
+
+---
+
+## ADR-0009 — Half-up means ties away from zero, and the formatter takes a locale
+
+**Date:** 2026-08-18 · **Status:** accepted · **Phase:** 2
+
+**Context.** ARCHITECTURE.md §2.2 bans `toFixed` and requires "a half-up helper
+implemented in integer arithmetic", without saying which half-up or which locale.
+
+**Decision.** Three things, stated because each is a fork:
+
+- **Ties round away from zero**, i.e. Java's `RoundingMode.HALF_UP` rather than
+  round-half-ceiling. This is the rule the Kotlin proposal's `BigDecimal` would have used.
+- **No float is ever produced.** `divideHalfUp` takes the remainder first
+  (`abs % d`, then `(abs - r) / d`), both exact for safe integers, and decides the tie on
+  `2r >= d`. Rounding a double half-up would still answer "9.99" for 9.995, because by
+  then the value is 9.99499999999999921 — the defect is upstream of the rounder.
+- **`createStatFormatter(locale)`**, with the default instance pinned to `'en-US'`.
+  Grouping is probed at construction: if `Intl` groups correctly it is used, since it
+  knows the locales that do not group in threes; otherwise a hand-rolled grouper takes
+  over. The §6 fallback is therefore always present rather than conditional on a device
+  check, and `expo-localization` stays out of core/common so the module keeps running in
+  plain Node.
+
+**Consequences.** The Phase 0 exit criterion "`Intl.NumberFormat('en-US').format(...)` on
+a real Android device" is **still worth running** — it decides whether the separators come
+from ICU or the fallback — but it is no longer load-bearing for correctness. Tests cover
+`9.995 B -> "10.00 B"`, `99.95 B -> "100.0 B"`, `100 B`, `Int32.MAX + 1`,
+`MAX_SAFE_INTEGER`, rejection above 2^53, and `71.05 % -> "71.1%"` (where `toFixed(1)`
+answers `"71.0"`) — the crit-scale twin of the 9.995 case.
+
+---
+
+## ADR-0010 — `deltaPercent` signs from the rounded value; a zero baseline renders "—"
+
+**Date:** 2026-08-18 · **Status:** accepted, pending product confirmation · **Phase:** 2
+
+**Context.** The prototype computes `pct = (theirs - mine) / mine * 100` and renders
+`(pct >= 0 ? '+' : '') + pct.toFixed(1)`. Two edges fall out of that: the sign is decided
+on the _unrounded_ value, so a delta of −0.04 % renders `"-0.0%"`; and `mine === 0`
+divides by zero and renders `Infinity`.
+
+**Decision.** The sign follows the rounded value, so a hairline deficit renders `"+0.0%"`.
+A zero baseline returns the em dash `"—"` rather than throwing or emitting `Infinity`.
+
+**Consequences.** Both are deliberate divergences from the ported behaviour and are
+tested as such. `"—"` is a placeholder for a product answer, not the answer: ROADMAP.md
+Phase 4 already owns the Vs You semantics (defects 6 and 7 — tie handling and the
+inverted-reading delta colour), and this belongs in the same conversation. If Phase 4
+decides the row should say something explicit, the change is one constant.
+
+---
+
+## ADR-0011 — The `RosterSource` port lives in core/common
+
+**Date:** 2026-08-18 · **Status:** accepted · **Phase:** 2
+
+**Context.** `localSeedRosterSource` (core/data) and the Phase 5 remote source
+(core/network) must implement the same interface. §4 forbids core/network from importing
+core/data, so the port cannot live where its first implementation lives. It cannot live in
+core/model either, because it returns `Result<RosterSnapshot>` and core/model imports
+nothing.
+
+**Decision.** `RosterSource` and `RosterSnapshot` live in `core/common`, alongside
+`Result`. core/network, core/data and core/db may all import it, which is exactly the set
+that needs it.
+
+**Consequences.** Phase 5's "the `features/` diff for this phase is empty" exit criterion
+now has a mechanism behind it rather than a hope: the only line that changes is which
+source is passed to `createRosterRepository`. `RosterEntry` and `PlayerDetail` — referenced
+by §7 but never located — are in core/model, since both are pure aggregates.
+
+---
+
+## ADR-0012 — Observers return `{ query, map }`, and `ArenaDatabase` is widened with `any`
+
+**Date:** 2026-08-18 · **Status:** accepted · **Phase:** 2
+
+**Context.** §7 has the repository return `LiveQuery<T>` observers, and §10 requires sort
+and search to be tested "against `better-sqlite3` in Node — no emulator in this phase's
+test loop". `useLiveQuery` is a React hook that takes a Drizzle query, so a repository that
+returned data would have to call it, which would pull React and `expo-sqlite` into the one
+layer that has to stay runnable in Node.
+
+**Decision.** Each observer returns `{ query, map }`: the Drizzle query, and the mapping
+from its rows to domain objects. On device the query goes to `useLiveQuery` and `map` is
+applied to the result; in Node the test calls `query.all()` and applies the same `map`. The
+generic is over the query type, so the concrete Drizzle type survives to the call site
+instead of pushing a cast into every screen.
+
+`ArenaDatabase` is `BaseSQLiteDatabase<'sync', any>`. `unknown` was tried first and does
+not work: `transaction(cb)` puts the result type in a callback parameter, which makes the
+type invariant there, so with `unknown` **neither** driver is assignable and the seam does
+not exist at all. The `any` is confined to a type no query in the module reads.
+
+**Consequences.** 55 tests run in about two seconds with no emulator, including all three
+sorts, case-insensitive search, LIKE-wildcard escaping, and survival across a close/reopen
+of a real database file. The cost is one `any` and one indirection at each call site;
+Phase 3 is where that indirection is judged in practice.
+
+Two smaller decisions recorded here rather than in their own entries:
+
+- `babel.config.js` and `metro.config.js` now exist, solely so `babel-plugin-inline-import`
+  can inline the generated `.sql` files that drizzle-kit's `driver: 'expo'` output imports.
+  Without them the migrations bundle does not resolve.
+- Search escapes `%`, `_` and `\` and declares `ESCAPE '\'`. Unescaped, a search for `_`
+  matches every row — so the test asserts that a query of `_` returns the one player whose
+  name contains a literal underscore, not merely that it returns nothing.
+
 ---
 
 ## Still open
@@ -149,7 +317,7 @@ These block or shape later phases and are **not** decided. Full text in
 | 4   | Where does head-to-head data come from?                                  | Phase 4            |
 | 5   | AA contrast fix — approve or waive?                                      | **Phase 1 (next)** |
 | 6   | iOS in or out (+6 to +8 days)?                                           | Phase 6            |
-| 7   | Does `shortUnit` become user-facing?                                     | Phase 2            |
+| 7   | Does `shortUnit` become user-facing?                                     | Phase 4            |
 | 8   | Season semantics — is "SEASON 41" dynamic?                               | Phase 3            |
 | 9   | Localisation scope                                                       | Phase 6            |
 | 10  | OTA update governance                                                    | Phase 7            |
@@ -157,3 +325,15 @@ These block or shape later phases and are **not** decided. Full text in
 Decisions 1, 2 and 5 are the Phase 0 exit criteria. 5 is the urgent one: Phase 1 builds the
 token module, and answering it afterwards means rebuilding every component that consumed a
 token.
+
+**Moved by Phase 2.** Decision 7 (`shortUnit` user-facing) was listed against Phase 2 and is
+now against Phase 4. Phase 2 owed it a stored preference, and that exists — `core/prefs`
+persists `shortUnit` and the formatter already takes it per call. What is still missing is a
+_control_, and the only screen with somewhere to put one is the detail screen. Nothing is
+blocked by the delay; the preference is written and read today.
+
+Decision 8 (`SEASON 41`) is unblocked cheaply: the seed carries `meta.season`, so whichever
+answer Phase 3 gives, the value is already data rather than a literal in a template.
+Decision 3 ("how is your avatar identified?") is answered _provisionally_ — the roster source
+declares the viewer id and `core/prefs` caches it. That is enough for a seed and will not
+survive a real backend.

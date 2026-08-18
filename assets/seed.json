@@ -1,0 +1,276 @@
+{
+  "meta": {
+    "source": "design/Arena Scout.dc.html (Claude Design prototype, imported 2026-08-13)",
+    "note": "One ranked list of 15 — the prototype 14 plus the viewer, ordered by score descending. Resolves the rank-12-inside-a-14-player-roster inconsistency in ARCHITECTURE.md §7.",
+    "season": 41
+  },
+  "viewerId": "plr_9d41c0",
+  "players": [
+    {
+      "id": "plr_4a7e13",
+      "name": "Valkros",
+      "rank": 1,
+      "combatPower": 3084221,
+      "score": 2415,
+      "atk": 2418904113,
+      "def": 1554320778,
+      "critBp": 712043,
+      "hit": 2210884019,
+      "spd": 1902551440
+    },
+    {
+      "id": "plr_b28f60",
+      "name": "Nyxaria",
+      "rank": 2,
+      "combatPower": 2891044,
+      "score": 2288,
+      "atk": 2204118650,
+      "def": 1488002391,
+      "critBp": 688412,
+      "hit": 2043117289,
+      "spd": 1811440227
+    },
+    {
+      "id": "plr_1c05da",
+      "name": "Hollowmark",
+      "rank": 3,
+      "combatPower": 2664509,
+      "score": 2154,
+      "atk": 1998450221,
+      "def": 1402887140,
+      "critBp": 661188,
+      "hit": 1904220884,
+      "spd": 1702118449
+    },
+    {
+      "id": "plr_77be92",
+      "name": "Sable Rook",
+      "rank": 4,
+      "combatPower": 2503117,
+      "score": 2071,
+      "atk": 1877320441,
+      "def": 1330491028,
+      "critBp": 645501,
+      "hit": 1811009227,
+      "spd": 1640228117
+    },
+    {
+      "id": "plr_e30a48",
+      "name": "Ashen Vow",
+      "rank": 5,
+      "combatPower": 2402884,
+      "score": 2008,
+      "atk": 1780114553,
+      "def": 1288740119,
+      "critBp": 630912,
+      "hit": 1740882009,
+      "spd": 1588117402
+    },
+    {
+      "id": "plr_5f1d27",
+      "name": "Umbriel",
+      "rank": 6,
+      "combatPower": 2311770,
+      "score": 1954,
+      "atk": 1702884019,
+      "def": 1201448870,
+      "critBp": 617740,
+      "hit": 1668440115,
+      "spd": 1502008773
+    },
+    {
+      "id": "plr_a894b1",
+      "name": "Garrowyn",
+      "rank": 7,
+      "combatPower": 2244019,
+      "score": 1911,
+      "atk": 1640117228,
+      "def": 1150884402,
+      "critBp": 604418,
+      "hit": 1602118440,
+      "spd": 1441770228
+    },
+    {
+      "id": "plr_08c3fe",
+      "name": "Thren Kal",
+      "rank": 8,
+      "combatPower": 2188445,
+      "score": 1877,
+      "atk": 1580442117,
+      "def": 1102338809,
+      "critBp": 598804,
+      "hit": 1544009118,
+      "spd": 1388440921
+    },
+    {
+      "id": "plr_9d41c0",
+      "name": "Krios",
+      "rank": 9,
+      "combatPower": 2145880,
+      "score": 1842,
+      "atk": 1184530912,
+      "def": 902114887,
+      "critBp": 584127,
+      "hit": 1421009663,
+      "spd": 1108422510
+    },
+    {
+      "id": "plr_6b7205",
+      "name": "Isolde",
+      "rank": 10,
+      "combatPower": 2098117,
+      "score": 1808,
+      "atk": 1490118004,
+      "def": 1044877213,
+      "critBp": 581120,
+      "hit": 1470228117,
+      "spd": 1320884440
+    },
+    {
+      "id": "plr_d1f83a",
+      "name": "Corvane",
+      "rank": 11,
+      "combatPower": 2011884,
+      "score": 1762,
+      "atk": 1408774219,
+      "def": 988441170,
+      "critBp": 567003,
+      "hit": 1402118009,
+      "spd": 1268009447
+    },
+    {
+      "id": "plr_32ac6d",
+      "name": "Petravale",
+      "rank": 12,
+      "combatPower": 1944228,
+      "score": 1704,
+      "atk": 1340228117,
+      "def": 940118884,
+      "critBp": 552418,
+      "hit": 1338440227,
+      "spd": 1204117880
+    },
+    {
+      "id": "plr_ef5019",
+      "name": "Skarn",
+      "rank": 13,
+      "combatPower": 1877009,
+      "score": 1651,
+      "atk": 1288117440,
+      "def": 902114220,
+      "critBp": 540117,
+      "hit": 1270884118,
+      "spd": 1150228004
+    },
+    {
+      "id": "plr_7043bc",
+      "name": "Lirien",
+      "rank": 14,
+      "combatPower": 1802447,
+      "score": 1598,
+      "atk": 1211884009,
+      "def": 858447119,
+      "critBp": 528840,
+      "hit": 1208117445,
+      "spd": 1088440119
+    },
+    {
+      "id": "plr_c6d287",
+      "name": "Dunmoor",
+      "rank": 15,
+      "combatPower": 1744118,
+      "score": 1552,
+      "atk": 1150447882,
+      "def": 812118004,
+      "critBp": 514402,
+      "hit": 1144228117,
+      "spd": 1024117889
+    }
+  ],
+  "headToHead": [
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_4a7e13",
+      "wins": 1,
+      "losses": 6
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_b28f60",
+      "wins": 2,
+      "losses": 5
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_1c05da",
+      "wins": 3,
+      "losses": 4
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_77be92",
+      "wins": 4,
+      "losses": 4
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_e30a48",
+      "wins": 5,
+      "losses": 3
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_5f1d27",
+      "wins": 4,
+      "losses": 2
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_a894b1",
+      "wins": 6,
+      "losses": 2
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_08c3fe",
+      "wins": 5,
+      "losses": 2
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_6b7205",
+      "wins": 7,
+      "losses": 1
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_d1f83a",
+      "wins": 8,
+      "losses": 1
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_32ac6d",
+      "wins": 9,
+      "losses": 0
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_ef5019",
+      "wins": 8,
+      "losses": 2
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_7043bc",
+      "wins": 11,
+      "losses": 0
+    },
+    {
+      "viewerId": "plr_9d41c0",
+      "opponentId": "plr_c6d287",
+      "wins": 10,
+      "losses": 1
+    }
+  ]
+}

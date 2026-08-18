@@ -1,6 +1,7 @@
 # Arena Scout — React Native Infrastructure Proposal
 
-**Status:** proposal, pending sign-off. No production code written yet.
+**Status:** accepted and partly implemented. §2, §5, §6 and §7 are code as of Phase 2;
+§3, §4 and §10 as of Phase 0. Deviations are recorded in [DECISIONS.md](DECISIONS.md).
 **Source of truth for UI:** `design/Arena Scout.dc.html` (Claude Design prototype, imported 2026-08-13).
 **Companion doc:** [ROADMAP.md](ROADMAP.md).
 

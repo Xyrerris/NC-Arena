@@ -1,11 +1,9 @@
 /**
  * User preferences, MMKV-backed.
  *
- * Filled in Phase 2: `shortUnit`, last-used sort, viewer id.
- *
- * MMKV rather than AsyncStorage specifically because reads are synchronous: the active
- * sort is needed before the first roster query runs, and an async read there means a
- * frame of unsorted content on every cold start.
+ * `mmkvPreferences.ts` is deliberately not re-exported here — see its header. Import it
+ * explicitly from the places that run on a device.
  */
 
-export {};
+export { createMemoryPreferences } from './memoryPreferences';
+export { DEFAULT_ROSTER_SORT, DEFAULT_SHORT_UNIT, PREF_KEYS, type ArenaPreferences } from './types';

@@ -1,6 +1,7 @@
 # Arena Scout (React Native) — Roadmap
 
-**Status:** proposal, pending sign-off. No production code written yet.
+**Status:** Phase 0 and Phase 2 implemented; Phase 1 not started, blocked on open
+decision 5 (AA contrast). Phase 0 carries one unmet exit criterion — see ADR-0006.
 **Companion doc:** [ARCHITECTURE.md](ARCHITECTURE.md) — stack, project structure, data model, open decisions.
 
 **Supersedes** the Kotlin/Compose roadmap. The phase _shape_ is unchanged, because it was driven by

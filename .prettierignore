@@ -8,3 +8,8 @@ dist/
 android/
 ios/
 package-lock.json
+
+# drizzle-kit output. The SQL is committed so schema drift is reviewable (ARCHITECTURE.md
+# §7), but it is generated: reformatting it would produce churn on every regenerate and
+# make the diff that matters harder to read.
+src/core/db/migrations/
