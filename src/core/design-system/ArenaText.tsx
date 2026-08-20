@@ -23,14 +23,9 @@ import {
   type TextStyle,
 } from 'react-native';
 
+import { FONTS_BUNDLED } from './fontAssets';
 import { color } from './tokens';
-import {
-  FONTS_BUNDLED,
-  fontAssetName,
-  lineHeightFor,
-  typeScale,
-  type TypeRole,
-} from './typography';
+import { fontAssetName, lineHeightFor, typeScale, type TypeRole } from './typography';
 
 const TONES = {
   primary: color.text.primary,

@@ -9,20 +9,20 @@
  * `ArenaText` multiplies it by the live font scale. Most roles omit it entirely and let the
  * font's own metrics decide, which is the safest thing a single line of text can do.
  *
- * ## The fonts are not in the repository yet
+ * ## The bundled faces
  *
- * Cinzel, Barlow and JetBrains Mono are OFL and must be committed under `assets/fonts`
- * with their licences, per ROADMAP.md Phase 1. They are not here: binary assets could not
- * be added in the session that wrote this module. `FONT_ASSETS` is therefore empty and
- * `FONTS_BUNDLED` is false, which makes every role fall back to the platform font while
- * keeping weights and sizes exact.
+ * Eight static TrueType files under `assets/fonts`, all SIL Open Font License 1.1, with the
+ * licences alongside them; the `require` map lives in `fontAssets.ts`. Static rather than
+ * variable: React Native on Android does not resolve a variable font's weight axis, so a
+ * `*-VariableFont_wght.ttf` renders at one weight whatever `fontWeight` says.
  *
- * This is a real gap, not a design choice — the display face is half the product's
- * character. Dropping the files in and filling in `FONT_ASSETS` switches the families on
- * with no other change; see `assets/fonts/README.md`.
+ * Only the eight weights the type scale actually names are committed. The rest of each
+ * family was deleted rather than kept "just in case" — every file there is bundled into the
+ * APK, and thirty-two unused faces is three megabytes of it.
+ *
+ * This module imports nothing: no react-native, no assets. That is what lets the scale be
+ * tested in the fast Jest project alongside the tokens.
  */
-
-import { PixelRatio } from 'react-native';
 
 export const fontFamily = {
   /** Cinzel — the "Arena" wordmark and screen titles. */
@@ -36,15 +36,6 @@ export const fontFamily = {
    */
   numeric: 'JetBrainsMono',
 } as const;
-
-/**
- * Filled in when the OFL files land: `{ 'Cinzel-Bold': require('...Cinzel-Bold.ttf') }`.
- * Empty is a valid state — `useFonts({})` resolves immediately.
- */
-export const FONT_ASSETS: Record<string, number> = {};
-
-/** False until the files above exist. Read by `ArenaText` to decide whether to name a family. */
-export const FONTS_BUNDLED = Object.keys(FONT_ASSETS).length > 0;
 
 export type FontRole = 'display' | 'body' | 'numeric';
 
@@ -109,13 +100,15 @@ export type TypeRole = keyof typeof typeScale;
 /**
  * Pixel line height for a role, compensated for the OS font scale.
  *
+ * `fontScale` is required rather than defaulted to `PixelRatio.getFontScale()`. That read is
+ * static: a component using it would not re-render when the OS font setting changes, which
+ * is the one thing this function exists to track. `ArenaText` passes the live value from
+ * `useWindowDimensions`.
+ *
  * Returns undefined where the role has no leading, which is the common case and leaves the
  * platform free to use the font's own metrics.
  */
-export const lineHeightFor = (
-  style_: TypeStyle,
-  fontScale = PixelRatio.getFontScale(),
-): number | undefined =>
+export const lineHeightFor = (style_: TypeStyle, fontScale: number): number | undefined =>
   style_.leading === undefined
     ? undefined
     : Math.round(style_.fontSize * style_.leading * fontScale);

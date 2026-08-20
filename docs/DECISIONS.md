@@ -455,9 +455,9 @@ discoverable from the config, and Phase 0 shipped that config without running it
 
 ---
 
-## ADR-0017 — Phase 1 ships without the fonts and without the screenshot gate
+## ADR-0017 — Phase 1 shipped without the fonts and without the screenshot gate
 
-**Date:** 2026-08-20 · **Status:** ⚠️ open · **Phase:** 1
+**Date:** 2026-08-20 · **Status:** fonts resolved; screenshot gate ⚠️ still open · **Phase:** 1
 
 **Context.** Two Phase 1 deliverables could not be completed in the session that built the
 rest, and both need a human rather than more code.
@@ -481,8 +481,35 @@ scroll, keyed on the seed's largest player, with test ids ready for Maestro. The
 tests all run at `fontScale` 2. Neither proves a number is unclipped — only pixels do that,
 which is the point §10 makes about snapshots.
 
-**Next action.** Commit the eight font files and their licences; stand up Maestro against
-the catalogue route and record the run time in ROADMAP.md Phase 1.
+**Fonts resolved 2026-08-20.** The eight faces and their licences are committed and
+`FONTS_BUNDLED` is true. Three things came out of doing it that were not obvious beforehand:
+
+- **The other thirty-two weights were deleted.** Google Fonts hands over about forty faces
+  per family; every file under `assets/fonts` is bundled into the APK, so the unused ones
+  were three megabytes of nothing. `fontLicenses.test.ts` now fails if a stray reappears.
+- **The `require` map moved to `fontAssets.ts`.** An asset `require` only resolves under
+  Metro, so leaving it in `typography.ts` would have pinned the whole type scale to the
+  jest-expo project. Split out, `typography.ts` imports nothing at all and the scale is
+  tested in the fast project beside the tokens. `lineHeightFor` lost its
+  `PixelRatio.getFontScale()` default in the same move — a static read that would not
+  re-render on an OS font-size change, which is the one thing it exists to track.
+- **The licences were wrong, and nothing said so.** All three `OFL-*.txt` files were
+  byte-identical copies of Barlow's, so Cinzel and JetBrains Mono shipped attributed to
+  "The Barlow Project Authors". The OFL requires the copyright notice to travel with the
+  font; this was a compliance break that no build step could see.
+
+  The fix did not involve writing a copyright notice by hand. Each font carries its own in
+  its TrueType `name` table (id 0), and the OFL 1.1 body is a fixed document identical
+  across every OFL font — so the correct header was read out of the binary and put in front
+  of the licence text that was already there. `fontLicenses.test.ts` now does the same read
+  on every run and asserts the file matches the font. Verified by reverting one licence and
+  confirming it fails.
+
+**Still open: the screenshot gate.** Unchanged. Maestro needs an emulator, and the point of
+running it in Phase 1 is to measure what it costs before two more screens depend on it.
+
+**Next action.** Stand up Maestro against the catalogue route and record the run time in
+ROADMAP.md Phase 1.
 
 ---
 

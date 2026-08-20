@@ -10,7 +10,7 @@
 
 import { useFonts } from 'expo-font';
 
-import { FONT_ASSETS } from './typography';
+import { FONT_ASSETS } from './fontAssets';
 
 export interface ArenaFontsState {
   loaded: boolean;

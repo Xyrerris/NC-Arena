@@ -6,7 +6,8 @@
 import { StyleSheet, TextInput, View } from 'react-native';
 
 import { color, layout, radius, space } from './tokens';
-import { FONTS_BUNDLED, fontAssetName, typeScale } from './typography';
+import { FONTS_BUNDLED } from './fontAssets';
+import { fontAssetName, typeScale } from './typography';
 
 export interface SearchFieldProps {
   value: string;

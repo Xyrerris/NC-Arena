@@ -18,9 +18,8 @@ export { StatRow, type StatRowProps } from './StatRow';
 export { ViewerCard, type ViewerCardProps } from './ViewerCard';
 
 export { color, layout, radius, space, type Radius, type Space } from './tokens';
+export { FONTS_BUNDLED, FONT_ASSETS } from './fontAssets';
 export {
-  FONTS_BUNDLED,
-  FONT_ASSETS,
   REQUIRED_FONT_ASSETS,
   fontAssetName,
   fontFamily,

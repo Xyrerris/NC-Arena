@@ -86,3 +86,33 @@ describe('ArenaText', () => {
     expect(styleOf('unleaded').lineHeight).toBeUndefined();
   });
 });
+
+describe('ArenaText, with the OFL faces bundled', () => {
+  it('names a per-weight family, because Android ignores fontWeight for custom faces', async () => {
+    await render(
+      <>
+        <ArenaText testID="display" variant="displayLarge">
+          Arena
+        </ArenaText>
+        <ArenaText testID="label" variant="labelSmall">
+          Rank
+        </ArenaText>
+        <ArenaText testID="number" variant="numericHero">
+          2,418,904,113
+        </ArenaText>
+      </>,
+    );
+    expect(styleOf('display').fontFamily).toBe('Cinzel-Bold');
+    expect(styleOf('label').fontFamily).toBe('Barlow-SemiBold');
+    expect(styleOf('number').fontFamily).toBe('JetBrainsMono-Medium');
+  });
+
+  it('keeps the numeric fontWeight in place for the fallback path', async () => {
+    await render(
+      <ArenaText testID="number" variant="numericHero">
+        2,418,904,113
+      </ArenaText>,
+    );
+    expect(styleOf('number').fontWeight).toBe('500');
+  });
+});
