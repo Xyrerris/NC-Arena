@@ -1,5 +1,7 @@
 import { Link, Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+
+import { ArenaText, ScreenScaffold, layout, space } from '@/core/design-system';
 
 /**
  * Catch-all for unmatched routes.
@@ -12,18 +14,28 @@ export default function NotFoundRoute() {
   return (
     <>
       <Stack.Screen options={{ title: 'Not found' }} />
-      <View style={styles.container}>
-        <Text style={styles.title}>That screen does not exist.</Text>
-        <Link href="/" style={styles.link}>
-          Back to the roster
-        </Link>
-      </View>
+      <ScreenScaffold>
+        <View style={styles.body}>
+          <ArenaText variant="displaySmall" tone="primary">
+            That screen does not exist.
+          </ArenaText>
+          <Link href="/" style={styles.link}>
+            <ArenaText variant="titleSmall" tone="accent">
+              Back to the roster
+            </ArenaText>
+          </Link>
+        </View>
+      </ScreenScaffold>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, gap: 12 },
-  title: { color: '#e8efec', fontSize: 20 },
-  link: { color: '#5fd6a2', fontSize: 15 },
+  body: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: layout.screenGutter,
+    gap: space[12],
+  },
+  link: { paddingVertical: space[4] },
 });

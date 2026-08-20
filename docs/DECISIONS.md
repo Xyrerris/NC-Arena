@@ -345,27 +345,172 @@ Two smaller decisions recorded here rather than in their own entries:
 
 ---
 
+## ADR-0013 — The contrast floor is implemented, and is a test rather than a comment
+
+**Date:** 2026-08-20 · **Status:** accepted, pending design sign-off · **Phase:** 1
+
+**Context.** ARCHITECTURE.md §2.4 measures six of the prototype's text opacities against
+WCAG AA and finds all six failing, between 2.44:1 and 3.67:1. It states the fix as a
+decision — "any token intended for text clamps at α ≥ 0.50" — while ROADMAP.md keeps design
+approval open as decision 5. A token module cannot defer: it has to write a number down.
+
+**Decision.** Implement the clamp. `color.text.*` holds five values from α 0.50 to 1.0;
+`color.decorative.*` holds the sub-floor values the design uses for hairlines, bar tracks
+and chip fills, where contrast does not apply because nothing there is text.
+
+The measurements were re-derived from the sRGB definition rather than copied, and they
+reproduce §2.4 exactly. One value §2.4 does not list: α 0.50 on the `raised` surface is
+**4.66:1**, so the floor holds on all three backgrounds rather than only on `surface`.
+
+`tokens.test.ts` computes every ratio at run time and fails below 4.5:1. It also asserts
+the converse — that every `decorative` token is _under_ 4.5:1 — because a decorative value
+that starts clearing AA is usually a value that has quietly become text, and belongs in the
+other group where the floor applies.
+
+**Consequences.** If design waives AA, the waiver is one edit to `color.text` and one
+deliberate change to the test. That is the whole reason the values live in one file, and it
+is why implementing before sign-off is cheap rather than presumptuous. Until then the app is
+AA-compliant on text contrast and the prototype's exact opacities are not what ships — a
+visible difference the design review should be shown.
+
+---
+
+## ADR-0014 — Leading is a multiplier, and ArenaText is the only text in the app
+
+**Date:** 2026-08-20 · **Status:** accepted · **Phase:** 1
+
+**Context.** React Native scales `fontSize` with the OS font setting and does **not** scale
+`lineHeight`. ARCHITECTURE.md §2.5 gives text scaling the same severity as the data
+constraints, and the product's promise is a thirteen-character number rendered in full.
+
+**Decision.** Three things, all in one place:
+
+- **`lineHeight` is never stored in pixels.** The type scale carries a unitless `leading`
+  and `ArenaText` computes `fontSize × leading × fontScale` at render. Most roles omit
+  leading entirely and let the font metrics decide, which is what a single line wants anyway.
+- **No `maxFontSizeMultiplier` by default.** Capping the scale is an accessibility
+  regression, so it is opt-in per call site and Phase 6 audits each one. The layout is what
+  has to survive 200 %, not the text — hence `flexWrap` and `rowGap` on every numeric row
+  rather than `numberOfLines`.
+- **Colour is a `tone`, not a string.** No prop accepts a hex, so the §2.4 floor is
+  unavoidable rather than remembered.
+
+`fontVariant: ['tabular-nums']` is set for every numeric role whether or not JetBrains Mono
+is bundled, because the jitter it prevents is a property of the _fallback_ font.
+
+**Consequences.** jest-expo runs at `fontScale` 2, so every component test in the design
+system is already a 200 % font-scale test. That was luck rather than design, and it is
+recorded here so nobody "fixes" the environment to 1 and quietly deletes the coverage.
+
+---
+
+## ADR-0015 — Spacing is keyed by its own value
+
+**Date:** 2026-08-20 · **Status:** accepted · **Phase:** 1
+
+**Context.** ROADMAP.md Phase 1 wants a spacing scale "typed `as const`, so a value outside
+the scale is a type error rather than a review comment". The prototype uses sixteen distinct
+spacing values. Sixteen semantic names is not a scale, it is a thesaurus; snapping to eight
+steps changes a design the roadmap calls final.
+
+**Decision.** `space[16]`, not `space.wide`. The keys are the numbers, so the scale holds
+every value the design uses, `space[15]` does not compile, and a style reads the way the
+prototype does. Two off-grid values are snapped — 9 px and 58 px, to 8 and 56 — because a
+scale with a 9 in it is a list. Recurring roles get semantic aliases on top
+(`layout.screenGutter`, `layout.cardPadding`, `layout.minTouchTarget`), which is where
+intent belongs.
+
+**Consequences.** The type system enforces membership; the ESLint rule enforces that
+features go through it at all. Both are needed — the first cannot see a bare `24` written in
+a screen's stylesheet, and the second cannot tell 16 from 15.
+
+---
+
+## ADR-0016 — Every architectural rule gets probes, and two more Phase 0 configs were untested
+
+**Date:** 2026-08-20 · **Status:** accepted · **Phase:** 1
+
+**Context.** ADR-0006 was a rule that looked configured and enforced nothing. ADR-0007 was
+two configurations that were declared and never executed. Phase 1 adds a third rule of the
+same kind — no raw colours or spacing outside core/design-system — and ran the jest-expo
+project for the first time.
+
+**Decision.** `scripts/lint-probe.mjs` is a shared runner; `check-boundaries.mjs` and
+`check-design-tokens.mjs` are its two suites, seventeen probes between them, wired to
+`npm run check:rules` and a CI step separate from `Lint`. A rule that has not rejected
+something is not known to work.
+
+One probe is not about tokens at all: it asserts that `toFixed` is _still_ rejected in
+core/common. `no-restricted-syntax` is replaced wholesale by the last config block matching
+a file, so adding the token rules in a second block would have silently deleted the §2.2
+rounding ban for every file both covered. Nothing would have failed. That is ADR-0006's
+failure mode exactly, and it is now a test.
+
+**What running jest-expo for the first time found.** React Native Testing Library 14's
+`render` is **async**. Without `await`, `screen` reports "render has not been called" for a
+component that rendered perfectly well, and the render result is a bare promise. A second
+`render` inside one test overlaps React's `act` scope and the queries then read the wrong
+tree — so the convention is one render per test. Both are recorded because neither is
+discoverable from the config, and Phase 0 shipped that config without running it.
+
+---
+
+## ADR-0017 — Phase 1 ships without the fonts and without the screenshot gate
+
+**Date:** 2026-08-20 · **Status:** ⚠️ open · **Phase:** 1
+
+**Context.** Two Phase 1 deliverables could not be completed in the session that built the
+rest, and both need a human rather than more code.
+
+**The fonts.** Cinzel, Barlow and JetBrains Mono are OFL and must be committed under
+`assets/fonts` with their licences. Fetching a font file is a download, and downloads are
+the user's decision. `FONT_ASSETS` is empty, `FONTS_BUNDLED` is false, and every role falls
+back to the platform face at the correct size and weight. `assets/fonts/README.md` lists the
+eight files, and `typography.test.tsx` fails on a partial drop. **The app does not look
+finished until this is done** — the display face is half its character.
+
+**The screenshot gate.** ROADMAP.md Phase 1 wants Maestro baselines for every component at
+default and 200 % font scale, and — more importantly — wants their wall-clock cost
+_measured here_, because that measurement decides whether the gate survives two screens
+(ARCHITECTURE.md §10). Maestro needs an emulator. Neither the baselines nor the measurement
+exist, so the risk table's "visual regression gate too slow to run per-PR" mitigation has
+not been exercised.
+
+**What stands in for it meanwhile.** `src/app/catalogue.tsx` renders every component in one
+scroll, keyed on the seed's largest player, with test ids ready for Maestro. The component
+tests all run at `fontScale` 2. Neither proves a number is unclipped — only pixels do that,
+which is the point §10 makes about snapshots.
+
+**Next action.** Commit the eight font files and their licences; stand up Maestro against
+the catalogue route and record the run time in ROADMAP.md Phase 1.
+
+---
+
 ## Still open
 
 These block or shape later phases and are **not** decided. Full text in
 [ARCHITECTURE.md §9](ARCHITECTURE.md).
 
-| #   | Question                                                                 | Needed by          |
-| --- | ------------------------------------------------------------------------ | ------------------ |
-| 1   | Is there a backend, and what is its contract (incl. max stat magnitude)? | Phase 5            |
-| 2   | How large is a real roster?                                              | Phase 3            |
-| 3   | How is "your avatar" identified?                                         | Phase 3            |
-| 4   | Where does head-to-head data come from?                                  | Phase 4            |
-| 5   | AA contrast fix — approve or waive?                                      | **Phase 1 (next)** |
-| 6   | iOS in or out (+6 to +8 days)?                                           | Phase 6            |
-| 7   | Does `shortUnit` become user-facing?                                     | Phase 4            |
-| 8   | Season semantics — is "SEASON 41" dynamic?                               | Phase 3            |
-| 9   | Localisation scope                                                       | Phase 6            |
-| 10  | OTA update governance                                                    | Phase 7            |
+| #   | Question                                                                 | Needed by             |
+| --- | ------------------------------------------------------------------------ | --------------------- |
+| 1   | Is there a backend, and what is its contract (incl. max stat magnitude)? | Phase 5               |
+| 2   | How large is a real roster?                                              | Phase 3               |
+| 3   | How is "your avatar" identified?                                         | Phase 3               |
+| 4   | Where does head-to-head data come from?                                  | Phase 4               |
+| 5   | AA contrast fix — approve or waive?                                      | implemented, ADR-0013 |
+| 6   | iOS in or out (+6 to +8 days)?                                           | Phase 6               |
+| 7   | Does `shortUnit` become user-facing?                                     | Phase 4               |
+| 8   | Season semantics — is "SEASON 41" dynamic?                               | Phase 3               |
+| 9   | Localisation scope                                                       | Phase 6               |
+| 10  | OTA update governance                                                    | Phase 7               |
 
-Decisions 1, 2 and 5 are the Phase 0 exit criteria. 5 is the urgent one: Phase 1 builds the
-token module, and answering it afterwards means rebuilding every component that consumed a
-token.
+Decisions 1, 2 and 5 are the Phase 0 exit criteria.
+
+**Moved by Phase 1.** Decision 5 is no longer urgent, because the answer is now cheap to
+change: the clamp is implemented (ADR-0013), so a waiver edits one object in `tokens.ts`
+rather than every component that consumed a token. It still needs an answer — the app
+currently renders text at higher contrast than the prototype does, and design has not seen
+that.
 
 **Moved by Phase 2.** Decision 7 (`shortUnit` user-facing) was listed against Phase 2 and is
 now against Phase 4. Phase 2 owed it a stored preference, and that exists — `core/prefs`

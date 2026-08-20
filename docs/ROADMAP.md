@@ -1,7 +1,9 @@
 # Arena Scout (React Native) — Roadmap
 
-**Status:** Phase 0 and Phase 2 implemented, all exit criteria met. Phase 1 not started,
-blocked on open decision 5 (AA contrast).
+**Status:** Phases 0, 1 and 2 implemented. Phase 1 is complete except the OFL font files and
+the Maestro screenshot gate, both of which need a human — see ADR-0017. Phase 3 is next and
+is unblocked. Open decision 5 (AA contrast) is implemented per ARCHITECTURE.md §2.4 and still
+wants design sign-off (ADR-0013).
 **Companion doc:** [ARCHITECTURE.md](ARCHITECTURE.md) — stack, project structure, data model, open decisions.
 
 **Supersedes** the Kotlin/Compose roadmap. The phase _shape_ is unchanged, because it was driven by

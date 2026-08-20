@@ -29,13 +29,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # The module-boundary gate (ARCHITECTURE.md §4). This is a separate step from Lint
-      # on purpose: a clean `eslint .` proves nothing about the boundary rule, because a
-      # misconfigured rule reports zero violations and looks identical to a compliant
-      # codebase. That is exactly what happened for two phases (ADR-0006). This step
-      # writes deliberately illegal imports and fails if they are accepted.
-      - name: Boundaries
-        run: npm run check:boundaries
+      # The architectural gates: module boundaries (ARCHITECTURE.md §4) and design tokens
+      # (§2.4, §2.2). A separate step from Lint on purpose — a clean `eslint .` proves
+      # nothing about either rule, because a misconfigured rule reports zero violations and
+      # looks identical to a compliant codebase. That is exactly what happened for two
+      # phases (ADR-0006). This step writes deliberate violations and fails if they pass.
+      - name: Architecture rules
+        run: npm run check:rules
 
       - name: Format
         run: npm run format

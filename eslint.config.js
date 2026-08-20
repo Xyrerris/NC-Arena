@@ -16,6 +16,43 @@ const prettier = require('eslint-config-prettier');
 /** Reads as the §4 table does: what each module is allowed to reach. */
 const to = (...types) => ({ to: { element: { types: { anyOf: types } } } });
 
+// ---------------------------------------------------------------------------
+// Design-token restrictions (ARCHITECTURE.md §2.4, ROADMAP.md Phase 1)
+// ---------------------------------------------------------------------------
+// These three are composed rather than declared in separate config blocks, because
+// `no-restricted-syntax` is replaced wholesale by the last block that matches a file — so
+// a second block would silently delete the first one's restrictions for every file both
+// cover. That is the same failure mode as ADR-0006 and it is just as quiet.
+
+const NO_RAW_COLOR = {
+  // `rgba?[(]` rather than an escaped paren: the character class needs no backslash and so
+  // survives being edited by anything that mangles them.
+  selector: 'Literal[value=/^(#[0-9a-fA-F]{3,8}|rgba?[(])/]',
+  message:
+    'ARCHITECTURE.md §2.4: raw colours belong in core/design-system/tokens.ts. Text colours ' +
+    'there clear WCAG AA; a hex written into a screen does not, and cannot be audited. ' +
+    'Use a `color.*` token, or `tone` on ArenaText.',
+};
+
+const NO_RAW_SPACING = {
+  selector:
+    'Property[key.name=/^(padding|paddingTop|paddingBottom|paddingLeft|paddingRight|' +
+    'paddingHorizontal|paddingVertical|margin|marginTop|marginBottom|marginLeft|marginRight|' +
+    'marginHorizontal|marginVertical|gap|rowGap|columnGap|borderRadius|minHeight|minWidth)$/]' +
+    ' > Literal[value>1]',
+  message:
+    'ROADMAP.md Phase 1: spacing and radii come from the scale in core/design-system/tokens.ts. ' +
+    'Use space[n], layout.* or radius.*. 0 and 1 are allowed, for hairlines.',
+};
+
+const NO_TO_FIXED = {
+  selector: "CallExpression[callee.property.name='toFixed']",
+  message:
+    'ARCHITECTURE.md §2.2: toFixed is not a rounding specification. ' +
+    '(9.995).toFixed(2) === "9.99", which is the exact boundary the formatting ' +
+    'contract is tested at. Use divideHalfUp from core/common.',
+};
+
 module.exports = defineConfig([
   expoConfig,
   prettier,
@@ -130,21 +167,22 @@ module.exports = defineConfig([
   },
 
   // ---------------------------------------------------------------------------
-  // Rounding contract (ARCHITECTURE.md §2.2)
+  // Tokens everywhere except the module that defines them
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/core/design-system/**/*'],
+    rules: { 'no-restricted-syntax': ['error', NO_RAW_COLOR, NO_RAW_SPACING] },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Rounding contract (ARCHITECTURE.md §2.2), plus the two above — see the note by
+  // their definitions for why they are repeated here rather than layered.
   // ---------------------------------------------------------------------------
   {
     files: ['src/core/common/**/*.ts'],
     rules: {
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector: "CallExpression[callee.property.name='toFixed']",
-          message:
-            'ARCHITECTURE.md §2.2: toFixed is not a rounding specification. ' +
-            '(9.995).toFixed(2) === "9.99", which is the exact boundary the formatting ' +
-            'contract is tested at. Use divideHalfUp from core/common.',
-        },
-      ],
+      'no-restricted-syntax': ['error', NO_RAW_COLOR, NO_RAW_SPACING, NO_TO_FIXED],
     },
   },
 ]);

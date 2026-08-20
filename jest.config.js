@@ -18,8 +18,12 @@ module.exports = {
     {
       displayName: 'node',
       testEnvironment: 'node',
+      // The split is by *extension*, not by folder: `.test.ts` runs here, `.test.tsx` runs
+      // under jest-expo below. That is what lets core/design-system have both — the token
+      // contrast assertions are pure arithmetic and belong in the fast project, while the
+      // components need a renderer. A `.test.ts` in this project may not import
+      // react-native, which is the convention the extension encodes.
       testMatch: ['<rootDir>/src/core/**/*.test.ts'],
-      testPathIgnorePatterns: ['<rootDir>/src/core/design-system/'],
       transform: {
         '^.+\\.tsx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
       },

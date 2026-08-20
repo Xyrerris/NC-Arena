@@ -1,26 +1,14 @@
 #!/usr/bin/env node
 /**
- * Proves the ARCHITECTURE.md §4 boundary rule actually rejects what it claims to.
+ * Proves the ARCHITECTURE.md §4 module boundaries actually reject what they claim to.
  *
- * ROADMAP.md Phase 0 does not ask for "the rule is configured"; it asks that "a
- * deliberately-added illegal import from features/roster to core/db fails CI". That
- * distinction earned its own ADR: for two phases the rule was configured, warned about,
- * and enforced nothing, because eslint-plugin-boundaries classifies elements by *folder*
- * and the patterns were written as file globs — so every file came back `isUnknown` and
- * no policy ever applied. A green lint run was evidence of nothing (ADR-0006).
- *
- * So the check is executable and runs on every PR. Each case writes a throwaway file,
- * lints it, and asserts the outcome. Everything is deleted again, including on failure.
+ * The rule was inert for two phases: `boundaries/elements` classifies by *folder* and the
+ * patterns were written as file globs, so every file came back `isUnknown` and no policy
+ * ever applied (ADR-0006). These probes are what would have caught that on the first PR.
  */
 
-import { ESLint } from 'eslint';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { report, runProbes } from './lint-probe.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-/** @type {{ name: string, file: string, source: string, expect: 'reject' | 'allow' }[]} */
 const CASES = [
   {
     name: 'features/roster may not reach the database',
@@ -63,9 +51,9 @@ const CASES = [
     name: 'features/roster may reach the design system and the repository',
     file: 'src/features/roster/__boundary_probe.ts',
     source:
-      "import { statFormatter } from '@/core/common';\n" +
+      "import { ArenaText } from '@/core/design-system';\n" +
       "import { localSeedRosterSource } from '@/core/data';\n" +
-      'export const probe = [statFormatter, localSeedRosterSource];\n',
+      'export const probe = [ArenaText, localSeedRosterSource];\n',
     expect: 'allow',
   },
   {
@@ -78,50 +66,9 @@ const CASES = [
   },
 ];
 
-const RULE = 'boundaries/dependencies';
-
-// ESLint's Node API rather than a child process: one config load instead of eight, and
-// no shell quoting to get wrong on either platform.
-const eslint = new ESLint({ cwd: ROOT });
-
-const lint = async (file) => {
-  const [report] = await eslint.lintFiles([file]);
-  return (report?.messages ?? []).filter((message) => message.ruleId === RULE);
-};
-
-let failures = 0;
-const written = new Set();
-
-try {
-  for (const testCase of CASES) {
-    const absolute = join(ROOT, testCase.file);
-    mkdirSync(dirname(absolute), { recursive: true });
-    writeFileSync(absolute, testCase.source, 'utf8');
-    written.add(absolute);
-
-    const violations = await lint(testCase.file);
-    const rejected = violations.length > 0;
-    const passed = rejected === (testCase.expect === 'reject');
-
-    console.log(`${passed ? 'ok  ' : 'FAIL'}  ${testCase.name}`);
-    if (!passed) {
-      failures += 1;
-      console.log(
-        testCase.expect === 'reject'
-          ? '        expected a boundary error, got none'
-          : `        unexpected boundary error: ${violations[0]?.message}`,
-      );
-    }
-
-    rmSync(absolute, { force: true });
-    written.delete(absolute);
-  }
-} finally {
-  for (const absolute of written) rmSync(absolute, { force: true });
-}
-
-if (failures > 0) {
-  console.error(`\n${failures} boundary check(s) failed. See ARCHITECTURE.md §4 and ADR-0006.`);
-  process.exit(1);
-}
-console.log(`\nAll ${CASES.length} boundary checks behaved as specified.`);
+const failures = await runProbes(
+  'Module boundaries (ARCHITECTURE.md §4)',
+  ['boundaries/dependencies'],
+  CASES,
+);
+report(failures, CASES.length, 'ARCHITECTURE.md §4 and ADR-0006');
