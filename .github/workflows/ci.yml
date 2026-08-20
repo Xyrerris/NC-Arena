@@ -26,11 +26,16 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # This step is also the module-boundary gate (ARCHITECTURE.md §4). The rule is
-      # `error`, so an illegal import from src/features into core/db or core/network
-      # fails here. Verified deliberately in Phase 0 rather than assumed.
       - name: Lint
         run: npm run lint
+
+      # The module-boundary gate (ARCHITECTURE.md §4). This is a separate step from Lint
+      # on purpose: a clean `eslint .` proves nothing about the boundary rule, because a
+      # misconfigured rule reports zero violations and looks identical to a compliant
+      # codebase. That is exactly what happened for two phases (ADR-0006). This step
+      # writes deliberately illegal imports and fails if they are accepted.
+      - name: Boundaries
+        run: npm run check:boundaries
 
       - name: Format
         run: npm run format

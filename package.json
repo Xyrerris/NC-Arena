@@ -11,8 +11,9 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "test": "jest --passWithNoTests",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
     "doctor": "npx expo-doctor",
-    "verify": "npm run typecheck && npm run lint && npm run format && npm test"
+    "verify": "npm run typecheck && npm run lint && npm run check:boundaries && npm run format && npm test"
   },
   "dependencies": {
     "@shopify/flash-list": "2.0.2",

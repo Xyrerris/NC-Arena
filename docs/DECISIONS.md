@@ -97,9 +97,9 @@ deliberately not configured as a visual gate — see the note in `jest.config.js
 
 ---
 
-## ADR-0006 — Module-boundary rule is written but NOT yet enforcing
+## ADR-0006 — Module-boundary rule was written but enforced nothing
 
-**Date:** 2026-08-14 · **Status:** ⚠️ open / blocked · **Phase:** 0
+**Date:** 2026-08-14 · **Status:** resolved 2026-08-18 · **Phase:** 0, closed in 2
 
 **Context.** The Phase 0 exit criterion is not "the rule is configured", it is "a deliberately
 added illegal import fails CI". That test was run, and it **failed to fail**:
@@ -126,7 +126,7 @@ hook blocks edits to `eslint.config.js`. That hook is doing its job — it canno
 "weakening a rule to silence errors" from "repairing a rule that enforces nothing" — so
 unblocking it is an explicit human decision, not an automated one.
 
-**Until it is applied, the §4 boundary is documentation, not enforcement.** Treat every
+**Until it was applied, the §4 boundary was documentation, not enforcement.** Treat every
 import in `src/features/` as unguarded. This matters most in Phase 3, which is the first
 phase that writes real feature code.
 
@@ -138,6 +138,47 @@ with an ARCHITECTURE.md §4 message — not before.
 exits 0, and `npx eslint .` still prints the v7 deprecation warnings on every run. Phase 2
 wrote no feature code, so nothing shipped unguarded — but Phase 3 does, and this is now the
 oldest open item blocking it.
+
+**Resolved 2026-08-18.** The diagnosis above was right about the symptom and wrong about the
+cause, which is worth recording because the wrong cause was the plausible one.
+
+Migrating to v7 syntax removed every deprecation warning and changed nothing: the illegal
+import still passed. The plugin's own debug output said why.
+
+```
+$ ESLINT_PLUGIN_BOUNDARIES_DEBUG=1 npx eslint src/features/roster/__probe.ts
+[boundaries][debug]: Description of file "src/features/roster/__probe.ts":
+  { "element": { "types": null, "captured": null, "isUnknown": true }, ... }
+```
+
+**`isUnknown: true`.** No file in the project was ever classified as any element, so no
+policy could apply to anything. `boundaries/elements` patterns describe **folders**, and
+Phase 0 wrote them as file globs — `src/core/db/**/*` where the plugin wanted
+`src/core/db`. That defect is independent of the version; the v5 config would have enforced
+nothing either. The deprecation warnings were a real problem sitting on top of a different
+real problem, and fixing only the loud one left the rule exactly as inert as before.
+
+The fix is therefore two changes, not one:
+
+- Element patterns are folder patterns (`src/features/*` with `capture: ['feature']`).
+- The rule is `boundaries/dependencies` with `policies`, object selectors and `{{...}}`
+  templates.
+
+One genuine violation surfaced the moment the rule woke up: `rosterRepository.test.ts`
+imports `core/testing`, which no policy allowed. Rather than widen core/data's permissions,
+test files are now classified (`boundaries/files`, category `test`) and the exception is
+stated as "a test may reach the fakes". Production code still cannot — verified, because
+core/testing opens a real `better-sqlite3` handle that must never reach a bundle.
+
+**The criterion is now met, and it stays met.** `npm run check:boundaries` writes eight
+deliberate probes — six that must be rejected, two that must be allowed — lints each, and
+fails if any behaves differently. It runs as its own CI step, separate from `Lint`, because
+that is the whole lesson here: a clean `eslint .` is indistinguishable between a rule that
+enforces and a rule that classifies nothing. The check was itself checked by reintroducing
+the folder-pattern defect and confirming it fails.
+
+**Config protection.** The hook that blocked `eslint.config.js` in Phase 0 did not fire on
+this edit. Recorded so the next person is not surprised in either direction.
 
 ---
 
