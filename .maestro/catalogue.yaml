@@ -1,0 +1,34 @@
+# Every component, photographed. This is the gate ARCHITECTURE.md §10 keeps instead of Jest
+# snapshots: a clipped or ellipsised number serialises identically to a correct one, so only
+# pixels can tell whether "2,418,904,113" is actually all there.
+#
+# The font scale is set by scripts/e2e-screenshots.mjs before this runs — Maestro has no way
+# to change a system setting, and the 200 % pass is the one that matters. That script also
+# passes SHOT_DIR, so the two passes do not overwrite each other's baselines.
+appId: com.ncarena.arenascout
+---
+- launchApp
+- openLink: arenascout://catalogue
+- assertVisible: 'VIEWERCARD'
+- takeScreenshot: ${SHOT_DIR}/catalogue-01-viewer
+
+# The seed's largest value. If this assertion passes but the screenshot shows an ellipsis,
+# the promise the product is built on is broken and only the image says so.
+- scrollUntilVisible:
+    element:
+      text: 'STATROW.*'
+    direction: DOWN
+- assertVisible: '2,418,904,113'
+- takeScreenshot: ${SHOT_DIR}/catalogue-02-stat-row
+
+- scrollUntilVisible:
+    element:
+      text: 'COMPAREBAR'
+    direction: DOWN
+- takeScreenshot: ${SHOT_DIR}/catalogue-03-compare-bar
+
+- scrollUntilVisible:
+    element:
+      text: 'ARENATEXT.*'
+    direction: DOWN
+- takeScreenshot: ${SHOT_DIR}/catalogue-04-numerics

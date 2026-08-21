@@ -1,0 +1,12 @@
+# The boot path, on a real device: migrations, the Phase 2 seed and the fonts all resolve
+# behind the splash screen before anything paints (ARCHITECTURE.md §7).
+#
+# `clearState` is the point of this flow rather than a tidiness habit — it forces the
+# first-run path, where the database does not exist yet and the seed has to populate it.
+appId: com.ncarena.arenascout
+---
+- clearState
+- launchApp
+- assertVisible: 'Arena'
+- assertVisible: 'Phase 1 design system in place. The roster screen lands in Phase 3.'
+- takeScreenshot: ${SHOT_DIR}/boot-roster
