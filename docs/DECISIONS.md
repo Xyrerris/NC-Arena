@@ -23,6 +23,17 @@ resolved to **2.0.2** where npm's latest is 2.3.2, and `jest-expo` was installed
 install. `expo-doctor` runs in CI to catch drift. The cost is being a version or two behind
 `latest` on individual libraries, which is the intended trade.
 
+**Patch drift, 2026-08-20.** `expo-doctor` had been failing since Phase 0 — not on anything
+this project did, but because SDK 57 moved on: `expo`, `expo-router`, `expo-splash-screen`,
+`expo-linking` and `expo-background-task` were each a patch behind what the SDK expects.
+Realigned with `npx expo install --fix`, which is the tool this ADR already mandates, and
+`expo-background-task` gained its config plugin in `app.config.ts` at the same time.
+`expo-doctor` now reports 21/21.
+
+Patch alignment inside a pinned SDK is not the kind of upgrade the paragraph above is about
+— it is the drift `expo-doctor` exists to catch, and letting it accumulate turns a red CI
+step into background noise, which is worse than the drift.
+
 ---
 
 ## ADR-0002 — Routes live in `src/app/`, not `app/`
