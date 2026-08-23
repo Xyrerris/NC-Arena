@@ -1,0 +1,14 @@
+# The working tree holds text as LF, on every platform.
+#
+# The repository already stores LF — but `core.autocrlf=true`, which Git for Windows sets by
+# default, rewrites it to CRLF on checkout. Prettier's `endOfLine` default is `lf`, so on a
+# Windows machine `npm run format` rejected all 77 text files for a reason that had nothing to
+# do with formatting, while the same commit passed CI on Linux. A gate that only fails on one
+# platform teaches developers to ignore it.
+#
+# `eol=lf` takes precedence over `core.autocrlf`, so this needs no per-developer git config.
+* text=auto eol=lf
+
+# Fonts and images are never diffed or line-ending-converted.
+*.ttf binary
+*.png binary
