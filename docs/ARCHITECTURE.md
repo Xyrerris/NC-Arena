@@ -1,7 +1,8 @@
 # Arena Scout — React Native Infrastructure Proposal
 
 **Status:** accepted and partly implemented. §2, §5, §6 and §7 are code as of Phase 2;
-§3, §4 and §10 as of Phase 0. Deviations are recorded in [DECISIONS.md](DECISIONS.md).
+§8 as of Phase 3; §3, §4 and §10 as of Phase 0. Deviations are recorded in
+[DECISIONS.md](DECISIONS.md).
 **Source of truth for UI:** `design/Arena Scout.dc.html` (Claude Design prototype, imported 2026-08-13).
 **Companion doc:** [ROADMAP.md](ROADMAP.md).
 
@@ -402,6 +403,11 @@ Rules:
   Keystroke latency must never wait on a query round-trip.
 - The row component is memoised; the screen is not. Roster rows re-render on every list update
   otherwise, and the roster is the surface where that shows.
+- **The `empty` state carries the header.** The union above is the shape as first sketched; the
+  implemented one gives `ready` and `empty` a shared `header` (the viewer card, the registered
+  count, the season label and the active sort), because the header is a sibling of the list rather
+  than part of it. A search that matches nothing must not take the search field down with it —
+  that is defect 5 again, one level up. See ADR-0018.
 
 The prototype has no loading, empty, or error state — searching for a non-existent player yields a
 blank screen. Those three states are new work, not porting work, and are budgeted as such.
@@ -436,7 +442,10 @@ proposal** — they are product questions, and the framework has no opinion on t
    `core/design-system` — so this can be answered as late as Phase 6, but not later.
 7. **Does `shortUnit` become a user-facing setting?** It is a design-time knob today. If yes, a
    third screen (Settings) enters scope.
-8. **Season semantics.** "SEASON 41" is hardcoded. Is it dynamic, and does history persist?
+8. **Season semantics.** _Half-answered in Phase 3 (ADR-0018)._ The label is no longer hardcoded:
+   the season travels on `RosterSnapshot` from the source, and the roster header renders nothing
+   at all before the first sync. What is still open is **history** — today one season replaces the
+   last, and nothing records that a previous one existed.
 9. **Localisation scope.** English-only ships faster; the number formatting above is built to
    handle locales either way, but the copy is not.
 10. **OTA update policy.** _New._ EAS Update can ship JS-only fixes outside store review. That is a

@@ -1,9 +1,11 @@
 # Arena Scout (React Native) — Roadmap
 
-**Status:** Phases 0, 1 and 2 implemented. Phase 1 is complete except the Maestro screenshot
-gate, which needs an emulator — see ADR-0017. Phase 3 is next and is unblocked. Open decision
-5 (AA contrast) is implemented per ARCHITECTURE.md §2.4 and still wants design sign-off
-(ADR-0013).
+**Status:** Phases 0–3 implemented. Phase 1 is complete except the Maestro screenshot gate,
+which needs an emulator — see ADR-0017, and Phase 3 made that gate more load-bearing rather
+than less (ADR-0018). Phase 4 is next and is unblocked. Two Phase 3 exit criteria are not met
+by the test suite and are called out below. Open decision 5 (AA contrast) is implemented per
+ARCHITECTURE.md §2.4 and still wants design sign-off (ADR-0013); open decision 8 (season) is
+half-answered by ADR-0018.
 **Companion doc:** [ARCHITECTURE.md](ARCHITECTURE.md) — stack, project structure, data model, open decisions.
 
 **Supersedes** the Kotlin/Compose roadmap. The phase _shape_ is unchanged, because it was driven by
@@ -177,13 +179,27 @@ Runs in parallel with Phase 1 if staffing allows — they share no files.
 
 **Exit criteria**
 
-- Component tests: search narrows the list; a non-matching query shows the empty state, not a blank
-  screen; each sort chip reorders correctly; state survives backgrounding and app restart.
-- Rank badge continues to show **absolute season rank** when sorted by CP or wins — confirm this
-  matches design intent, as it is inherited prototype behaviour rather than a stated requirement.
-- Scrolling a 1 000-row seed stays jank-free on a mid-tier device, confirmed in a **release** build
-  (Hermes, no dev-mode overhead), because a debug-build frame rate is not evidence. Guards against
-  open decision 2 landing badly.
+- ✅ Component tests: search narrows the list; a non-matching query shows the empty state, not a
+  blank screen; each sort chip reorders correctly; state survives backgrounding and app restart.
+  **The reorder assertion moved to the hook**, because `FlashList` does not re-order in the jest
+  environment — ADR-0018 decision 3. The screen tests keep the chip wiring: press, selection,
+  persistence.
+- ⚠️ Rank badge continues to show **absolute season rank** when sorted by CP or wins. Implemented
+  and asserted, so a change is now visible in a diff — but it is still inherited prototype
+  behaviour and **still needs a design answer**, exactly as this line said before.
+- ⚠️ Scrolling a 1 000-row seed stays jank-free on a mid-tier device, confirmed in a **release**
+  build. **Not done — needs the emulator that ADR-0017 is still waiting on.** The seed is 15 rows,
+  so nothing in the suite exercises the case open decision 2 is about.
+
+---
+
+### What Phase 3 added beyond the deliverables
+
+Recorded here so the next phase does not rediscover them: `ArenaDataProvider` (the repository and
+its live-query runner reach screens through context, so a screen can be rendered in a test),
+`observeRosterSize` / `getViewerId` / `getSeason` on the repository, and `createStubLiveData` /
+`createTestRepository` in `core/testing`. Phase 4's detail screen consumes all of them unchanged —
+`observePlayer` is already there and already returns `{ query, map }`.
 
 ---
 

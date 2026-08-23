@@ -561,3 +561,80 @@ answer Phase 3 gives, the value is already data rather than a literal in a templ
 Decision 3 ("how is your avatar identified?") is answered _provisionally_ — the roster source
 declares the viewer id and `core/prefs` caches it. That is enough for a seed and will not
 survive a real backend.
+
+---
+
+## ADR-0018 — The roster's header is state, its order is not tested through the list
+
+**Date:** 2026-08-23 · **Status:** accepted · **Phase:** 3
+
+**Context.** ARCHITECTURE.md §8 sketches `RosterUiState` as four cases, and ROADMAP.md Phase 3
+asks for component tests proving that search narrows the list, a non-match shows the empty
+state, each chip reorders, and the sort survives a restart. Building that turned up four
+forks worth recording, because each one is a place where the obvious implementation is wrong.
+
+**Decision 1 — `empty` carries the header.** §8's `{ kind: 'empty'; query }` has no viewer, no
+count and no sort, so a screen rendering it faithfully would unmount the search field, the
+sort chips and the hero card the moment a query matched nothing. That is prototype defect 5
+one level up: the same reasoning that produced a blank screen, applied to the frame around it
+instead of the list. `ready` and `empty` therefore share a `RosterHeaderUi`. The union still
+makes the impossible unrepresentable — there are no rows on `empty` — which is the property
+the discriminated union was for.
+
+The empty _message_ lives inside the list as `ListEmptyComponent` rather than in place of it,
+so a fruitless keystroke does not tear down and rebuild a recycler to show one sentence.
+
+**Decision 2 — the repository arrives through context, and the live-query runner travels with
+it.** `arenaRepository` opens a real `expo-sqlite` handle and a real MMKV store at module load,
+so a screen that imported it could not be rendered in a test — and Phase 3's exit criteria are
+component tests. `ArenaDataProvider` supplies `{ repository, useLiveData }`; `src/app/_layout.tsx`
+builds it once at module scope, and a test builds it over `better-sqlite3`.
+
+That `useLiveData` field is ADR-0012's other half. ADR-0012 said the cost of `{ query, map }`
+was "one indirection at each call site, and Phase 3 is where that indirection is judged in
+practice". The verdict: it is paid once, in `useRoster`, and it bought the entire test
+strategy — the roster's sorts and searches are asserted against real SQL in about two seconds
+with no emulator. Keep it.
+
+**Decision 3 — the sort order is asserted through the hook, not through the rendered list.**
+`FlashList` does not re-order in the jest environment. With no layout to measure, its recycler
+keeps the window it built on the first commit, so a pure re-order of the same keys is invisible
+to the renderer even though the data changed — verified directly, with a two-item list and a
+button that swaps them. A test that pressed a chip and read the rendered rows would therefore
+assert FlashList's test-environment behaviour rather than the sort.
+
+So ordering is proven in `useRoster.test.tsx`, where it is a data question, and
+`RosterScreen.test.tsx` keeps what is genuinely the screen's: that a chip press selects, is
+announced as selected, and persists. **This makes the still-open screenshot gate (ADR-0017)
+more load-bearing, not less** — the rendered order of the roster is now something only pixels
+can confirm.
+
+**Decision 4 — the season stopped being a literal.** Open decision 8 asked where "SEASON 41"
+comes from. It comes from the source: `RosterSnapshot` carries `season`, `localSeedRosterSource`
+reads `meta.season` from the seed it was already carrying, and the repository caches it in
+preferences. It is a preference rather than a column because it describes the snapshot as a
+whole, and one integer does not justify a migration and a table. Before the first sync the
+header renders no season label at all, which is the same rule the viewer card follows: nothing
+beats a guess. Season _history_ remains open.
+
+**Consequences.**
+
+- `rosterRepository` gained `observeRosterSize`, `getViewerId` and `getSeason`. The first is
+  live because the count sits above a list a sync can grow underneath it; the other two are
+  subscription keys — every observer resolves the viewer at call time, so a sync that discovers
+  a different viewer has to re-key them.
+- `core/testing` gained `createStubLiveData` and `createTestRepository`. The second exists
+  because §4 forbids a feature from importing `core/prefs` **at all**, and a test file living
+  inside a feature is still inside it — so the wiring a test needs goes through the module that
+  is allowed to import everything. The boundary rule caught this; it was not noticed by hand.
+- The viewer's own row shows no record. The prototype's `ME.record` is a hard-coded `0W · 0L`,
+  and there is no head-to-head between a player and themselves to render instead.
+- Two React-testing traps cost real time and are recorded so the next screen does not pay
+  again. `render`, `renderHook`, `unmount` and `act` are all **async** in this version of RNTL,
+  and a missing `await` on any of them corrupts the renderer for the _rest of the file_ rather
+  than failing the test that caused it — the symptom is a later, unrelated test seeing an empty
+  tree. Relatedly, fake timers do not drive the debounce: React's scheduler defers the state
+  update produced by `fireEvent` into the same tick the timer advance runs in, so the settled
+  value always lands one advance late. The search tests use real timers, which is also the more
+  honest assertion — "no query yet" then means 250 ms of real time, not a statement about
+  `advanceTimersByTime`.

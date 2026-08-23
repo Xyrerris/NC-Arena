@@ -41,6 +41,7 @@ const record = (opponentId: string, wins: number, losses: number): HeadToHead =>
 
 /** Rank, combat power and wins deliberately disagree, so each sort has to earn its test. */
 const FIXTURE: RosterSnapshot = {
+  season: 41,
   viewerId: asPlayerId('p-a'),
   players: [
     player('p-a', 'Aurel', 1, 100),
@@ -134,6 +135,7 @@ describe('rosterRepository — search against names that contain wildcards', () 
   // name containing a literal "_": an unescaped underscore matches *every* row, so
   // "returns exactly this one" fails loudly where "returns nothing" passes by accident.
   const WILDCARDS: RosterSnapshot = {
+    season: 41,
     viewerId: asPlayerId('w-a'),
     players: [
       player('w-a', 'Ordinary', 1, 400),
@@ -258,6 +260,7 @@ describe('rosterRepository — refresh and seeding', () => {
     await repositoryOn(handle).refresh();
 
     const shrunk: RosterSnapshot = {
+      season: 41,
       viewerId: FIXTURE.viewerId,
       players: FIXTURE.players.slice(0, 2),
       headToHead: [],

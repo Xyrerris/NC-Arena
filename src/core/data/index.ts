@@ -6,6 +6,8 @@
  * port — if that phase produces any diff under src/features, the boundary was wrong.
  */
 
+export { ArenaDataProvider, useArenaData, type ArenaData } from './arenaContext';
+export type { LiveData, UseLiveData } from './liveData';
 export { localSeedRosterSource } from './localSeedRosterSource';
 export {
   createRosterRepository,

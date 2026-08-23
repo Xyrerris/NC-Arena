@@ -5,7 +5,9 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ArenaDataProvider, type ArenaData } from '@/core/data';
 import { arenaRepository } from '@/core/data/arenaRepository';
+import { useExpoLiveData } from '@/core/data/expoLiveData';
 import { useArenaMigrations } from '@/core/db/client';
 import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-system';
 
@@ -18,6 +20,13 @@ import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-sy
  * tables exist, have rows, and will not reflow when a face swaps in.
  */
 void SplashScreen.preventAutoHideAsync();
+
+/**
+ * The device wiring, in one value. Built at module scope rather than in the component so
+ * the context identity never changes — a new object per render would re-subscribe every
+ * live query in the tree on every render.
+ */
+const ARENA_DATA: ArenaData = { repository: arenaRepository, useLiveData: useExpoLiveData };
 
 export default function RootLayout() {
   const { success, error } = useArenaMigrations();
@@ -52,7 +61,13 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      {failure ? <BootFailure message={failure.message} /> : <ArenaStack />}
+      {failure ? (
+        <BootFailure message={failure.message} />
+      ) : (
+        <ArenaDataProvider value={ARENA_DATA}>
+          <ArenaStack />
+        </ArenaDataProvider>
+      )}
     </SafeAreaProvider>
   );
 }

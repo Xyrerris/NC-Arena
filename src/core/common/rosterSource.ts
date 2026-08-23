@@ -13,6 +13,12 @@ import type { Result } from './result';
 
 /** One coherent view of the ladder. Written to SQLite as a unit. */
 export interface RosterSnapshot {
+  /**
+   * Which season this ladder is. Open decision 8 in ARCHITECTURE.md §9 asked where the
+   * prototype's hard-coded "SEASON 41" comes from; the answer is the source, so it travels
+   * with the snapshot rather than being written into a screen (ADR-0018).
+   */
+  season: number;
   viewerId: PlayerId;
   players: readonly Player[];
   /** Every pair the source knows about; today, the viewer against each opponent. */

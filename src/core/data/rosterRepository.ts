@@ -105,6 +105,7 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
   const write = (snapshot: RosterSnapshot): void => {
     replaceRoster(db, snapshot);
     preferences.setViewerId(snapshot.viewerId);
+    preferences.setSeason(snapshot.season);
   };
 
   const refresh = async (): Promise<Result<void>> => {
@@ -143,6 +144,14 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
         return row === undefined ? null : toPlayer(row);
       }),
 
+    /**
+     * The "N registered players" line. Live rather than a one-off read of `playerCount`
+     * below, because it is rendered above a list that a sync can grow underneath it — and
+     * because it must count the whole roster, not the rows a search left behind.
+     */
+    observeRosterSize: () =>
+      live(playerCountQuery(db), (rows: { count: number }[]): number => rows[0]?.count ?? 0),
+
     refresh,
 
     /** Rows currently in the ladder. Cheap, and the only thing `ensureSeeded` needs. */
@@ -157,6 +166,16 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
       if (playerCountQuery(db).all()[0]?.count) return ok(undefined);
       return refresh();
     },
+
+    /**
+     * Who "you" are, as far as the stored preferences know. Screens need it as a
+     * subscription key: every observer above resolves the viewer at call time, so a sync
+     * that discovers a different viewer has to re-key them (ARCHITECTURE.md §9, decision 3).
+     */
+    getViewerId: (): PlayerId | null => preferences.getViewerId(),
+
+    /** Null before the first sync; the header renders no season label rather than a wrong one. */
+    getSeason: (): number | null => preferences.getSeason(),
 
     getShortUnit: (): ShortUnit => preferences.getShortUnit(),
     setShortUnit: (unit: ShortUnit): void => preferences.setShortUnit(unit),

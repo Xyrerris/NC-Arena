@@ -24,6 +24,14 @@ export interface ArenaPreferences {
    */
   getViewerId(): PlayerId | null;
   setViewerId(id: PlayerId): void;
+
+  /**
+   * The season the last sync described. Null before the first one. It is a preference
+   * rather than a column because it belongs to the snapshot as a whole, and giving a
+   * single scalar its own table would be a migration for one integer (ADR-0018).
+   */
+  getSeason(): number | null;
+  setSeason(season: number): void;
 }
 
 export const DEFAULT_SHORT_UNIT: ShortUnit = 'BILLIONS';
@@ -33,4 +41,5 @@ export const PREF_KEYS = {
   shortUnit: 'pref.shortUnit',
   rosterSort: 'pref.rosterSort',
   viewerId: 'pref.viewerId',
+  season: 'pref.season',
 } as const;

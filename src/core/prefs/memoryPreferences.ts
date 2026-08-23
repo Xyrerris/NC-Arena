@@ -8,11 +8,17 @@ import { isRosterSort, type PlayerId, type RosterSort } from '../model';
 import { DEFAULT_ROSTER_SORT, DEFAULT_SHORT_UNIT, type ArenaPreferences } from './types';
 
 export const createMemoryPreferences = (
-  initial: Partial<{ shortUnit: ShortUnit; rosterSort: RosterSort; viewerId: PlayerId }> = {},
+  initial: Partial<{
+    shortUnit: ShortUnit;
+    rosterSort: RosterSort;
+    viewerId: PlayerId;
+    season: number;
+  }> = {},
 ): ArenaPreferences => {
   let shortUnit = isShortUnit(initial.shortUnit) ? initial.shortUnit : DEFAULT_SHORT_UNIT;
   let rosterSort = isRosterSort(initial.rosterSort) ? initial.rosterSort : DEFAULT_ROSTER_SORT;
   let viewerId: PlayerId | null = initial.viewerId ?? null;
+  let season: number | null = initial.season ?? null;
 
   return {
     getShortUnit: () => shortUnit,
@@ -26,6 +32,10 @@ export const createMemoryPreferences = (
     getViewerId: () => viewerId,
     setViewerId: (id) => {
       viewerId = id;
+    },
+    getSeason: () => season,
+    setSeason: (next) => {
+      season = next;
     },
   };
 };

@@ -85,7 +85,9 @@ const parseSeed = (raw: typeof seedJson): RosterSnapshot => {
     };
   });
 
-  return { viewerId: asPlayerId(raw.viewerId), players, headToHead };
+  assertSafeInteger(raw.meta.season, 'assets/seed.json: meta.season');
+
+  return { season: raw.meta.season, viewerId: asPlayerId(raw.viewerId), players, headToHead };
 };
 
 export const localSeedRosterSource: RosterSource = {

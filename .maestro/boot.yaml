@@ -3,10 +3,19 @@
 #
 # `clearState` is the point of this flow rather than a tidiness habit — it forces the
 # first-run path, where the database does not exist yet and the seed has to populate it.
+# What it therefore proves is that the roster below is rendering *seeded* data, not a
+# cache left behind by a previous run.
 appId: com.ncarena.arenascout
 ---
 - clearState
 - launchApp
 - assertVisible: 'Arena'
-- assertVisible: 'Phase 1 design system in place. The roster screen lands in Phase 3.'
+- assertVisible: 'SEASON 41'
+- assertVisible: '15 registered players'
+# The viewer is a row in the same ranked list as everyone else (ADR-0008), so the hero card
+# and the ladder must agree about Krios.
+- assertVisible: 'Krios'
+- assertVisible: 'Valkros'
 - takeScreenshot: ${SHOT_DIR}/boot-roster
+# The exact column is the product's promise; this is the one that must never be clipped.
+- assertVisible: 'CP 3,084,221'

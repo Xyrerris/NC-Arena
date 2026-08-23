@@ -37,4 +37,12 @@ export const mmkvPreferences: ArenaPreferences = {
     return stored === undefined || stored === '' ? null : asPlayerId(stored);
   },
   setViewerId: (id) => storage.set(PREF_KEYS.viewerId, id),
+
+  getSeason: () => {
+    const stored = storage.getNumber(PREF_KEYS.season);
+    // `undefined` is "never synced"; a non-integer is a value written by code that no
+    // longer exists, and is treated the same way rather than rendered as "SEASON 41.5".
+    return stored === undefined || !Number.isSafeInteger(stored) ? null : stored;
+  },
+  setSeason: (season) => storage.set(PREF_KEYS.season, season),
 };
