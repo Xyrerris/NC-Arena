@@ -21,13 +21,10 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { adbPath } from './android-sdk.mjs';
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT_ROOT = join(ROOT, '.maestro', 'screenshots');
-
-const ANDROID_HOME = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
-const ADB = ANDROID_HOME
-  ? join(ANDROID_HOME, 'platform-tools', process.platform === 'win32' ? 'adb.exe' : 'adb')
-  : 'adb';
 
 const FLOWS = ['boot.yaml', 'catalogue.yaml'];
 /** Default, and the scale ROADMAP.md Phase 1 names. */
@@ -37,7 +34,7 @@ const run = (command, args, options = {}) =>
   spawnSync(command, args, { cwd: ROOT, encoding: 'utf8', ...options });
 
 const adb = (...args) => {
-  const result = run(ADB, args);
+  const result = run(adbPath(), args);
   if (result.status !== 0) {
     throw new Error(`adb ${args.join(' ')} failed:\n${result.stderr || result.stdout}`);
   }

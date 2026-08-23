@@ -5,7 +5,8 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --dev-client",
-    "android": "expo run:android",
+    "android": "node scripts/start-emulator.mjs && expo run:android",
+    "emulator": "node scripts/start-emulator.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier --check .",
