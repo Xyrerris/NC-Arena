@@ -1,12 +1,13 @@
 # Arena Scout (React Native) — Roadmap
 
-**Status:** Phases 0–4 implemented — **the demoable milestone is reached** — plus **Phase 4.5**,
-the offline user-data work in ADR-0020, which is out-of-sequence scope rather than a phase that
-was planned. The app is no longer read-only: players can be added, edited and removed on device,
-and a sync no longer takes them.
-The Maestro screenshot gate still needs an emulator (ADR-0017), and three phases of visual
+**Status:** Phases 0–4 implemented — **the demoable milestone is reached** — plus **Phase 4.5**
+(the offline user-data work in ADR-0020) and **Phase 4.6** (ADR-0022), both out-of-sequence scope
+rather than phases that were planned. The app is no longer read-only: players can be added, edited
+and removed on device, a sync no longer takes them, and the user can say which player is _them_ and
+keep their own stats current.
+The Maestro screenshot gate still needs an emulator (ADR-0017), and four phases of visual
 promises are now stacked behind it: Phase 1's component baselines, Phase 3's rendered roster
-order, and Phase 4's unclipped-at-200 % criterion. Phase 5 is next and is gated on open
+order, Phase 4's unclipped-at-200 % criterion, and the two form screens of 4.5 and 4.6. Phase 5 is next and is gated on open
 decision 1. Exit criteria that are _not_ met are marked ⚠️ in each phase below rather than
 quietly ticked. Open decision 5 (AA contrast) is implemented per ARCHITECTURE.md §2.4 and
 still wants design sign-off (ADR-0013); open decision 8 (season) is half-answered by
@@ -295,6 +296,41 @@ is the app learning to **write**, which every phase so far was able to avoid thi
 - ⚠️ No Maestro flow. Three phases of screenshot criteria now depend on ADR-0017's absent
   emulator; a fourth unrun flow would be paperwork. The form's states are asserted at 200 % font
   scale in jest, which cannot see clipping.
+
+---
+
+## Phase 4.6 — Who you are, and your own stats (unplanned, ADR-0022)
+
+Numbered like 4.5 and for the same reason: it is the app learning to answer a question the
+read-only design never had to. Phase 4.5 made every row writable **except one** — nobody was
+the viewer, because `setViewerId` had a single caller (the sync) and there is no sync and no
+seed. So the hero card, the personal record and the whole Vs You tab were degrading gracefully
+around a hole rather than around a missing server.
+
+**Deliverables**
+
+- `setViewerId` on the repository: selects an **existing** row, refuses an id that is not one,
+  and returns a `Result`.
+- `useViewerId` in `core/data` — a `useSyncExternalStore` over a listener set, so a viewer
+  changed on one screen re-keys the observers on another. `useRoster`, `usePlayerDetail` and
+  `usePlayerForm` all read it that way.
+- `PlayerFormMode.viewer`, and `/me`: the roster as a picker until an avatar is chosen, then
+  the eight-field form over that player, with no create and no delete.
+- One roster control with two labels — "Who are you?" and "Update my stats".
+
+**Exit criteria**
+
+- ✅ A fresh install can name its avatar, and the choice survives a restart.
+- ✅ The chosen player's CP, ATK, DEF, crit, hit, SPD and score can be rewritten from `/me`, and
+  the roster's hero card shows the new numbers.
+- ✅ An id that is not a row is refused, and writes no player — choosing selects, it never
+  creates.
+- ✅ The viewer screen offers no remove control, and a wrong choice can be corrected in place.
+- ✅ Changing the avatar re-keys the roster underneath without a remount, which is what the
+  subscription is for.
+- ⚠️ No Maestro flow, for the reason Phase 4.5 gives: the emulator of ADR-0017 is still absent,
+  and this is now the fourth set of visual promises stacked behind it. The states are asserted
+  in `ViewerScreen.test.tsx` at 200 % font scale, which cannot see clipping.
 
 ---
 

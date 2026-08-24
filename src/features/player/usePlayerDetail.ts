@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useArenaData } from '@/core/data';
+import { useArenaData, useViewerId } from '@/core/data';
 import type { PlayerId } from '@/core/model';
 
 import {
@@ -34,7 +34,10 @@ export const usePlayerDetail = (id: PlayerId): PlayerDetailController => {
   const [tab, setTab] = useState<PlayerDetailTab>('STATS');
   const [refreshError, setRefreshError] = useState<Error | null>(null);
 
-  const viewerId = repository.getViewerId();
+  // Subscribed, not read: choosing an avatar (ADR-0022) is what turns the Vs You tab from
+  // "nothing to compare against" into a comparison, and this screen can be open while it
+  // happens — the choice is reachable from the roster underneath it.
+  const viewerId = useViewerId();
   const shortUnit = repository.getShortUnit();
 
   const detail = useLiveData(repository.observePlayer(id), [id, viewerId]);

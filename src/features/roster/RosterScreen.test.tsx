@@ -415,3 +415,62 @@ describe('RosterScreen — starting a new player', () => {
     bare.close();
   });
 });
+
+/**
+ * ADR-0022. The roster is where you notice that your own numbers have moved, so it is where
+ * the way to fix them lives — and, before an avatar has been chosen at all, where the
+ * question gets asked.
+ */
+describe('RosterScreen — reaching your own stats', () => {
+  let handle: TestDatabase;
+  let repository: RosterRepository;
+
+  beforeEach(async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    mockPush.mockClear();
+    handle = createTestDatabase();
+    repository = createTestRepository(handle.db, sourceOf(FIXTURE)).repository;
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    handle.close();
+  });
+
+  it('asks who you are while there is no avatar, and offers no hero card to go with it', async () => {
+    await renderRoster(repository);
+
+    expect(screen.queryByTestId('viewer-card')).toBeNull();
+    expect(screen.getByTestId('roster-viewer').props.accessibilityLabel).toBe(
+      'Choose which player is your avatar',
+    );
+  });
+
+  it('offers to update your stats once an avatar has been chosen', async () => {
+    expect((await repository.refresh()).ok).toBe(true);
+
+    await renderRoster(repository);
+
+    expect(screen.getByTestId('viewer-card')).toBeTruthy();
+    expect(screen.getByTestId('roster-viewer').props.accessibilityLabel).toBe(
+      'Update your own stats — Aurel',
+    );
+  });
+
+  it('opens the viewer screen rather than that player’s read-only page', async () => {
+    expect((await repository.refresh()).ok).toBe(true);
+    await renderRoster(repository);
+
+    fireEvent.press(screen.getByTestId('roster-viewer'));
+
+    expect(mockPush).toHaveBeenCalledWith('/me');
+  });
+
+  it('keeps the control reachable when a search matches nothing', async () => {
+    await renderRoster(repository);
+    await type('Zzz');
+
+    await waitFor(() => expect(screen.getByTestId('roster-empty')).toBeTruthy());
+    expect(screen.getByTestId('roster-viewer')).toBeTruthy();
+  });
+});

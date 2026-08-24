@@ -15,7 +15,7 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 
-import { PlayerDraftRejected, useArenaData } from '@/core/data';
+import { PlayerDraftRejected, useArenaData, useViewerId } from '@/core/data';
 import {
   asPlayerId,
   toPlayerDraft,
@@ -61,8 +61,10 @@ export const usePlayerForm = ({
 }: PlayerFormOptions): PlayerFormController => {
   const { repository, useLiveData } = useArenaData();
 
-  const editId: PlayerId = mode.kind === 'edit' ? mode.id : NO_PLAYER;
-  const viewerId = repository.getViewerId();
+  // Create is the only mode with nothing to read; `viewer` carries the id the preference
+  // resolved to, so it loads through exactly the same query an edit does.
+  const editId: PlayerId = mode.kind === 'create' ? NO_PLAYER : mode.id;
+  const viewerId = useViewerId();
   const detail = useLiveData(repository.observePlayer(editId), [editId, viewerId]);
 
   const [values, setValues] = useState<PlayerFormValues>(emptyFormValues);
@@ -174,9 +176,15 @@ export const usePlayerForm = ({
   const state: PlayerFormUiState = useMemo(() => {
     if (isClosing) return { kind: 'loading' };
 
-    if (mode.kind === 'edit') {
+    if (mode.kind !== 'create') {
       if (loaded && player === null) {
-        return { kind: 'unavailable', message: 'That player is no longer on the ladder.' };
+        return {
+          kind: 'unavailable',
+          message:
+            mode.kind === 'viewer'
+              ? 'The player you chose as your avatar is no longer on the ladder. Pick another.'
+              : 'That player is no longer on the ladder.',
+        };
       }
       if (loaded && origin === 'REMOTE') {
         return { kind: 'unavailable', message: NOT_EDITABLE };

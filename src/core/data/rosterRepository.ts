@@ -147,6 +147,9 @@ const toError = (cause: unknown): Error =>
  */
 const NOT_YOURS = 'Only players you added on this device can be edited or removed.';
 
+/** `setViewerId` picks an existing row; it never creates one (ADR-0022). */
+const NO_SUCH_PLAYER = 'That player is not on the roster.';
+
 export interface RosterRepositoryDeps {
   db: ArenaDatabase;
   /**
@@ -165,10 +168,28 @@ export interface RosterRepositoryDeps {
 export const createRosterRepository = ({ db, source, preferences }: RosterRepositoryDeps) => {
   const viewerId = (): PlayerId => preferences.getViewerId() ?? NO_VIEWER;
 
+  /**
+   * Who "you" are is now something the user can change (ADR-0022), and every observer
+   * resolves it at call time — so a screen that read it during render would keep showing
+   * the old viewer until something else re-rendered it. The roster sitting underneath the
+   * "who are you" screen is exactly that case.
+   *
+   * A listener set here rather than an event on the preference store, because it is
+   * `core/data` that knows this id is a subscription key; `core/prefs` is a key-value
+   * store and stays one.
+   */
+  const viewerListeners = new Set<() => void>();
+
+  const notifyViewerChanged = (): void => {
+    for (const listener of viewerListeners) listener();
+  };
+
   const write = (snapshot: RosterSnapshot): void => {
     replaceRoster(db, snapshot);
     preferences.setViewerId(snapshot.viewerId);
     preferences.setSeason(snapshot.season);
+    // A sync moves the same id the user can move, so it announces it the same way.
+    notifyViewerChanged();
   };
 
   const refresh = async (): Promise<Result<void>> => {
@@ -289,8 +310,35 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
      * Who "you" are, as far as the stored preferences know. Screens need it as a
      * subscription key: every observer above resolves the viewer at call time, so a sync
      * that discovers a different viewer has to re-key them (ARCHITECTURE.md §9, decision 3).
+     *
+     * Read it through `useViewerId` rather than calling this in a render — see
+     * `subscribeViewerId` below.
      */
     getViewerId: (): PlayerId | null => preferences.getViewerId(),
+
+    /**
+     * Declares which player is you (ADR-0022). The second caller of
+     * `preferences.setViewerId`; the first is the sync in `write` above.
+     *
+     * It **selects**, it does not create: the id must already be a row, so "who am I" can
+     * never invent a player as a side effect of answering. An unknown id is refused rather
+     * than stored, because a viewer id pointing at nothing renders a roster with no hero
+     * card and no explanation — the same silent-empty failure ADR-0021 removed elsewhere.
+     */
+    setViewerId: (id: PlayerId): Result<void> => {
+      if (playerQuery(db, id).all().length === 0) return err(new Error(NO_SUCH_PLAYER));
+      preferences.setViewerId(id);
+      notifyViewerChanged();
+      return ok(undefined);
+    },
+
+    /** `useSyncExternalStore`'s half of the pair. Returns the unsubscribe. */
+    subscribeViewerId: (listener: () => void): (() => void) => {
+      viewerListeners.add(listener);
+      return () => {
+        viewerListeners.delete(listener);
+      };
+    },
 
     /** Null before the first sync; the header renders no season label rather than a wrong one. */
     getSeason: (): number | null => preferences.getSeason(),

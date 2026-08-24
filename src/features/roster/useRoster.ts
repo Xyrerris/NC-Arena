@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useArenaData } from '@/core/data';
+import { useArenaData, useViewerId } from '@/core/data';
 import type { RosterSort } from '@/core/model';
 import {
   seasonLabel,
@@ -38,8 +38,10 @@ export const useRoster = (): RosterController => {
   const [refreshError, setRefreshError] = useState<Error | null>(null);
 
   // Every observer resolves the viewer at call time, so the id is part of each
-  // subscription's identity rather than an input to it.
-  const viewerId = repository.getViewerId();
+  // subscription's identity rather than an input to it. It is *subscribed* rather than read
+  // because the user can now change it from a screen pushed over this one (ADR-0022), and
+  // this screen would otherwise have nothing to re-render for.
+  const viewerId = useViewerId();
 
   const roster = useLiveData(repository.observeRoster(sort, query), [sort, query, viewerId]);
   const viewer = useLiveData(repository.observeViewer(), [viewerId]);

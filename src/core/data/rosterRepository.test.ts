@@ -564,3 +564,103 @@ describe('rosterRepository — a sync does not take the user data', () => {
     handle.close();
   });
 });
+
+/**
+ * ADR-0022. The viewer used to be whatever a sync declared, and with no sync and no seed
+ * that meant nobody — so "your avatar", the hero card and the whole Vs You tab had no
+ * subject on a real install. These are the rules that give it one.
+ */
+describe('rosterRepository — choosing who you are', () => {
+  let handle: TestDatabase;
+  let preferences: ReturnType<typeof createMemoryPreferences>;
+  let repo: ReturnType<typeof createRosterRepository>;
+  let localId: PlayerId;
+
+  const build = () =>
+    createRosterRepository({ db: handle.db, source: sourceOf(FIXTURE), preferences });
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+    preferences = createMemoryPreferences();
+    repo = build();
+    const created = repo.createPlayer(localDraft('Nyx'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+    localId = created.value.id;
+  });
+
+  afterEach(() => handle.close());
+
+  it('starts with nobody, because nothing has said who you are', () => {
+    expect(repo.getViewerId()).toBeNull();
+
+    const live = repo.observeRoster('RANK', '');
+    expect(live.map(live.query.all()).some((entry) => entry.isViewer)).toBe(false);
+  });
+
+  it('marks the chosen player as the viewer inside the one ranked list', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    const live = repo.observeRoster('RANK', '');
+    const viewerRows = live.map(live.query.all()).filter((entry) => entry.isViewer);
+    // Exactly one, and it is the row that was chosen: a second ranking for "you" is the
+    // prototype defect ADR-0008 closed, and it must not come back through this door.
+    expect(viewerRows.map((entry) => entry.player.id)).toEqual([localId]);
+  });
+
+  it('refuses an id that is not a row, and leaves the previous answer standing', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    const result = repo.setViewerId(asPlayerId('nobody'));
+
+    expect(result.ok).toBe(false);
+    // A stored id pointing at nothing renders a roster with no hero card and no
+    // explanation, which is the silent-empty failure ADR-0021 removed elsewhere.
+    expect(repo.getViewerId()).toBe(localId);
+  });
+
+  it('selects rather than creates: a refused choice writes no player', () => {
+    const before = repo.playerCount();
+    repo.setViewerId(asPlayerId('nobody'));
+    expect(repo.playerCount()).toBe(before);
+  });
+
+  it('announces the change, so a screen already rendered can re-key its observers', () => {
+    const heard = jest.fn();
+    const unsubscribe = repo.subscribeViewerId(heard);
+
+    expect(repo.setViewerId(localId).ok).toBe(true);
+    expect(heard).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    repo.setViewerId(localId);
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces a viewer a sync discovered, by the same route the user goes through', async () => {
+    const heard = jest.fn();
+    repo.subscribeViewerId(heard);
+
+    await repo.refresh();
+
+    expect(heard).toHaveBeenCalled();
+    expect(repo.getViewerId()).toBe(FIXTURE.viewerId);
+  });
+
+  it('remembers the choice across a restart', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    // What a restart is, once the process-local state is gone: a fresh repository over the
+    // same database and the same stored preferences.
+    expect(build().getViewerId()).toBe(localId);
+  });
+
+  it('lets the stats of the chosen player be rewritten, which is the point of choosing', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    const result = repo.updatePlayer(localId, { ...localDraft('Nyx'), combatPower: 2_145_880 });
+
+    expect(isOk(result) && result.value.combatPower).toBe(2_145_880);
+    const live = repo.observeViewer();
+    expect(live.map(live.query.all())?.combatPower).toBe(2_145_880);
+  });
+});

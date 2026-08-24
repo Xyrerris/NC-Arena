@@ -533,7 +533,7 @@ These block or shape later phases and are **not** decided. Full text in
 | --- | ------------------------------------------------------------------------ | --------------------- |
 | 1   | Is there a backend, and what is its contract (incl. max stat magnitude)? | Phase 5               |
 | 2   | How large is a real roster?                                              | Phase 3               |
-| 3   | How is "your avatar" identified?                                         | Phase 3               |
+| 3   | How is "your avatar" identified?                                         | answered, ADR-0022    |
 | 4   | Where does head-to-head data come from?                                  | Phase 4               |
 | 5   | AA contrast fix — approve or waive?                                      | implemented, ADR-0013 |
 | 6   | iOS in or out (+6 to +8 days)?                                           | Phase 6               |
@@ -558,9 +558,10 @@ blocked by the delay; the preference is written and read today.
 
 Decision 8 (`SEASON 41`) is unblocked cheaply: the seed carries `meta.season`, so whichever
 answer Phase 3 gives, the value is already data rather than a literal in a template.
-Decision 3 ("how is your avatar identified?") is answered _provisionally_ — the roster source
-declares the viewer id and `core/prefs` caches it. That is enough for a seed and will not
-survive a real backend.
+Decision 3 ("how is your avatar identified?") is answered **for the offline app** by ADR-0022:
+you pick one of your own rows on `/me`, and `core/prefs` remembers it. What is still open is
+the part that needs a server — an identity a backend issues, and the auth story that comes
+with it, neither of which is budgeted.
 
 ---
 
@@ -914,3 +915,76 @@ whose boundary has moved.
 - The `REMOTE` / `LOCAL` distinction currently has no `REMOTE` rows to describe. It is not
   dead code: it is what stops Phase 5's first sync silently eating the roster the user built
   in the meantime, which is precisely the failure ADR-0020 Decision 3 exists to prevent.
+
+---
+
+## ADR-0022 — You are a player you pick, and your stats are yours to update
+
+**Date:** 2026-08-24 · **Status:** accepted · **Phase:** 4.6 (after 4.5, still before the backend)
+
+**Context.** The request was small: _let me update my own stats — CP, ATK, DEF._ There was
+nowhere to do it, and the reason turned out to be older than the request. `preferences.setViewerId`
+had exactly one caller, the sync (ADR-0020), and there is no sync and no seed (ADR-0021). So on a
+real install **nobody was the viewer**: the roster rendered with no hero card, the detail screen's
+Vs You tab had nothing to compare against, and every one of those was a designed graceful
+degradation quietly covering for a hole where identity should be.
+
+ADR-0020 had already decided the _shape_ of the answer — "who am I" gets its own screen, edit-only,
+no create and no delete — and had explicitly forbidden the add-player form from growing a "this is
+me" checkbox. What it could not decide was where the viewer would come from, because at the time
+only a server could name one.
+
+**Decision 1 — the viewer is chosen from the rows that already exist.** `/me` lists the roster and
+asks which player is you. It offers no name field: choosing is a _selection_, so answering "who am
+I" cannot invent a player as a side effect — which is ADR-0020's "you do not invent or remove them"
+enforced rather than restated. An empty roster is sent to the add-player form; the one creation path
+in the app stays the one creation path.
+
+**Decision 2 — `setViewerId` refuses an id that is not a row.** A stored viewer id pointing at
+nothing renders a roster with no hero card and no explanation, which is the silent-empty failure
+ADR-0021 spent a whole change removing. The repository checks and returns a `Result`; it does not
+store a promise it cannot keep.
+
+**Decision 3 — the viewer id becomes a subscription, not a render-time read.** Every observer
+resolves the viewer at call time, so the id is part of each subscription's identity. Reading it with
+`repository.getViewerId()` during render was correct while a sync was the only thing that could
+change it — a sync rewrites the whole ladder, so something always re-rendered. Now the user changes
+it from a screen pushed **over** the roster, and the roster below has nothing to re-render for.
+`useViewerId` is a `useSyncExternalStore` over a listener set in `core/data`, and `useRoster`,
+`usePlayerDetail` and `usePlayerForm` all read it that way.
+
+It is `useSyncExternalStore` rather than a context value because the source of truth is MMKV: a
+context would be a second copy of the id, and the two would disagree the first time a sync moved
+one of them. The listener set lives in `core/data` rather than in `core/prefs` because it is
+`core/data` that knows this id is a subscription key — `core/prefs` is a key-value store and stays
+one.
+
+**Decision 4 — the screen is a third _mode_ of the player form, not a fourth feature.** It is the
+same eight fields, the same `validatePlayerDraft`, the same `updateLocalPlayer`. `PlayerFormMode`
+gains `{ kind: 'viewer'; id }`, which is what makes "no delete" a fact about the type rather than a
+condition in the screen — there is no delete control to hide, because `viewer` is not `edit`. A
+fourth feature would have had to duplicate the field list and the string-to-draft parse, and
+ARCHITECTURE.md §4 forbids it importing them from here, so the two copies would have drifted.
+
+**Consequences.**
+
+- **The roster carries one control with two labels**: "Who are you?" until an avatar is chosen,
+  "Update my stats" afterwards. One control, because it is one errand — "the roster's idea of me is
+  wrong" and "my numbers moved" are answered on the same screen. It sits beside the hero card rather
+  than making the card pressable: the card is already read as three grouped facts, and turning it
+  into a button would collapse those into one long label.
+- **`/me` holds the choice as component state, not as a second route.** "Not you?" reopens the list
+  in place. Routing it would put a page in the back stack whose only content is a list the user just
+  left, and cancelling it returns to your stats rather than out to a roster you did not ask for.
+- **Vs You starts working on a fresh install.** Nothing in `features/player` changed; it had been
+  correct and unreachable since Phase 4, waiting for a viewer to exist.
+- **Open decision 3 is answered for the offline app and still open for a backend.** "Which row is
+  you on this device" is a preference. "Who are you to a server" is auth, and auth is still not
+  budgeted. When a backend issues identities it supersedes the preference through one function.
+- **Nothing about the `LOCAL`/`REMOTE` rule moved.** The viewer is edited through `updatePlayer`,
+  which refuses a `REMOTE` row exactly as it did before — being your avatar does not make a synced
+  row yours to rewrite, because the next refresh would still take the change.
+- **No Maestro flow was written**, for the reason ADR-0020 gives and ADR-0017 caused: three phases
+  of screenshot criteria are already stacked behind an absent emulator, and a fourth unrun flow is
+  paperwork. The states are asserted in `ViewerScreen.test.tsx` at 200 % font scale, which is what
+  jest can honestly claim.

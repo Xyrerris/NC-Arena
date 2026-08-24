@@ -23,8 +23,16 @@ import {
   type PlayerId,
 } from '@/core/model';
 
-/** Create, or edit the player with this id. The screen renders one header or the other. */
-export type PlayerFormMode = { kind: 'create' } | { kind: 'edit'; id: PlayerId };
+/**
+ * Create, edit the player with this id, or edit **you** (ADR-0022).
+ *
+ * `viewer` is a third mode rather than a flag on `edit`, because the two differ in what
+ * they are allowed to do, not in how they look: the viewer cannot be removed — you do not
+ * delete yourself out of your own roster — and the screen renders no delete control to
+ * hide. A boolean would have put that rule in the screen; a mode puts it in the type.
+ */
+export type PlayerFormMode =
+  { kind: 'create' } | { kind: 'edit'; id: PlayerId } | { kind: 'viewer'; id: PlayerId };
 
 /** What the inputs actually hold. One string per draft field, never a number. */
 export type PlayerFormValues = Record<PlayerDraftField, string>;
@@ -139,5 +147,20 @@ export type PlayerFormEvent =
 export const formTitle = (mode: PlayerFormMode, name: string): string =>
   mode.kind === 'create' ? 'New player' : name;
 
-export const submitLabel = (mode: PlayerFormMode): string =>
-  mode.kind === 'create' ? 'Add player' : 'Save changes';
+/**
+ * The viewer screen shows the player's name as its title like an edit does, and says whose
+ * it is above it (`VIEWER_EYEBROW`). Naming the screen "You" instead would hide the one
+ * thing worth confirming — *which* player the app currently believes is you.
+ */
+export const VIEWER_EYEBROW = 'YOUR AVATAR';
+
+export const submitLabel = (mode: PlayerFormMode): string => {
+  switch (mode.kind) {
+    case 'create':
+      return 'Add player';
+    case 'edit':
+      return 'Save changes';
+    case 'viewer':
+      return 'Save my stats';
+  }
+};

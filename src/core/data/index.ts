@@ -16,3 +16,4 @@ export {
   type RosterRepository,
   type RosterRepositoryDeps,
 } from './rosterRepository';
+export { useViewerId } from './useViewerId';

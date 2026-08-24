@@ -60,6 +60,7 @@ export function RosterScreen() {
   const selectSort = useCallback((sort: RosterSort) => onEvent({ type: 'sort', sort }), [onEvent]);
   const retry = useCallback(() => onEvent({ type: 'refresh' }), [onEvent]);
   const addPlayer = useCallback(() => router.push('/player/new'), [router]);
+  const openViewer = useCallback(() => router.push('/me'), [router]);
 
   const header = state.kind === 'ready' || state.kind === 'empty' ? state.header : null;
 
@@ -72,6 +73,7 @@ export function RosterScreen() {
           onChangeInput={setInput}
           onSelectSort={selectSort}
           onAddPlayer={addPlayer}
+          onOpenViewer={openViewer}
         />
       )}
       <RosterBody state={state} onOpenPlayer={openPlayer} onRetry={retry} onAddPlayer={addPlayer} />
@@ -85,6 +87,7 @@ interface RosterHeaderProps {
   onChangeInput: (next: string) => void;
   onSelectSort: (sort: RosterSort) => void;
   onAddPlayer: () => void;
+  onOpenViewer: () => void;
 }
 
 function RosterHeader({
@@ -93,6 +96,7 @@ function RosterHeader({
   onChangeInput,
   onSelectSort,
   onAddPlayer,
+  onOpenViewer,
 }: RosterHeaderProps) {
   return (
     <View style={styles.header}>
@@ -135,6 +139,25 @@ function RosterHeader({
           combatPowerShort={header.viewer.combatPowerShort}
         />
       )}
+
+      {/*
+        A button beside the card rather than the card itself being pressable: the card is a
+        summary a screen reader already reads as three grouped facts, and making the whole
+        of it a control would turn those into one long button label. The two states are one
+        control because they are one errand — "the roster's idea of me is wrong" and "my
+        numbers moved" are answered on the same screen (ADR-0022).
+      */}
+      <ArenaButton
+        label={header.viewer === null ? 'Who are you?' : 'Update my stats'}
+        variant="secondary"
+        onPress={onOpenViewer}
+        accessibilityLabel={
+          header.viewer === null
+            ? 'Choose which player is your avatar'
+            : `Update your own stats — ${header.viewer.name}`
+        }
+        testID="roster-viewer"
+      />
 
       <SearchField value={input} onChangeText={onChangeInput} testID="roster-search" />
 

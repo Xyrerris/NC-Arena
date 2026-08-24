@@ -14,6 +14,7 @@
 export { PlayerFormScreen, type PlayerFormScreenProps } from './PlayerFormScreen';
 export {
   PLAYER_FORM_FIELDS,
+  VIEWER_EYEBROW,
   emptyFormValues,
   formTitle,
   submitLabel,
@@ -26,3 +27,23 @@ export {
   type PlayerFormValues,
 } from './playerFormUiState';
 export { usePlayerForm, type PlayerFormController, type PlayerFormOptions } from './usePlayerForm';
+
+/**
+ * The viewer screen (ADR-0022) ships from this feature rather than a fourth one, because
+ * it *is* this form: same fields, same validation, same write path. What differs is whose
+ * row it edits and that the row may not be created or removed — which is a mode, not a
+ * screen (see `PlayerFormMode`).
+ */
+export { ViewerScreen } from './ViewerScreen';
+export { ViewerChoiceScreen, type ViewerChoiceScreenProps } from './ViewerChoiceScreen';
+export {
+  candidateLabel,
+  toViewerCandidateUi,
+  type ViewerCandidateUi,
+  type ViewerChoiceUiState,
+} from './viewerChoiceUiState';
+export {
+  useViewerChoice,
+  type ViewerChoiceController,
+  type ViewerChoiceOptions,
+} from './useViewerChoice';

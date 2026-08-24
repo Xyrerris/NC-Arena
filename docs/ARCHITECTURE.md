@@ -463,12 +463,17 @@ proposal** — they are product questions, and the framework has no opinion on t
    _Both screens now degrade rather than break without an answer: the roster renders with no
    hero card, and the detail screen renders the full stat book with a Vs You tab that says it
    has nothing to compare against (ADR-0018, ADR-0019)._
-   **Still open, but its shape is decided (2026-08-24):** the viewer is chosen on a screen of
+   **Its shape was decided on 2026-08-24:** the viewer is chosen on a screen of
    its own, laid out like the add-player form but **edit-only** — no create, no delete. You edit
-   who you are; you do not invent or remove yourself. The consequence for work in flight is a
+   who you are; you do not invent or remove yourself. The consequence for work in flight was a
    prohibition: the add-player form must not grow a "this is me" control, because that would
-   settle this decision as a side effect of an unrelated feature. `setViewerId` keeps exactly
-   one caller, the sync, until that screen exists.
+   settle this decision as a side effect of an unrelated feature.
+   **Answered for the offline app (ADR-0022): a locally chosen player.** That screen exists at
+   `/me`. It lists the roster and asks which row is you, stores the answer in `core/prefs`, and
+   then edits that player's stats — so `setViewerId` now has two callers, the sync and the user.
+   There is still **no auth story and none is budgeted**: this answers "which row is you on this
+   device", not "who are you to a server". A backend that issues identities supersedes the
+   preference; the seam is one function, not a screen.
 4. **Where does head-to-head data come from?** It cannot be derived from roster stats; something
    must record match outcomes.
 5. **AA contrast fix — approve or waive?** §2.4 requires either raising the faint tiers to α ≥ 0.50

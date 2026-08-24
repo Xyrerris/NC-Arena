@@ -29,6 +29,7 @@ import type { Player, PlayerDraftField } from '@/core/model';
 
 import {
   PLAYER_FORM_FIELDS,
+  VIEWER_EYEBROW,
   submitLabel,
   type PlayerFormMode,
   type PlayerFormUiState,
@@ -37,9 +38,14 @@ import { usePlayerForm } from './usePlayerForm';
 
 export interface PlayerFormScreenProps {
   mode: PlayerFormMode;
+  /**
+   * Reopens the "who are you" list. Supplied only in `viewer` mode, by `ViewerScreen` —
+   * the form itself holds no opinion about identity (ADR-0022).
+   */
+  onChangeViewer?: () => void;
 }
 
-export function PlayerFormScreen({ mode }: PlayerFormScreenProps) {
+export function PlayerFormScreen({ mode, onChangeViewer }: PlayerFormScreenProps) {
   const router = useRouter();
 
   const leave = useCallback(() => {
@@ -99,6 +105,21 @@ export function PlayerFormScreen({ mode }: PlayerFormScreenProps) {
             accessibilityLabel="Cancel and go back"
             testID="form-cancel"
           />
+
+          {/*
+            In the top row rather than beside Save, so it is reachable from every state this
+            screen has — including the one where the chosen player has been deleted and there
+            is no form to put a button under.
+          */}
+          {mode.kind === 'viewer' && onChangeViewer !== undefined ? (
+            <ArenaButton
+              label="Not you?"
+              variant="secondary"
+              onPress={onChangeViewer}
+              accessibilityLabel="Choose a different player as your avatar"
+              testID="form-change-viewer"
+            />
+          ) : null}
         </View>
 
         <FormBody
@@ -152,9 +173,22 @@ function FormBody({ state, onChange, onSubmit, onDelete, onLeave }: FormBodyProp
           keyboardShouldPersistTaps="handled"
           testID="player-form"
         >
-          <ArenaText variant="displaySmall" tone="primary" accessibilityRole="header">
-            {state.title}
-          </ArenaText>
+          <View style={styles.titleBlock}>
+            {/*
+              Whose stats these are, above the name they belong to. The screen is reached
+              from a control that says "update my stats", so the name on its own would leave
+              the user with no way to notice the app has the wrong player as their avatar.
+            */}
+            {state.mode.kind === 'viewer' ? (
+              <ArenaText variant="labelNano" tone="accent" style={styles.eyebrow}>
+                {VIEWER_EYEBROW}
+              </ArenaText>
+            ) : null}
+
+            <ArenaText variant="displaySmall" tone="primary" accessibilityRole="header">
+              {state.title}
+            </ArenaText>
+          </View>
 
           {state.message === null ? null : (
             <View style={styles.banner} testID="form-message">
@@ -209,12 +243,23 @@ function FormBody({ state, onChange, onSubmit, onDelete, onLeave }: FormBodyProp
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  backRow: { paddingHorizontal: layout.screenGutter, alignItems: 'flex-start' },
+  backRow: {
+    paddingHorizontal: layout.screenGutter,
+    flexDirection: 'row',
+    // Wraps rather than shrinks, like the roster's count row: at 200 % font scale two
+    // buttons cannot share a line, and a squeezed button is a clipped label.
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space[8],
+  },
   scroll: {
     paddingHorizontal: layout.screenGutter,
     paddingBottom: space[40],
     gap: space[16],
   },
+  titleBlock: { gap: space[4] },
+  eyebrow: { textTransform: 'uppercase' },
   banner: {
     padding: space[12],
     borderRadius: radius.md,
