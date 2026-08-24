@@ -1,43 +1,22 @@
 import { useLocalSearchParams } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
 
-import { ArenaText, ScreenScaffold, layout, space } from '@/core/design-system';
+import { asPlayerId } from '@/core/model';
+import { PlayerDetailScreen } from '@/features/player';
 
 /**
  * Player detail route.
  *
- * Still a scaffold. Phase 4 replaces the body with <PlayerDetailScreen />.
+ * Thin, like the roster route: the route layer resolves the parameter, the feature renders.
  *
- * Note for Phase 4: `id` arrives as a plain string. This file is the one place that
- * brands it into a PlayerId (ARCHITECTURE.md §5), and it must do so only after
- * confirming the row exists — file-based routing makes `player/<unknown-id>` a
- * reachable URL, which is a Phase 4 exit criterion.
+ * `id` arrives as a plain string, and this is the one place it becomes a `PlayerId`
+ * (ARCHITECTURE.md §5). The Phase 0 note here said to brand it only after confirming the
+ * row exists — which is not something a route can do, since the row lives behind a live
+ * query. The confirmation moved into the screen instead: an id that matches nothing renders
+ * the not-found state, which is a Phase 4 exit criterion and is tested as one. Branding is
+ * erased at runtime, so nothing is claimed by doing it here that the screen does not check.
  */
 export default function PlayerDetailRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  return (
-    <ScreenScaffold>
-      <View style={styles.body}>
-        <ArenaText variant="displayMedium" tone="primary">
-          Player detail
-        </ArenaText>
-        <ArenaText variant="numericSmall" tone="subtle">
-          {`id: ${id}`}
-        </ArenaText>
-        <ArenaText variant="bodySmall" tone="subtle">
-          Phase 0 scaffold. Stats and Vs You land in Phase 4.
-        </ArenaText>
-      </View>
-    </ScreenScaffold>
-  );
+  return <PlayerDetailScreen id={asPlayerId(id ?? '')} />;
 }
-
-const styles = StyleSheet.create({
-  body: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: layout.screenGutter,
-    gap: space[12],
-  },
-});

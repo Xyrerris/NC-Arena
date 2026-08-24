@@ -1,12 +1,16 @@
 /**
  * Domain model — pure TypeScript.
  *
- * This module imports NOTHING. No React, no Drizzle, no Zod, no react-native. That is
- * enforced by `boundaries/element-types` in eslint.config.js, and it is what keeps the
- * model testable in plain Node with no RN preset (ARCHITECTURE.md §4, §10).
+ * This module imports NOTHING outside itself. No React, no Drizzle, no Zod, no
+ * react-native. That is enforced by `boundaries/element-types` in eslint.config.js, and it
+ * is what keeps the model testable in plain Node with no RN preset (ARCHITECTURE.md §4,
+ * §10). The single import below is a sibling file inside the same boundary element, which
+ * costs the domain none of that independence.
  *
  * See ARCHITECTURE.md §5 for the agreed shapes.
  */
+
+import { CRIT_BP_PER_PERCENT, type PlayerDraft } from './playerDraft';
 
 /**
  * Branded string — the closest TypeScript gets to Kotlin's `value class`. Erased at
@@ -25,6 +29,40 @@ export type PlayerId = string & { readonly __brand: 'PlayerId' };
  * route params over as plain strings.
  */
 export const asPlayerId = (raw: string): PlayerId => raw as PlayerId;
+
+export {
+  CRIT_BP_PER_PERCENT,
+  MAX_CRIT_PERCENT,
+  MAX_PLAYER_NAME_LENGTH,
+  PLAYER_DRAFT_NUMERIC_FIELDS,
+  emptyPlayerDraft,
+  isPlayerDraftValid,
+  normalisePlayerName,
+  validatePlayerDraft,
+  type PlayerDraft,
+  type PlayerDraftErrors,
+  type PlayerDraftField,
+  type PlayerDraftNumericField,
+} from './playerDraft';
+
+/**
+ * Where a stored row came from.
+ *
+ * `REMOTE` rows belong to whoever syncs the ladder — nobody yet, the backend in Phase 5 —
+ * and the next sync overwrites them, so editing one offline would produce a change the app
+ * cannot keep. `LOCAL` rows were entered on this device and nothing upstream knows about
+ * them, so they are the only rows the user may edit or delete (ADR-0020).
+ *
+ * Since the seed was removed (ADR-0021) **every** row is `LOCAL`. The distinction is not
+ * dead code waiting on Phase 5: it is what stops that phase silently eating the roster the
+ * user built in the meantime.
+ *
+ * It is deliberately *not* a field on `Player`: a roster source produces players and has
+ * no business declaring where they will be stored. Origin is a property of the stored
+ * row, so it travels on the two shapes that come back *out* of the store — `RosterEntry`
+ * and `PlayerDetail`.
+ */
+export type PlayerOrigin = 'REMOTE' | 'LOCAL';
 
 export type StatKey = 'ATK' | 'DEF' | 'CRIT' | 'HIT' | 'SPD';
 
@@ -95,11 +133,42 @@ export interface RosterEntry {
   player: Player;
   record: HeadToHead | null;
   isViewer: boolean;
+  /** `LOCAL` for a player this device added by hand — the roster marks those rows. */
+  origin: PlayerOrigin;
 }
 
-/** Everything the detail screen needs, resolved in one query (ARCHITECTURE.md §7). */
+/**
+ * Everything the detail screen needs, resolved in one query (ARCHITECTURE.md §7).
+ *
+ * `viewer` is null before the first sync has said who "you" are — open decision 3, the
+ * same reason the roster's hero card is nullable. The Stats tab is fully readable without
+ * it; only Vs You has nothing to say.
+ */
 export interface PlayerDetail {
   player: Player;
-  viewer: Player;
+  viewer: Player | null;
   headToHead: HeadToHead | null;
+  /** Only a `LOCAL` player offers the edit and delete controls (ADR-0020). */
+  origin: PlayerOrigin;
 }
+
+/**
+ * A stored player, back in the shape the form edits. `id` and `rank` are dropped rather
+ * than hidden: the form cannot change either, and carrying them through a round trip is
+ * how a screen ends up "helpfully" writing one back.
+ */
+export const toPlayerDraft = (player: Player): PlayerDraft => ({
+  name: player.name,
+  combatPower: player.combatPower,
+  score: player.score,
+  atk: player.atk,
+  def: player.def,
+  // bp -> whole percent. Exact for every player a form created, because the form is the
+  // only thing that writes a local row and it always scales up from an integer. A stored
+  // value that is *not* a whole percent — a synced row, which is not editable anyway —
+  // arrives here fractional and is then rejected by `validatePlayerDraft` on save. That is
+  // the honest failure: visible in the field, rather than silently rounded on the way in.
+  critPercent: player.critBp / CRIT_BP_PER_PERCENT,
+  hit: player.hit,
+  spd: player.spd,
+});

@@ -14,9 +14,18 @@
  */
 
 import { StyleSheet, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 
 import { ArenaText } from './ArenaText';
 import { color, radius, space } from './tokens';
+
+/**
+ * The bars grow into place rather than snapping. It is on the UI thread through Reanimated
+ * because the alternative — `Animated` from react-native — drives a JS-thread animation
+ * that stutters behind exactly the work this screen does on arrival: five rows appearing at
+ * once while a tab transition is still settling.
+ */
+const FILL_DURATION_MS = 420;
 
 export interface CompareBarProps {
   label: string;
@@ -83,6 +92,26 @@ interface SideProps {
 }
 
 function Side({ caption, exact, short, fraction, fill }: SideProps) {
+  const filled = clamp(fraction);
+  // Both halves animate, not just the fill: `flex` splits the track between them, so
+  // animating one and snapping the other would make the bar jump to its end width and then
+  // grow the fill inside it.
+  const fillStyle = useAnimatedStyle(
+    () => ({
+      flex: withTiming(filled, { duration: FILL_DURATION_MS, easing: Easing.out(Easing.cubic) }),
+    }),
+    [filled],
+  );
+  const restStyle = useAnimatedStyle(
+    () => ({
+      flex: withTiming(1 - filled, {
+        duration: FILL_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+      }),
+    }),
+    [filled],
+  );
+
   return (
     <View style={styles.side}>
       <View style={styles.sideHeader}>
@@ -100,8 +129,8 @@ function Side({ caption, exact, short, fraction, fill }: SideProps) {
       </View>
       {/* Decorative: the numbers above already carry the information. */}
       <View accessibilityElementsHidden importantForAccessibility="no" style={styles.track}>
-        <View style={[styles.fill, { backgroundColor: fill, flex: clamp(fraction) }]} />
-        <View style={{ flex: 1 - clamp(fraction) }} />
+        <Animated.View style={[styles.fill, { backgroundColor: fill }, fillStyle]} />
+        <Animated.View style={restStyle} />
       </View>
     </View>
   );

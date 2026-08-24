@@ -1,6 +1,10 @@
 /**
- * The port every roster source implements — `localSeedRosterSource` today, the remote
- * source in Phase 5 (ARCHITECTURE.md §7).
+ * The port every roster source implements. **Nothing implements it today** (ADR-0021): the
+ * seed source was deleted and the remote one arrives in Phase 5 (ARCHITECTURE.md §7).
+ *
+ * An unimplemented port is worth keeping when it is load-bearing for a decision rather than
+ * for code, and this one is: it is why `core/network` can be written in Phase 5 without
+ * `core/data` changing shape, and why that phase should produce no diff under `src/features`.
  *
  * It lives in core/common rather than core/data because core/network must be able to
  * implement it, and §4 forbids core/network from importing core/data. Keeping the

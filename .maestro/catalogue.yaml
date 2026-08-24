@@ -12,7 +12,7 @@ appId: com.ncarena.arenascout
 - assertVisible: 'VIEWERCARD'
 - takeScreenshot: ${SHOT_DIR}/catalogue-01-viewer
 
-# The seed's largest value. If this assertion passes but the screenshot shows an ellipsis,
+# The widest value the formatter takes. If this assertion passes but the screenshot shows an ellipsis,
 # the promise the product is built on is broken and only the image says so.
 - scrollUntilVisible:
     element:

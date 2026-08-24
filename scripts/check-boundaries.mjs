@@ -52,8 +52,8 @@ const CASES = [
     file: 'src/features/roster/__boundary_probe.ts',
     source:
       "import { ArenaText } from '@/core/design-system';\n" +
-      "import { localSeedRosterSource } from '@/core/data';\n" +
-      'export const probe = [ArenaText, localSeedRosterSource];\n',
+      "import { createRosterRepository } from '@/core/data';\n" +
+      'export const probe = [ArenaText, createRosterRepository];\n',
     expect: 'allow',
   },
   {

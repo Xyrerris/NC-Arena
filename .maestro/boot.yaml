@@ -1,21 +1,23 @@
-# The boot path, on a real device: migrations, the Phase 2 seed and the fonts all resolve
-# behind the splash screen before anything paints (ARCHITECTURE.md §7).
+# The boot path, on a real device: migrations and fonts resolve behind the splash screen,
+# and the roster then paints its **empty** state (ARCHITECTURE.md §7, ADR-0021).
 #
 # `clearState` is the point of this flow rather than a tidiness habit — it forces the
-# first-run path, where the database does not exist yet and the seed has to populate it.
-# What it therefore proves is that the roster below is rendering *seeded* data, not a
-# cache left behind by a previous run.
+# first-run path, where the database does not exist yet. What that proves has changed with
+# the seed's removal: it used to prove the roster was rendering seeded data rather than a
+# cache from a previous run. Now it proves the opposite is handled — a brand-new install has
+# no rows at all, and the screen greeting the user is a working empty state rather than the
+# blank screen the prototype showed (defect 5).
 appId: com.ncarena.arenascout
 ---
 - clearState
 - launchApp
 - assertVisible: 'Arena'
-- assertVisible: 'SEASON 41'
-- assertVisible: '15 registered players'
-# The viewer is a row in the same ranked list as everyone else (ADR-0008), so the hero card
-# and the ladder must agree about Krios.
-- assertVisible: 'Krios'
-- assertVisible: 'Valkros'
-- takeScreenshot: ${SHOT_DIR}/boot-roster
-# The exact column is the product's promise; this is the one that must never be clipped.
-- assertVisible: 'CP 3,084,221'
+- assertVisible: '0 registered players'
+- assertVisible: 'No players yet'
+# The way out of the empty state has to be visible in the same frame as the emptiness.
+- assertVisible: '+ NEW PLAYER'
+- takeScreenshot: ${SHOT_DIR}/boot-empty-roster
+
+# No season label before anything is known: absent rather than rendered as a placeholder
+# (ADR-0018). The viewer hero card is absent for the same reason — open decision 3.
+- assertNotVisible: 'SEASON'

@@ -26,7 +26,7 @@ import { adbPath } from './android-sdk.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const SHOT_ROOT = join(ROOT, '.maestro', 'screenshots');
 
-const FLOWS = ['boot.yaml', 'catalogue.yaml'];
+const FLOWS = ['boot.yaml', 'catalogue.yaml', 'player-detail.yaml'];
 /** Default, and the scale ROADMAP.md Phase 1 names. */
 const SCALES = ['1.0', '2.0'];
 

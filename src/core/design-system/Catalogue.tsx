@@ -1,10 +1,10 @@
 /**
  * Every component, on one screen (ROADMAP.md Phase 1 exit criterion).
  *
- * It exists to be photographed. The values are the seed's largest player, because the
- * failure this catalogue guards against is a 13-character exact value clipping — and that
- * only shows up on the widest number in the data (ARCHITECTURE.md §2.5). Run it at 100 %
- * and at 200 % font scale; nothing may be cut off at either.
+ * It exists to be photographed. The values are the widest the product can hold, because
+ * the failure this catalogue guards against is a 13-character exact value clipping — and
+ * that only shows up on the widest number (ARCHITECTURE.md §2.5). Run it at 100 % and at
+ * 200 % font scale; nothing may be cut off at either.
  *
  * Formatted through the real `statFormatter` rather than with hand-written strings, so the
  * screenshots exercise the §6 contract instead of a plausible-looking imitation of it.
@@ -14,8 +14,10 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { statFormatter } from '../common';
+import { ArenaButton } from './ArenaButton';
 import { ArenaText } from './ArenaText';
 import { CompareBar } from './CompareBar';
+import { FormField } from './FormField';
 import { RecordBadge } from './RecordBadge';
 import { ScreenScaffold } from './ScreenScaffold';
 import { SearchField } from './SearchField';
@@ -25,7 +27,11 @@ import { StatRow } from './StatRow';
 import { ViewerCard } from './ViewerCard';
 import { color, layout, space } from './tokens';
 
-/** Valkros and Krios, straight out of assets/seed.json. */
+/**
+ * The two players from the prototype spec. They are literals here rather than fixtures
+ * read from anywhere: the seed that used to supply them is gone (ADR-0021), and what this
+ * screen needs is not *data* but the widest numbers the formatter will ever be handed.
+ */
 const VALKROS = { atk: 2_418_904_113, critBp: 712_043, cp: 3_084_221 };
 const KRIOS = { atk: 1_184_530_912, critBp: 584_127, cp: 2_145_880 };
 
@@ -53,6 +59,39 @@ export function Catalogue() {
 
         <Section title="SearchField">
           <SearchField testID="catalogue-search" value={query} onChangeText={setQuery} />
+        </Section>
+
+        <Section title="FormField">
+          <FormField
+            testID="catalogue-field"
+            label="Combat power"
+            value={statFormatter.exact(VALKROS.atk)}
+            onChangeText={() => undefined}
+            hint="Whole numbers only."
+            numeric
+          />
+          {/*
+            Photographed in its rejected state as well as its resting one. The error is the
+            half that only exists on this screen — no other surface renders it, and it is
+            the half that has to stay readable at 200 %.
+          */}
+          <FormField
+            testID="catalogue-field-error"
+            label="Name"
+            value=""
+            onChangeText={() => undefined}
+            error="A player needs a name."
+          />
+        </Section>
+
+        <Section title="ArenaButton">
+          <View style={styles.chips}>
+            <ArenaButton testID="catalogue-button" label="Add player" onPress={() => undefined} />
+            <ArenaButton label="Cancel" variant="secondary" onPress={() => undefined} />
+            <ArenaButton label="Remove player" variant="destructive" onPress={() => undefined} />
+            <ArenaButton label="Saving" onPress={() => undefined} busy />
+            <ArenaButton label="Disabled" variant="secondary" onPress={() => undefined} disabled />
+          </View>
         </Section>
 
         <Section title="SortChip">
@@ -97,7 +136,7 @@ export function Catalogue() {
           />
         </Section>
 
-        <Section title="StatRow — the widest value in the seed">
+        <Section title="StatRow — the widest value the formatter takes">
           <StatRow
             testID="catalogue-stat-row"
             label="ATK"

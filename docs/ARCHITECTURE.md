@@ -1,7 +1,7 @@
 # Arena Scout — React Native Infrastructure Proposal
 
-**Status:** accepted and partly implemented. §2, §5, §6 and §7 are code as of Phase 2;
-§8 as of Phase 3; §3, §4 and §10 as of Phase 0. Deviations are recorded in
+**Status:** accepted and implemented. §2, §5, §6 and §7 are code as of Phase 2; §8 as of
+Phases 3–4 (both screens); §3, §4 and §10 as of Phase 0. Deviations are recorded in
 [DECISIONS.md](DECISIONS.md).
 **Source of truth for UI:** `design/Arena Scout.dc.html` (Claude Design prototype, imported 2026-08-13).
 **Companion doc:** [ROADMAP.md](ROADMAP.md).
@@ -202,7 +202,7 @@ src/
   core/common/              statFormatter, half-up rounding, Result type.
   core/design-system/       tokens (colour/type/spacing/radii), ArenaText, StatRow,
                             CompareBar, SortChip, RecordBadge, ScreenScaffold.
-  core/db/                  Drizzle schema, migrations, queries, seed import.
+  core/db/                  Drizzle schema, migrations, queries, the single writer.
   core/data/                Repositories, sync orchestration. The only place that knows
                             both the database and the network exist.
   core/network/             DTOs (Zod), API client, DTO->domain mappers.
@@ -211,9 +211,9 @@ src/
 
   features/roster/          RosterScreen, useRoster, roster UI types.
   features/player/          PlayerDetailScreen (Stats + Vs You), usePlayerDetail.
+  features/playerForm/      PlayerFormScreen, usePlayerForm — add and edit a player.
 
 assets/fonts/               Cinzel, Barlow, JetBrains Mono (OFL) + licences
-assets/seed.json            Phase 2 bootstrap dataset
 ```
 
 **Dependency rule, enforced in CI** by `eslint-plugin-boundaries` (or
@@ -328,8 +328,8 @@ screen needs a way to change it — currently there is no UI for that. See §9.
 
 ```
 Remote API ──► sync task ──► SQLite (single source of truth) ──► useLiveQuery ──► UI
-                              ▲
-                   assets/seed.json (Phase 2 bootstrap)
+  (Phase 5)                   ▲
+                   the add-player form (today, ADR-0021)
 ```
 
 SQLite is the only thing the UI reads from. **The network never reaches a component — and neither
@@ -349,8 +349,24 @@ export interface RosterRepository {
   observePlayer(id: PlayerId): LiveQuery<PlayerDetail | null>;
   observeViewer(): LiveQuery<Player | null>;
   refresh(): Promise<Result<void>>;
+
+  // ADR-0020. The app writes players offline; an online database takes over later.
+  createPlayer(draft: PlayerDraft): Result<Player>;
+  updatePlayer(id: PlayerId, draft: PlayerDraft): Result<Player>;
+  deletePlayer(id: PlayerId): Result<void>;
 }
 ```
+
+**Writes are local, and the sync knows it (ADR-0020).** Every `players` row carries an
+`origin` of `REMOTE` or `LOCAL`. A refresh replaces the remote ladder wholesale, exactly as
+above, and then re-seats the local rows underneath it — so a player entered by hand survives
+a sync, and `rank` stays one contiguous 1..N list either way. Only `LOCAL` rows may be edited
+or removed: a synced row would be overwritten by the next refresh, so accepting an edit to
+one would be a promise the app cannot keep.
+
+`PlayerDraft` carries neither an id nor a rank. Both belong to whoever stores the row — the
+repository today, the server later — and letting a form supply either is how the rank
+inconsistency at the end of this section gets reinvented.
 
 Sorting and filtering belong in **SQL**, not in JS over an in-memory array. The prototype sorts a
 14-element array in the render path; that stops being acceptable the moment the roster is a real
@@ -364,10 +380,19 @@ One product bug to resolve at this layer: the prototype's viewer has `rank: 12` 
 independently ranks 14 players 1–14, and reports `count = DB.length + 1 = 15`. The viewer and the
 roster must come from **one** ranked list, with the viewer flagged rather than stored separately.
 
-**Phase 2 bootstrap.** `localSeedRosterSource` reads the prototype's 14 players from
-`assets/seed.json` and populates SQLite. It implements the same interface the real remote source
-will. This unblocks all UI work before any backend exists, and later becomes the fixture that
-visual tests and demo builds run against.
+**Where the rows come from, today.** Nowhere but the user (ADR-0021). A new install opens on an
+empty roster and is filled in by hand; there is no seed file and no `RosterSource`
+implementation at all, so `refresh()` is a no-op rather than a fetch.
+
+This replaces the Phase 2 bootstrap, which read a committed `assets/seed.json` through a
+`localSeedRosterSource`. That existed to unblock UI work before a backend, and it did — Phases
+1–4 were built against it. It outlived its purpose the moment the app could write its own rows,
+and it was actively in the way: seeded rows are `REMOTE`, so the user could neither edit nor
+delete the 15 players sitting above the ones they added.
+
+The `RosterSource` port stays in `core/common`, unimplemented. It is the seam Phase 5 fills, and
+the repository still takes it — optionally — so that phase adds an argument rather than a
+concept.
 
 ---
 
@@ -421,14 +446,29 @@ proposal** — they are product questions, and the framework has no opinion on t
 
 1. **Is there a backend, and what is it?** Everything in §7 assumes a REST roster endpoint. If the
    data comes from a game client, a scraped source, or manual entry, the network module changes
-   shape entirely. _Phases 1–4 are deliberately built against the local seed so this can be
-   answered late without stalling — but it must be answered before Phase 5._ **New sub-question:**
+   shape entirely. _Phases 1–4 were built against a local seed so this could be answered late
+   without stalling; that seed has since been removed and the app is filled by hand
+   (ADR-0021), which stalls nothing either._ **New sub-question:**
    the contract must state the maximum stat magnitude (§2.1), and whether values above 2^53 will
    ever be sent — if so they transport as strings.
+   **Answered in part, 2026-08-24: the source is manual entry, for now.** The app is populated
+   by hand (ADR-0020) and an online database takes over later. So `LOCAL` rows are the content
+   rather than a workaround, and Phase 5 needs a **push** direction it is not currently
+   budgeted for. What the remote contract looks like is still open; what fills the app today is
+   not.
 2. **How large is a real roster?** 14 rows needs nothing. 10 000 rows needs cursor pagination,
    FTS5, and a different sort strategy. This decision changes Phase 3 materially.
 3. **How is "your avatar" identified?** Login? A locally chosen player? A device-bound profile?
    This determines whether there is an auth story at all — currently none is budgeted.
+   _Both screens now degrade rather than break without an answer: the roster renders with no
+   hero card, and the detail screen renders the full stat book with a Vs You tab that says it
+   has nothing to compare against (ADR-0018, ADR-0019)._
+   **Still open, but its shape is decided (2026-08-24):** the viewer is chosen on a screen of
+   its own, laid out like the add-player form but **edit-only** — no create, no delete. You edit
+   who you are; you do not invent or remove yourself. The consequence for work in flight is a
+   prohibition: the add-player form must not grow a "this is me" control, because that would
+   settle this decision as a side effect of an unrelated feature. `setViewerId` keeps exactly
+   one caller, the sync, until that screen exists.
 4. **Where does head-to-head data come from?** It cannot be derived from roster stats; something
    must record match outcomes.
 5. **AA contrast fix — approve or waive?** §2.4 requires either raising the faint tiers to α ≥ 0.50
@@ -486,8 +526,8 @@ only on a device or simulator. The options, and why the pick:
 - **Maestro screenshots on a CI emulator** are slower (minutes, not seconds) and need a device
   image, but they measure the real thing.
 
-Decision: Maestro, on a fixed emulator profile, at default and 200 % font scale, against the
-largest player in the seed. It runs on PR; if it proves too slow it moves to a merge-queue or
+Decision: Maestro, on a fixed emulator profile, at default and 200 % font scale, against a
+player the flow enters by hand with the widest values the product can hold. It runs on PR; if it proves too slow it moves to a merge-queue or
 nightly gate — but it does not get replaced by snapshots.
 
 ---

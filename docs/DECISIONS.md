@@ -638,3 +638,279 @@ beats a guess. Season _history_ remains open.
   value always lands one advance late. The search tests use real timers, which is also the more
   honest assertion — "no query yet" then means 250 ms of real time, not a statement about
   `advanceTimersByTime`.
+
+---
+
+## ADR-0019 — Phase 4 keeps two behaviours it was asked to question, and says so
+
+**Date:** 2026-08-23 · **Status:** accepted; two product answers outstanding · **Phase:** 4
+
+**Context.** ROADMAP.md Phase 4 does not ask for the Vs You tab to be built and left alone.
+It asks for two inherited behaviours to be _confirmed or changed_ — the delta direction and
+what an exact tie counts as — and for a not-found state that a deep link can actually reach.
+Each of those turned out to be a fork.
+
+**Decision 1 — the delta still reads `(theirs − mine) / mine`, and a tie still counts in
+your favour.** Both are the prototype's, both are kept, and neither is a preference of this
+implementation. The delta's direction means a _positive_ number is bad news, rendered in the
+negative colour, which reads backwards at a glance. The tie rule means `mine >= theirs`
+scores as a lead, so a mirror match reports "you lead in 5 of 5 stats".
+
+Changing either is a one-line edit and a product decision. Making it silently, inside the
+phase that was told to raise it, would be the worst of both — so instead each is asserted
+by name (`counts an exact tie as YOUR lead, as the prototype does`), which means changing
+one breaks a test that explains what it is protecting. **Both still want a design answer**,
+and are listed in ROADMAP.md Phase 4 as unmet rather than ticked.
+
+**Decision 2 — the viewer is LEFT joined, and `PlayerDetail.viewer` is nullable.**
+`playerDetailQuery` inner-joined the viewer, so a roster with no viewer yet returned zero
+rows for _every_ id — "no such player" and "no avatar yet" arrived as the same empty result.
+The not-found state Phase 4 asks for would then have told a real player they did not exist,
+half the time. Left joined, the two answers are different: a missing row is genuinely a
+missing player, and a missing viewer renders the Stats tab in full with a Vs You tab that
+explains it has nothing to compare against. Same shape as the roster's nullable hero card,
+same cause (open decision 3).
+
+**Decision 3 — back is `canGoBack() ? back() : replace('/')`.** A deep link has no history
+behind it, so `back()` would leave the app from a control labelled "ROSTER". Android
+predictive back is already enabled app-wide (`app.config.ts`, since Phase 0), and the button
+has to agree with the gesture about where back goes or the animation and the tap disagree
+in front of the user.
+
+**Decision 4 — Reanimated is mocked in `__mocks__/react-native-reanimated.js`, by hand.**
+The bars animate on the UI thread, which is what ROADMAP.md Phase 4 asks for and is the
+right call on a screen that paints five of them at once behind a tab transition. Under jest
+that costs a mock, and the library's own `react-native-reanimated/mock` cannot be used: it
+imports the real entry point for its enums, reaches `react-native-worklets`, and dies
+installing a Nitro native module Node does not have (`loadUnpackers` of undefined).
+
+The replacement is ~60 lines in a root `__mocks__` module, picked up automatically with no
+`jest.mock` call in any test. It resolves every animation instantly, so a test asserts where
+a bar _ends up_ and never how it travels. That is the honest boundary: motion is a thing
+only pixels can confirm, and confirming it is the Maestro gate's job (ARCHITECTURE.md §10),
+not a mock's.
+
+**Decision 5 — the selected tab is plain component state.** It survives backgrounding,
+because Android keeps the process alive and nothing unmounts; it does not survive process
+death, and it should not. A persisted "last tab" is per-player state that would outlive its
+usefulness the moment you opened someone else — and `core/prefs` is a store for decisions
+the user made about the app, not for where they happened to be looking.
+
+**Consequences.**
+
+- `.maestro/player-detail.yaml` exists and is registered in the screenshot harness, keyed on
+  the seed's largest player. **It has never been run** — ADR-0017's emulator is still the
+  blocker, and Phase 4's screenshot criterion is the second one in a row to depend on it.
+  Two phases of visual promises are now stacked behind a gate nobody has executed.
+- `usePlayerDetail` reads the whole screen from the single `observePlayer` observer, so the
+  two tabs cannot disagree about which sync they are showing.
+- Phase 5 owes this screen nothing new: the observer already returns `{ query, map }`, and
+  the feature diff for the backend swap should stay empty here as well.
+
+---
+
+## ADR-0020 — Offline user data: the app writes players, and a sync may not take them
+
+**Date:** 2026-08-23 · **Status:** accepted; two product answers outstanding · **Phase:** 4.5
+(between the demoable milestone and the backend work)
+
+**Context.** Everything through Phase 4 is read-only. The roster is whatever
+`assets/seed.json` said, and the only way a row changes is a refresh that replaces the whole
+ladder. The request is for the app to **manage user data locally now**, with an online
+database taking over later, and specifically for the roster list to be able to add players.
+
+That is not simply "add an INSERT". `replaceRoster` deletes every row on every sync, so a
+naive add is a feature the next refresh silently destroys — and the app's first _write_ puts
+pressure on three things a read-only design never had to answer: who owns a row, what `rank`
+means for someone who has not played, and what happens when the server later learns about a
+player this device invented.
+
+**Decision 1 — a row has an `origin`, and it is `REMOTE` or `LOCAL`.** A new column, with a
+migration (`0001_round_brood.sql`) defaulting to `REMOTE` so an already-seeded database
+converts without inventing user data. `REMOTE` rows belong to whoever syncs the ladder;
+`LOCAL` rows were entered here and nothing upstream knows about them.
+
+`origin` is deliberately **not** a field on `Player`. A roster source produces players and
+has no business declaring where they will be stored — so it travels on `RosterEntry` and
+`PlayerDetail`, the two shapes that come back _out_ of the store. The practical consequence
+is that `RosterSnapshot` did not change at all, which is what Phase 5 needs.
+
+**Decision 2 — only `LOCAL` rows can be edited or removed.** Not a permissions model, an
+honesty one: a synced row is overwritten by the next refresh, so an edit the app appeared to
+accept would vanish without explanation. The detail screen therefore renders no edit control
+for a synced player rather than a disabled one — an affordance that explains why it will not
+work is still an affordance that does not work — and the repository refuses the write even
+if something reaches it another way.
+
+**Decision 3 — a sync keeps the local rows and re-seats them below the new ladder.**
+`replaceRoster` reads the local rows out, replaces the remote ladder wholesale as before,
+then writes them back renumbered from `snapshot.players.length + 1`. Both halves matter: a
+sync that dropped them makes "add a player" a lie, and a sync that kept their old ranks
+recreates the prototype's rank-12-in-a-14-player-roster inconsistency the moment the ladder
+changes size. Where a snapshot claims an id a local row already holds, **the snapshot wins** —
+upstream has caught up with that player, and two rows sharing one id is the only outcome
+worse than losing the edit.
+
+**Decision 4 — a new player joins at the bottom, and removing one closes the gap.** `rank` is
+a _season standing_, and someone who has not played this season has not earned one; deriving
+it from combat power would quietly redefine the column the roster header describes. Appending
+also keeps the 1..N invariant a one-line consequence rather than a re-sort. Delete shifts only
+the ranks below the removed one — one UPDATE that cannot read a value it is halfway through
+rewriting, which a `SET rank = (SELECT count(*) …)` renumber does, silently and only on some
+rows.
+
+**Decision 5 — validation lives in `core/model`, not in the form.** `validatePlayerDraft` is
+called by the screen _and_ by the repository before every write. A second entry point — a deep
+link, a future import, Phase 5's sync — must not be able to store a row the form would have
+refused, and a rule stated in two places is a rule that will disagree with itself. It is
+hand-written rather than Zod because `core/model` imports nothing, and Zod belongs at the
+network boundary where the input genuinely comes from elsewhere.
+
+**Decision 6 — crit is entered in basis points, not as a percent.** Accepting "58.4127" means
+parsing a decimal and scaling it, and a parse that rounds is exactly what ARCHITECTURE.md §2.2
+refuses to let `toFixed` be — that contract covers _formatting_ only. Every number on the form
+is therefore an integer, and the field renders the percent back as a live hint so nobody does
+the arithmetic in their head. **This is the weakest part of the change and it is a known one:**
+it is honest and it is not friendly. A percent field needs the §2.2 contract extended to
+parsing, which is real work and is not smuggled in here.
+
+**Decision 7 — the form is a third feature, `features/playerForm`.** Both the roster and the
+detail screen link to it, and §4 forbids one feature importing another — so a form living in
+either would be unreachable from the other. The boundary rule turning a naming question into a
+structural one is what it is for.
+
+**Consequences.**
+
+- `rosterRepository` gained `createPlayer` / `updatePlayer` / `deletePlayer`, each returning
+  `Result`. A rejection is a `PlayerDraftRejected` carrying **per-field** messages, so the form
+  puts each one under its own input instead of dumping a sentence at the top. It is still an
+  `Error`, so a caller that only reads `.message` keeps working.
+- Duplicate names are refused case-insensitively, because the roster's own search is
+  case-insensitive: two players the search cannot tell apart are two the user cannot either. It
+  is a query rather than a unique index — uniqueness is a rule about what this device lets the
+  user create, and a remote ladder shipping two players with one name is the server's business,
+  not a reason to fail a migration.
+- `core/design-system` gained `ArenaButton` and `FormField`. Until now every affordance was a
+  bespoke `Pressable` wrapping an `ArenaText`, which was fine at two; this change adds six, half
+  of them destructive or submitting. The two existing ad-hoc buttons (the roster's retry, the
+  detail screen's back chevron) were **left alone** — converting them is a separate diff with
+  its own screenshots.
+- Routes: `player/new` (static, so it wins over `player/[id]`) and `player/edit/[id]`. The edit
+  route is not `player/[id]/edit` because that would turn an already deep-linked,
+  Maestro-referenced, twice-asserted file route into a directory for no behavioural gain. The
+  cost of the static `new` segment is that a player whose id were literally `new` would be
+  unreachable — which is why local ids are prefixed (`local-…`) rather than free-form.
+- **A locally added player is announced, not drawn.** `RosterRowUi.isLocal` reaches the row's
+  accessibility label and nothing else. The design has no badge for "you added this", and
+  inventing one here would put a mark on the roster that never went past design review — but
+  leaving a screen-reader user unable to tell an editable row from a fixed one would be worse.
+  **This wants a design answer**, and it is the first of the two outstanding.
+- **The second outstanding answer is what this feature is _for_.** Open decision 1 asks whether
+  the backend exists; open decision 3 asks how "your avatar" is identified. Hand entry is a
+  plausible answer to both — ARCHITECTURE.md §9.1 already lists "manual entry" as one of the
+  shapes the data source might take — but nobody has said so. If it is the answer, local rows
+  become the thing Phase 5 _pushes_ rather than the thing it works around, and the `origin`
+  column is where that starts. If it is not, this is a convenience feature and Decision 3's
+  preservation rule is the whole of its lifecycle.
+- Phase 5 owes the form nothing new. The observers it reads are unchanged, and the sync path it
+  writes through is the one `replaceRoster` already was.
+- The Maestro flow for this screen is **not** written. Two phases of screenshot criteria are
+  already stacked behind ADR-0017's absent emulator; adding a third unrun flow would be filing
+  paperwork rather than testing anything. The form's states are asserted in
+  `PlayerFormScreen.test.tsx` at 200 % font scale, which is what jest can honestly claim —
+  clipping is still only a pixel question.
+
+**Answers, 2026-08-24.** All three questions this ADR left open came back, and two of them
+changed the code.
+
+**Crit is a whole percentage, and it can exceed 100 %.** Decision 6 above is **superseded**.
+Real values are 10, 113, 178 — so the `MAX_CRIT_BP` cap at 100 % was not a safeguard, it was
+rejecting valid data, and it is gone. The remaining ceiling is `MAX_CRIT_PERCENT`, which is only
+the 2^53 rule (§2.1) arriving through the x10 000 conversion.
+
+The unit moved rather than the storage. `PlayerDraft` now carries `critPercent`; the column
+still stores basis points, because §2.2's formatting contract and the seed's fractional values
+both depend on it. The scaling happens once, in `core/db/write.ts`, **after** validation — and
+that ordering is the whole point. Had the draft carried bp and the form multiplied, `1.5` would
+have become `15000`: a perfectly valid basis-points value that no validator downstream could
+have questioned. Keeping the draft in percent makes crit obey exactly the same rule as every
+other stat — "a non-negative whole number" — and deletes Decision 6's special case instead of
+documenting it.
+
+It also disposes of the complaint Decision 6 made about itself: there is no decimal parse, so
+there is no parse that rounds, so §2.2 does not need extending. The form asks for 113 and means 113.
+
+**Manual entry is the data source, for now.** This answers the first of the two outstanding
+product questions, and partly answers open decision 1. `LOCAL` rows are therefore not a
+convenience feature working around the sync — they are the content. Two consequences follow:
+Phase 5 needs a **push** direction it is not currently budgeted for (recorded in ROADMAP.md),
+and the preservation rule in Decision 3 is now load-bearing rather than defensive.
+
+**One thing this exposes, and it is unresolved.** The seed's 15 players are written as `REMOTE`,
+so under the answer above they cannot be edited or removed — while every player the user
+actually cares about can. That was coherent when the seed stood in for a real ladder; it is odd
+now that nothing else is remote. The options are to leave them as demo data, to seed them as
+`LOCAL` (which means `ensureSeeded` stops going through the snapshot path, since `replaceRoster`
+stamps `REMOTE` by construction), or to drop the seed and start empty. It is a product call and
+is deliberately **not** made here.
+
+**"Who am I" gets its own screen, and only edits.** Open decision 3 stays open as a _product_
+question, but its _shape_ is now decided: a screen like the add-player form, with no create and
+no delete — you edit the viewer, you do not invent or remove them. Not built in this change.
+What matters meanwhile is what it rules out: the add-player form must not grow a "this is me"
+checkbox, because that would answer open decision 3 as a side effect of a different feature.
+`preferences.setViewerId` still has exactly one caller, the sync.
+
+---
+
+## ADR-0021 — No seed. A new install starts empty.
+
+**Date:** 2026-08-24 · **Status:** accepted · **Phase:** 4.5
+
+**Context.** ADR-0020 flagged this and declined to decide it. Once manual entry became the
+data source, the 15 players from `assets/seed.json` were the only rows in the database the
+user could not touch — seeded rows are written `REMOTE`, and `REMOTE` rows are not editable by
+design, because a sync would overwrite the edit. So the app shipped a roster where the first
+15 entries were permanent and everything below them was not, with nothing on screen explaining
+the difference.
+
+**Decision. Delete the seed.** `assets/seed.json` and `localSeedRosterSource` are gone. A new
+install runs its migrations, paints the empty roster, and waits for the user to add someone.
+
+The seed was scaffolding and it did its job: Phases 1–4 were built, tested and demoed against
+it before any backend existed, which is exactly what ARCHITECTURE.md §7 designed it for. It
+stopped being scaffolding and started being furniture the moment the app could write its own
+rows.
+
+**What deliberately did _not_ change.** The `RosterSource` port stays in `core/common` with no
+implementation, and `RosterRepositoryDeps.source` stays in the signature — optional. Phase 5
+adds an argument rather than reintroducing a concept. Deleting the port along with its only
+implementation would have been the tidier diff and the wrong one: it is the seam the entire
+data layer is shaped around, and a repository that had to _grow_ one back is a repository
+whose boundary has moved.
+
+**Consequences.**
+
+- `ensureSeeded()` is gone, and with it the third thing the splash screen used to wait for.
+  Boot is now migrations and fonts. Screens may still assume the tables exist; they may no
+  longer assume the tables have rows.
+- **`refresh()` with no source returns `ok(undefined)`.** A no-op, not a failure. Nothing
+  upstream exists and the roster is already showing everything there is — and in
+  `RosterUiState` _any_ failure replaces the entire list, so reporting one would put a
+  working, hand-filled roster behind "The ladder could not be read".
+- The empty state stopped being an edge case and became the first screen of the product. Its
+  copy changed accordingly: "pull the roster again once the season opens" described a pull
+  that cannot happen.
+- Both Maestro flows were rewritten, because both asserted seed data that will never exist
+  again. `boot.yaml` now proves a first run paints a working empty state rather than the
+  prototype's blank screen (defect 5). `player-detail.yaml` **enters its own subject through
+  the add-player form** — with `atk 2,418,904,113`, the Int32 overflow the formatting contract
+  exists for — because there is nobody to deep-link to on a fresh install. That makes it a
+  longer flow covering more: add, save, detail, and the edit affordance in one pass. Neither
+  has been run; ADR-0017's emulator is still the blocker.
+- **The 1 000-row scroll budget (open decision 2) lost its fixture.** The seed supplied 15
+  rows, which never exercised it either — but hand entry cannot supply 1 000, so that
+  criterion now needs a deliberate load fixture rather than a bigger seed file.
+- The `REMOTE` / `LOCAL` distinction currently has no `REMOTE` rows to describe. It is not
+  dead code: it is what stops Phase 5's first sync silently eating the roster the user built
+  in the meantime, which is precisely the failure ADR-0020 Decision 3 exists to prevent.

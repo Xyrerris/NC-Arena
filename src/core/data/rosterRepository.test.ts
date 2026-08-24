@@ -3,21 +3,27 @@
  * the SQL layer against `better-sqlite3` in Node, plus persistence across a restart with
  * no network (ARCHITECTURE.md §10).
  *
- * The sort cases run against a synthetic fixture rather than the real seed on purpose. In
- * the seed, rank order and combat-power order happen to be identical — so a test written
- * against it would pass whether or not the CP sort did anything at all.
+ * The sort cases run against a synthetic fixture in which rank order, combat-power order and
+ * win count all disagree. A fixture where they line up — the deleted seed was one — passes
+ * the sort tests whether or not the sort does anything at all.
  */
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { err, ok, type RosterSnapshot, type RosterSource } from '../common';
-import { asPlayerId, type HeadToHead, type Player, type RosterSort } from '../model';
+import { err, isOk, ok, type RosterSnapshot, type RosterSource } from '../common';
+import {
+  asPlayerId,
+  type HeadToHead,
+  type Player,
+  type PlayerDraft,
+  type PlayerId,
+  type RosterSort,
+} from '../model';
 import { createMemoryPreferences } from '../prefs';
 import { createTestDatabase, type TestDatabase } from '../testing';
-import { localSeedRosterSource } from './localSeedRosterSource';
-import { createRosterRepository } from './rosterRepository';
+import { PlayerDraftRejected, createRosterRepository } from './rosterRepository';
 
 const player = (id: string, name: string, rank: number, combatPower: number): Player => ({
   id: asPlayerId(id),
@@ -206,7 +212,7 @@ describe('rosterRepository — entries and detail', () => {
     const live = repo.observePlayer(asPlayerId('p-c'));
     const detail = live.map(live.query.all());
     expect(detail?.player.name).toBe('Cinder');
-    expect(detail?.viewer.name).toBe('Aurel');
+    expect(detail?.viewer?.name).toBe('Aurel');
     expect(detail?.headToHead?.wins).toBe(9);
   });
 
@@ -215,13 +221,29 @@ describe('rosterRepository — entries and detail', () => {
     expect(live.map(live.query.all())).toBeNull();
   });
 
+  it('still resolves a player when there is no viewer yet', () => {
+    // The viewer is LEFT joined, so "no such player" and "no avatar yet" are different
+    // answers. Inner-joined they were the same empty row, and Phase 4's not-found state
+    // would have claimed a real player did not exist.
+    const noViewer = createRosterRepository({
+      db: handle.db,
+      source: sourceOf(FIXTURE),
+      preferences: createMemoryPreferences(),
+    });
+    const live = noViewer.observePlayer(asPlayerId('p-c'));
+    const detail = live.map(live.query.all());
+    expect(detail?.player.name).toBe('Cinder');
+    expect(detail?.viewer).toBeNull();
+    expect(detail?.headToHead).toBeNull();
+  });
+
   it('resolves the viewer', () => {
     const live = repo.observeViewer();
     expect(live.map(live.query.all())?.name).toBe('Aurel');
   });
 });
 
-describe('rosterRepository — refresh and seeding', () => {
+describe('rosterRepository — refresh and an empty start', () => {
   it('surfaces a source failure as a Result rather than throwing', async () => {
     const handle = createTestDatabase();
     const failing: RosterSource = {
@@ -236,22 +258,34 @@ describe('rosterRepository — refresh and seeding', () => {
     handle.close();
   });
 
-  it('seeds an empty database once and leaves a populated one alone', async () => {
+  it('starts empty, because nothing seeds it any more', () => {
+    // ADR-0021. A fresh install has migrations applied and no rows: the roster opens on
+    // the empty state and the user adds the first player.
     const handle = createTestDatabase();
-    let calls = 0;
-    const counting: RosterSource = {
-      name: 'counting',
-      fetchRoster: async () => {
-        calls += 1;
-        return ok(FIXTURE);
-      },
-    };
-    const repo = repositoryOn(handle, counting);
+    const repo = createRosterRepository({
+      db: handle.db,
+      preferences: createMemoryPreferences(),
+    });
 
-    expect((await repo.ensureSeeded()).ok).toBe(true);
-    expect((await repo.ensureSeeded()).ok).toBe(true);
-    expect(calls).toBe(1);
-    expect(repo.playerCount()).toBe(4);
+    expect(repo.playerCount()).toBe(0);
+    expect(repo.getViewerId()).toBeNull();
+    expect(repo.getSeason()).toBeNull();
+    handle.close();
+  });
+
+  it('treats a refresh with no source as nothing to do, not as a failure', async () => {
+    // There is no upstream yet, and the roster is already showing everything there is.
+    // An error here would put a working, hand-filled roster behind "The ladder could not
+    // be read" — see `RosterUiState`, where any failure replaces the whole list.
+    const handle = createTestDatabase();
+    const repo = createRosterRepository({
+      db: handle.db,
+      preferences: createMemoryPreferences(),
+    });
+    repo.createPlayer(localDraft('Nyx'));
+
+    expect((await repo.refresh()).ok).toBe(true);
+    expect(repo.playerCount()).toBe(1);
     handle.close();
   });
 
@@ -313,46 +347,220 @@ describe('rosterRepository — offline persistence', () => {
   });
 });
 
-describe('localSeedRosterSource', () => {
-  it('parses the committed seed into one contiguous ranked list', async () => {
-    const result = await localSeedRosterSource.fetchRoster();
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
+/**
+ * ADR-0020. The rules protected here are the two `core/db/write.ts` names as its job:
+ * ranks stay one contiguous 1..N list, and a sync may not take a row the user entered.
+ * Both break silently — a duplicate rank renders perfectly — so each is asserted as the
+ * shape of the whole list rather than as one row.
+ */
+const ranksOf = (repo: ReturnType<typeof repositoryOn>): number[] => {
+  const live = repo.observeRoster('RANK', '');
+  return live.map(live.query.all()).map((entry) => entry.player.rank);
+};
 
-    const { players, viewerId, headToHead } = result.value;
-    expect(players).toHaveLength(15);
-    expect(players.map((entry) => entry.rank)).toEqual(
-      Array.from({ length: 15 }, (_, index) => index + 1),
-    );
+const localDraft = (name: string): PlayerDraft => ({
+  name,
+  combatPower: 500,
+  score: 10,
+  atk: 1,
+  def: 2,
+  critPercent: 3,
+  hit: 4,
+  spd: 5,
+});
 
-    // The prototype put the viewer outside the roster at rank 12 of 14 and reported 15
-    // registered players. One list of 15 with the viewer at rank 9 is the resolution.
-    const viewer = players.find((entry) => entry.id === viewerId);
-    expect(viewer?.name).toBe('Krios');
-    expect(viewer?.rank).toBe(9);
-    expect(headToHead).toHaveLength(14);
-    expect(headToHead.some((entry) => entry.opponentId === viewerId)).toBe(false);
+describe('rosterRepository — adding a player by hand', () => {
+  let handle: TestDatabase;
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    await repositoryOn(handle).refresh();
   });
 
-  it('loads into SQLite and sorts by my wins across the real roster', async () => {
-    const handle = createTestDatabase();
-    const repo = createRosterRepository({
-      db: handle.db,
-      source: localSeedRosterSource,
-      preferences: createMemoryPreferences(),
-    });
-    expect((await repo.ensureSeeded()).ok).toBe(true);
-    expect(repo.playerCount()).toBe(15);
+  afterEach(() => handle.close());
 
-    const live = repo.observeRoster('MY_WINS', '');
+  it('appends the new player at the bottom of the ladder', () => {
+    const repo = repositoryOn(handle);
+    const created = repo.createPlayer(localDraft('Nyx'));
+
+    expect(created.ok).toBe(true);
+    expect(isOk(created) && created.value.rank).toBe(5);
+    expect(ranksOf(repo)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('trims the stored name, so the roster cannot hold a padded duplicate', () => {
+    const repo = repositoryOn(handle);
+    const created = repo.createPlayer(localDraft('  Nyx  '));
+    expect(isOk(created) && created.value.name).toBe('Nyx');
+  });
+
+  it('scales the whole-percent crit into the basis points the column stores', () => {
+    const repo = repositoryOn(handle);
+    const created = repo.createPlayer({ ...localDraft('Nyx'), critPercent: 113 });
+
+    expect(isOk(created) && created.value.critBp).toBe(1_130_000);
+  });
+
+  it('rejects a fractional crit, which is what the percent unit exists to catch', () => {
+    // Had the draft carried basis points, the form would have multiplied first — and
+    // 58.4127 * 10_000 is 584127, a valid bp that no validator downstream could question.
+    const repo = repositoryOn(handle);
+    const result = repo.createPlayer({ ...localDraft('Nyx'), critPercent: 58.4127 });
+
+    expect(result.ok).toBe(false);
+    expect(repo.playerCount()).toBe(4);
+  });
+
+  it('refuses a draft the validator rejects, without writing a row', () => {
+    const repo = repositoryOn(handle);
+    const before = repo.playerCount();
+
+    const result = repo.createPlayer({ ...localDraft('Nyx'), name: '', atk: -1 });
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toBeInstanceOf(PlayerDraftRejected);
+    // Both fields at once, so the form can put each message under its own input in one
+    // pass rather than making the user fix them one submit at a time.
+    const fields =
+      !result.ok && result.error instanceof PlayerDraftRejected ? result.error.fields : {};
+    expect(Object.keys(fields).sort()).toEqual(['atk', 'name']);
+    expect(repo.playerCount()).toBe(before);
+  });
+
+  it('refuses a name already on the ladder, case-insensitively', () => {
+    const repo = repositoryOn(handle);
+    // The roster's own search is case-insensitive, so two players it cannot tell apart are
+    // two the user cannot either.
+    const result = repo.createPlayer(localDraft('aUrEl'));
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(repo.playerCount()).toBe(4);
+  });
+
+  it('marks the row as local, and leaves synced rows alone', () => {
+    const repo = repositoryOn(handle);
+    repo.createPlayer(localDraft('Nyx'));
+
+    const live = repo.observeRoster('RANK', '');
     const entries = live.map(live.query.all());
-    expect(entries.slice(0, 3).map((entry) => entry.player.name)).toEqual([
-      'Lirien',
-      'Dunmoor',
-      'Petravale',
-    ]);
-    // The viewer has no record against themselves, so they sort last.
-    expect(entries[entries.length - 1]?.player.name).toBe('Krios');
+    expect(
+      entries.filter((entry) => entry.origin === 'LOCAL').map((entry) => entry.player.name),
+    ).toEqual(['Nyx']);
+    expect(entries.filter((entry) => entry.origin === 'REMOTE')).toHaveLength(4);
+  });
+});
+
+describe('rosterRepository — editing and removing a hand-entered player', () => {
+  let handle: TestDatabase;
+  let repo: ReturnType<typeof repositoryOn>;
+  let localId: PlayerId;
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    repo = repositoryOn(handle);
+    await repo.refresh();
+    const created = repo.createPlayer(localDraft('Nyx'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+    localId = created.value.id;
+  });
+
+  afterEach(() => handle.close());
+
+  it('rewrites the stats of a player this device added', () => {
+    const result = repo.updatePlayer(localId, { ...localDraft('Nyx'), combatPower: 9_999 });
+
+    expect(isOk(result) && result.value.combatPower).toBe(9_999);
+  });
+
+  it('lets a player keep their own name across an edit', () => {
+    // Without `exceptId` in the duplicate check, saving a player without renaming them
+    // collides with themselves — which is the most common edit there is.
+    expect(repo.updatePlayer(localId, { ...localDraft('Nyx'), score: 42 }).ok).toBe(true);
+  });
+
+  it('refuses to edit a synced player, because the next sync would undo it', () => {
+    const synced = asPlayerId('p-b');
+    const result = repo.updatePlayer(synced, { ...localDraft('Brann'), combatPower: 1 });
+
+    expect(result.ok).toBe(false);
+    const live = repo.observePlayer(synced);
+    expect(live.map(live.query.all())?.player.combatPower).toBe(400);
+  });
+
+  it('refuses to remove a synced player', () => {
+    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(false);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('closes the gap in the ranking when a player is removed', () => {
+    const second = repo.createPlayer(localDraft('Orrin'));
+    if (!isOk(second)) throw new Error('fixture: the second player could not be created');
+    expect(ranksOf(repo)).toEqual([1, 2, 3, 4, 5, 6]);
+
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    // Rank 5 was removed, so the row below it moves up rather than leaving a hole.
+    expect(ranksOf(repo)).toEqual([1, 2, 3, 4, 5]);
+    const live = repo.observePlayer(second.value.id);
+    expect(live.map(live.query.all())?.player.rank).toBe(5);
+  });
+
+  it('returns a failure rather than throwing for an id that was already removed', () => {
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+    expect(repo.deletePlayer(localId).ok).toBe(false);
+  });
+});
+
+describe('rosterRepository — a sync does not take the user data', () => {
+  it('keeps hand-entered players and re-seats them below the new ladder', async () => {
+    const handle = createTestDatabase();
+    const repo = repositoryOn(handle);
+    await repo.refresh();
+    repo.createPlayer(localDraft('Nyx'));
+    expect(ranksOf(repo)).toEqual([1, 2, 3, 4, 5]);
+
+    // A ladder that shrank from four players to two. Without the preservation rule the
+    // hand-entered player disappears; with a naive one they keep rank 5 beside a two-row
+    // ladder, which is the prototype's rank-12-in-a-14-player-roster bug reinvented.
+    const shrunk: RosterSnapshot = {
+      season: 42,
+      viewerId: FIXTURE.viewerId,
+      players: FIXTURE.players.slice(0, 2),
+      headToHead: [],
+    };
+    const second = repositoryOn(handle, sourceOf(shrunk));
+    await second.refresh();
+
+    expect(second.playerCount()).toBe(3);
+    expect(namesOf(second, 'RANK')).toEqual(['Aurel', 'Brann', 'Nyx']);
+    expect(ranksOf(second)).toEqual([1, 2, 3]);
+    handle.close();
+  });
+
+  it('yields to the server when a sync claims the same id', async () => {
+    const handle = createTestDatabase();
+    const repo = repositoryOn(handle);
+    await repo.refresh();
+    const created = repo.createPlayer(localDraft('Nyx'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+
+    // Upstream has caught up with this player. Two rows sharing one id is the only outcome
+    // worse than losing the local edit, so the snapshot wins.
+    const claiming: RosterSnapshot = {
+      season: 42,
+      viewerId: FIXTURE.viewerId,
+      players: [...FIXTURE.players, player(created.value.id, 'Nyx', 5, 4242)],
+      headToHead: [],
+    };
+    const second = repositoryOn(handle, sourceOf(claiming));
+    await second.refresh();
+
+    expect(second.playerCount()).toBe(5);
+    const live = second.observePlayer(created.value.id);
+    const detail = live.map(live.query.all());
+    expect(detail?.player.combatPower).toBe(4242);
+    expect(detail?.origin).toBe('REMOTE');
     handle.close();
   });
 });

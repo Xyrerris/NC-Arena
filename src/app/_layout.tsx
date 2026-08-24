@@ -1,7 +1,7 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -14,10 +14,16 @@ import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-sy
 /**
  * Root layout.
  *
- * This is the one place allowed to import core/db (ARCHITECTURE.md §7). Three things have
- * to finish before first paint, and all three are held behind the splash screen: the
- * migrations, the Phase 2 seed, and the fonts. Every screen below can therefore assume the
- * tables exist, have rows, and will not reflow when a face swaps in.
+ * This is the one place allowed to import core/db (ARCHITECTURE.md §7). Two things have to
+ * finish before first paint and both are held behind the splash screen: the migrations and
+ * the fonts. Every screen below can therefore assume the tables exist and that nothing will
+ * reflow when a face swaps in.
+ *
+ * There used to be a third: the seed. It is gone (ADR-0021) — a new install opens on an
+ * empty roster and the user adds the first player. What screens may assume is now weaker by
+ * exactly one clause: the tables exist, but they may be **empty**. That is not a regression
+ * to work around; the empty state was built in Phase 3 and is now the first thing a new
+ * user sees rather than an edge case reachable only by a fruitless search.
  */
 void SplashScreen.preventAutoHideAsync();
 
@@ -31,24 +37,9 @@ const ARENA_DATA: ArenaData = { repository: arenaRepository, useLiveData: useExp
 export default function RootLayout() {
   const { success, error } = useArenaMigrations();
   const fonts = useArenaFonts();
-  const [bootstrapped, setBootstrapped] = useState(false);
-  const [seedError, setSeedError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    if (!success) return;
-    let cancelled = false;
-    void arenaRepository.ensureSeeded().then((result) => {
-      if (cancelled) return;
-      if (!result.ok) setSeedError(result.error);
-      setBootstrapped(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [success]);
-
-  const failure = error ?? seedError ?? fonts.error;
-  const ready = failure !== null || (success && bootstrapped && fonts.loaded);
+  const failure = error ?? fonts.error;
+  const ready = failure !== null || (success && fonts.loaded);
 
   useEffect(() => {
     if (ready) void SplashScreen.hideAsync();

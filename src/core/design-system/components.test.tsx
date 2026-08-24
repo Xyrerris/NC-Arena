@@ -11,7 +11,9 @@
 
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import { ArenaButton } from './ArenaButton';
 import { CompareBar } from './CompareBar';
+import { FormField } from './FormField';
 import { RecordBadge } from './RecordBadge';
 import { SearchField } from './SearchField';
 import { SegmentedTabs } from './SegmentedTabs';
@@ -196,5 +198,98 @@ describe('ViewerCard', () => {
     expect(screen.getByText('2.15 M')).toBeTruthy();
     expect(screen.getByText('09')).toBeTruthy();
     expect(screen.getByText('Score 1842')).toBeTruthy();
+  });
+});
+
+describe('ArenaButton', () => {
+  it('announces itself as a button, by its label', async () => {
+    await render(<ArenaButton label="Add player" onPress={jest.fn()} />);
+    expect(screen.getByRole('button', { name: 'Add player' })).toBeTruthy();
+  });
+
+  it('takes an explicit accessible name where the label is not a sentence', async () => {
+    await render(
+      <ArenaButton label="Edit" accessibilityLabel="Edit this player" onPress={jest.fn()} />,
+    );
+    expect(screen.getByRole('button', { name: 'Edit this player' })).toBeTruthy();
+  });
+
+  it('clears the 48 dp touch minimum, as the sort chips had to (defect 9)', async () => {
+    await render(<ArenaButton testID="btn" label="Add player" onPress={jest.fn()} />);
+    expect(flatStyle('btn').minHeight).toBe(layout.minTouchTarget);
+  });
+
+  it('announces a disabled button as disabled rather than only dimming it', async () => {
+    const onPress = jest.fn();
+    await render(<ArenaButton label="Add player" onPress={onPress} disabled />);
+
+    const button = screen.getByRole('button', { name: 'Add player' });
+    expect(button.props.accessibilityState).toMatchObject({ disabled: true });
+    fireEvent.press(button);
+    expect(onPress).not.toHaveBeenCalled();
+  });
+
+  it('blocks a second press while the first is still in flight', async () => {
+    // Guards a double submit on a form whose write is synchronous today and will not be
+    // once Phase 5 puts a network behind it.
+    const onPress = jest.fn();
+    await render(<ArenaButton label="Saving" onPress={onPress} busy />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'Saving' }));
+    expect(onPress).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Saving' }).props.accessibilityState).toMatchObject({
+      busy: true,
+    });
+  });
+});
+
+describe('FormField', () => {
+  it('carries a label that survives typing, unlike a placeholder', async () => {
+    await render(<FormField label="Combat power" value="" onChangeText={jest.fn()} />);
+    expect(screen.getByLabelText('Combat power')).toBeTruthy();
+  });
+
+  it('reports what was typed', async () => {
+    const onChangeText = jest.fn();
+    await render(<FormField label="Name" value="" onChangeText={onChangeText} />);
+    fireEvent.changeText(screen.getByLabelText('Name'), 'Skarn');
+    expect(onChangeText).toHaveBeenCalledWith('Skarn');
+  });
+
+  it('states the rejection in words, not only in red', async () => {
+    // ROADMAP.md Phase 6's non-colour-redundancy rule, applied where the error lives.
+    await render(
+      <FormField
+        testID="field"
+        label="Name"
+        value=""
+        onChangeText={jest.fn()}
+        error="A player needs a name."
+      />,
+    );
+
+    expect(screen.getByText('A player needs a name.')).toBeTruthy();
+    expect(colorOfText('A player needs a name.')).toBe(color.negative);
+    expect(screen.getByLabelText('Name').props['aria-invalid']).toBe(true);
+  });
+
+  it('replaces the hint with the error rather than stacking them', async () => {
+    await render(
+      <FormField
+        label="Crit"
+        value=""
+        onChangeText={jest.fn()}
+        hint="Percent x 10 000."
+        error="Cannot be negative."
+      />,
+    );
+
+    expect(screen.getByText('Cannot be negative.')).toBeTruthy();
+    expect(screen.queryByText('Percent x 10 000.')).toBeNull();
+  });
+
+  it('reports itself as valid when there is nothing wrong with it', async () => {
+    await render(<FormField label="Name" value="Skarn" onChangeText={jest.fn()} />);
+    expect(screen.getByLabelText('Name').props['aria-invalid']).toBe(false);
   });
 });

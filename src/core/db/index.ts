@@ -26,4 +26,10 @@ export {
   type PlayerDetailRow,
   type RosterRow,
 } from './queries';
-export { replaceRoster } from './write';
+export {
+  deleteLocalPlayer,
+  insertLocalPlayer,
+  isNameTaken,
+  replaceRoster,
+  updateLocalPlayer,
+} from './write';

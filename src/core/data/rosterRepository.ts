@@ -17,6 +17,9 @@ import {
   type ShortUnit,
 } from '../common';
 import {
+  deleteLocalPlayer,
+  insertLocalPlayer,
+  isNameTaken,
   playerCountQuery,
   playerDetailQuery,
   playerQuery,
@@ -24,6 +27,7 @@ import {
   sortedRosterQuery,
   toHeadToHead,
   toPlayer,
+  updateLocalPlayer,
   type ArenaDatabase,
   type PlayerDetailRow,
   type PlayerRow,
@@ -31,8 +35,13 @@ import {
 } from '../db';
 import {
   asPlayerId,
+  isPlayerDraftValid,
+  normalisePlayerName,
+  validatePlayerDraft,
   type Player,
   type PlayerDetail,
+  type PlayerDraft,
+  type PlayerDraftErrors,
   type PlayerId,
   type RosterEntry,
   type RosterSort,
@@ -76,12 +85,13 @@ const toRosterEntry = (row: RosterRow, viewerId: PlayerId): RosterEntry => {
             losses: row.losses,
           }),
     isViewer,
+    origin: row.player.origin,
   };
 };
 
 const toPlayerDetail = (row: PlayerDetailRow, viewerId: PlayerId): PlayerDetail => ({
   player: toPlayer(row.player),
-  viewer: toPlayer(row.viewer),
+  viewer: row.viewer === null ? null : toPlayer(row.viewer),
   headToHead:
     row.wins === null || row.losses === null
       ? null
@@ -91,11 +101,64 @@ const toPlayerDetail = (row: PlayerDetailRow, viewerId: PlayerId): PlayerDetail 
           wins: row.wins,
           losses: row.losses,
         }),
+  origin: row.player.origin,
 });
+
+/**
+ * Rejected because of what the user typed, with the offending fields named. Distinct from
+ * a plain `Error` so the form can put each message under its own input instead of dumping
+ * one sentence at the top of the screen.
+ *
+ * It is still an `Error`, so a caller that only wants `result.error.message` — the retry
+ * banner both screens already have — keeps working without knowing this type exists.
+ */
+export class PlayerDraftRejected extends Error {
+  readonly fields: PlayerDraftErrors;
+
+  constructor(fields: PlayerDraftErrors) {
+    super(Object.values(fields)[0] ?? 'That player could not be saved.');
+    this.name = 'PlayerDraftRejected';
+    this.fields = fields;
+  }
+}
+
+/**
+ * Ids for players this device invented.
+ *
+ * Prefixed, because the prefix is the one thing that makes a locally-created id
+ * recognisable when Phase 5 has to decide what to push upstream — and because
+ * `src/app/player/new.tsx` is a static route, so an id that could ever be the literal
+ * string `new` would be a player nobody can open.
+ *
+ * Time-ordered first so two rows added in the same session sort by creation, random
+ * second so two added in the same millisecond do not collide.
+ */
+const newLocalPlayerId = (): PlayerId =>
+  asPlayerId(`local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
+
+const toError = (cause: unknown): Error =>
+  cause instanceof Error ? cause : new Error(String(cause));
+
+/**
+ * One message for "no such player" and for "that player is not yours to change". The two
+ * are deliberately indistinguishable to the caller: a row synced from upstream will be
+ * overwritten by the next refresh, so an edit the app appeared to accept would vanish —
+ * which is a worse answer than declining it (ADR-0020).
+ */
+const NOT_YOURS = 'Only players you added on this device can be edited or removed.';
 
 export interface RosterRepositoryDeps {
   db: ArenaDatabase;
-  source: RosterSource;
+  /**
+   * Where a synced ladder comes from — **absent today** (ADR-0021).
+   *
+   * The app starts empty and is filled by hand, so there is nothing upstream to pull from
+   * until Phase 5 supplies a remote source. The port stays in the signature rather than
+   * being deleted alongside its former implementation: it is the seam the whole data layer
+   * is shaped around (ARCHITECTURE.md §7), and a repository that had to *grow* one back
+   * would be a repository whose boundary had moved.
+   */
+  source?: RosterSource;
   preferences: ArenaPreferences;
 }
 
@@ -109,14 +172,36 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
   };
 
   const refresh = async (): Promise<Result<void>> => {
+    // No source, no failure. Nothing upstream exists yet (ADR-0021), and the roster is
+    // already showing everything there is — so "pull to refresh" has genuinely nothing to
+    // do. Reporting an error instead would put a working, hand-filled roster behind "The
+    // ladder could not be read", which is both alarming and false.
+    if (source === undefined) return ok(undefined);
+
     const fetched = await source.fetchRoster();
     if (!fetched.ok) return fetched;
     try {
       write(fetched.value);
       return ok(undefined);
     } catch (cause) {
-      return err(cause instanceof Error ? cause : new Error(String(cause)));
+      return err(toError(cause));
     }
+  };
+
+  /**
+   * Everything that can be wrong with a draft before it is written, as one nullable
+   * rejection. `exceptId` is the row being edited, so saving a player without renaming
+   * them is not a collision with themselves.
+   */
+  const rejectionFor = (draft: PlayerDraft, exceptId?: PlayerId): PlayerDraftRejected | null => {
+    const errors = validatePlayerDraft(draft);
+    if (!isPlayerDraftValid(errors)) return new PlayerDraftRejected(errors);
+    if (isNameTaken(db, draft.name, exceptId)) {
+      return new PlayerDraftRejected({
+        name: `${normalisePlayerName(draft.name)} is already on the ladder.`,
+      });
+    }
+    return null;
   };
 
   return {
@@ -154,18 +239,51 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
 
     refresh,
 
-    /** Rows currently in the ladder. Cheap, and the only thing `ensureSeeded` needs. */
-    playerCount: (): number => playerCountQuery(db).all()[0]?.count ?? 0,
-
     /**
-     * The Phase 2 bootstrap: fill an empty database once, so the app has something to show
-     * before a backend exists. Phase 5 replaces the *trigger* with a background sync; the
-     * write path underneath is already the one sync will use.
+     * Adds a player by hand, offline (ADR-0020).
+     *
+     * Validation runs here rather than only in the form, because this is the boundary the
+     * data actually crosses — a second entry point (a deep link, a future import, Phase 5's
+     * sync) must not be able to write a row the form would have refused. The form calls the
+     * same `validatePlayerDraft`, so the two cannot drift.
+     *
+     * The name check is a *query*, not a unique index, on purpose: uniqueness is a rule
+     * about what this device lets the user create, and a remote ladder that ships two
+     * players with one name is the server's business, not a reason to fail a migration.
      */
-    ensureSeeded: async (): Promise<Result<void>> => {
-      if (playerCountQuery(db).all()[0]?.count) return ok(undefined);
-      return refresh();
+    createPlayer: (draft: PlayerDraft): Result<Player> => {
+      const rejection = rejectionFor(draft);
+      if (rejection !== null) return err(rejection);
+      try {
+        return ok(toPlayer(insertLocalPlayer(db, newLocalPlayerId(), draft)));
+      } catch (cause) {
+        return err(toError(cause));
+      }
     },
+
+    /** Edits a player this device added. A `REMOTE` row is refused — see `PlayerOrigin`. */
+    updatePlayer: (id: PlayerId, draft: PlayerDraft): Result<Player> => {
+      const rejection = rejectionFor(draft, id);
+      if (rejection !== null) return err(rejection);
+      try {
+        const row = updateLocalPlayer(db, id, draft);
+        return row === null ? err(new Error(NOT_YOURS)) : ok(toPlayer(row));
+      } catch (cause) {
+        return err(toError(cause));
+      }
+    },
+
+    /** Removes a player this device added, closing the gap in the ranking behind them. */
+    deletePlayer: (id: PlayerId): Result<void> => {
+      try {
+        return deleteLocalPlayer(db, id) ? ok(undefined) : err(new Error(NOT_YOURS));
+      } catch (cause) {
+        return err(toError(cause));
+      }
+    },
+
+    /** Rows currently in the ladder. A one-off read; the header subscribes instead. */
+    playerCount: (): number => playerCountQuery(db).all()[0]?.count ?? 0,
 
     /**
      * Who "you" are, as far as the stored preferences know. Screens need it as a

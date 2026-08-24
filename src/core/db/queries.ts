@@ -107,6 +107,11 @@ const viewerPlayers = alias(players, 'viewer');
  * head-to-head between them. `useLiveQuery` subscribes to a single query, so resolving
  * this with three separate reads would mean three subscriptions that can disagree
  * mid-render.
+ *
+ * The viewer is a LEFT join, not an inner one. Inner-joined, a roster with no viewer yet
+ * (open decision 3, before the first sync) returns zero rows for *every* id — so "no such
+ * player" and "no avatar yet" arrive as the same empty result, and the not-found state
+ * ROADMAP.md Phase 4 asks for would be a lie half the time.
  */
 export const playerDetailQuery = (db: ArenaDatabase, viewerId: PlayerId, id: PlayerId) =>
   db
@@ -117,7 +122,7 @@ export const playerDetailQuery = (db: ArenaDatabase, viewerId: PlayerId, id: Pla
       losses: headToHead.losses,
     })
     .from(players)
-    .innerJoin(viewerPlayers, eq(viewerPlayers.id, viewerId))
+    .leftJoin(viewerPlayers, eq(viewerPlayers.id, viewerId))
     .leftJoin(
       headToHead,
       and(eq(headToHead.viewerId, viewerId), eq(headToHead.opponentId, players.id)),
@@ -132,10 +137,10 @@ export interface RosterRow {
   losses: number | null;
 }
 
-/** Shape of one `playerDetailQuery` row. */
+/** Shape of one `playerDetailQuery` row. `viewer` is null before the first sync. */
 export interface PlayerDetailRow {
   player: PlayerRow;
-  viewer: PlayerRow;
+  viewer: PlayerRow | null;
   wins: number | null;
   losses: number | null;
 }

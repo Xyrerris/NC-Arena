@@ -25,10 +25,22 @@ export const players = sqliteTable(
     critBp: integer('crit_bp').notNull(),
     hit: integer('hit').notNull(),
     spd: integer('spd').notNull(),
+    /**
+     * Who owns this row (ADR-0020). `REMOTE` rows are replaced wholesale by the next sync;
+     * `LOCAL` rows were entered on this device and survive one. The default is `REMOTE` so
+     * the migration can add the column to a database seeded before it existed without
+     * inventing user data.
+     */
+    origin: text('origin', { enum: ['REMOTE', 'LOCAL'] })
+      .notNull()
+      .default('REMOTE'),
   },
   (table) => [
     index('players_rank_idx').on(table.rank),
     index('players_combat_power_idx').on(table.combatPower),
+    // The write path filters on it twice per sync — once to clear the remote ladder, once
+    // to re-rank the local rows that outlived it.
+    index('players_origin_idx').on(table.origin),
   ],
 );
 

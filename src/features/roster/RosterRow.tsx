@@ -28,7 +28,11 @@ const announce = (row: RosterRowUi): string => {
   const record =
     row.record === null ? '' : `, your record ${row.record.wins} wins ${row.record.losses} losses`;
   const you = row.isViewer ? ', your avatar' : '';
-  return `Rank ${Number(row.rankLabel)}, ${row.name}${you}, combat power ${row.combatPowerExact}, ${row.scoreLabel}${record}`;
+  // Announced but not drawn — see the note on `RosterRowUi.isLocal`. A row the user can
+  // edit and one they cannot must not be indistinguishable to a screen reader just because
+  // the design has no badge for the difference yet.
+  const added = row.isLocal ? ', added on this device' : '';
+  return `Rank ${Number(row.rankLabel)}, ${row.name}${you}${added}, combat power ${row.combatPowerExact}, ${row.scoreLabel}${record}`;
 };
 
 export const RosterRow = memo(function RosterRow({ row, onPress }: RosterRowProps) {

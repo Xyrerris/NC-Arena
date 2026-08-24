@@ -1,0 +1,81 @@
+# The Phase 4 screenshot criterion: both representations of every stat, visible and
+# unclipped at 200 % font scale, for the widest values the product can hold.
+#
+# This flow now **creates its own subject**. With the seed gone (ADR-0021) there is no
+# Valkros to deep-link to on a fresh install, so the numbers that make the gate worth
+# running have to be typed in. That is not a workaround — it is the app's only input path,
+# so the flow exercises add-a-player and the detail screen in one pass.
+#
+# atk 2,418,904,113 is the value that overflows Int32 and is the whole reason the formatting
+# contract exists (ARCHITECTURE.md §2.1). An assertion can only say the text is present;
+# whether it is ellipsised is something only the image shows, which is the point §10 makes
+# about snapshots.
+appId: com.ncarena.arenascout
+---
+- clearState
+- launchApp
+
+- tapOn:
+    id: 'roster-add-player'
+- assertVisible: 'New player'
+
+- tapOn:
+    id: 'form-field-name'
+- inputText: 'Valkros'
+- tapOn:
+    id: 'form-field-combatPower'
+- inputText: '3084221'
+- tapOn:
+    id: 'form-field-atk'
+- inputText: '2418904113'
+- tapOn:
+    id: 'form-field-def'
+- inputText: '1554320778'
+# Whole percentages only, and above 100 is legal (ADR-0020, amended 2026-08-24).
+- tapOn:
+    id: 'form-field-critPercent'
+- inputText: '113'
+- tapOn:
+    id: 'form-field-hit'
+- inputText: '2210884019'
+- tapOn:
+    id: 'form-field-spd'
+- inputText: '1902551440'
+- takeScreenshot: ${SHOT_DIR}/form-01-filled
+
+- tapOn:
+    id: 'form-submit'
+
+# Saving opens the new player's own page, because the roster is a list and a new row lands
+# at the bottom of it.
+- assertVisible: 'Valkros'
+- assertVisible: 'RANK #01'
+- assertVisible: '3,084,221'
+- assertVisible: '3.08 M'
+- takeScreenshot: ${SHOT_DIR}/detail-01-header
+
+# The stat book. Exact on the left, rounded on the right, for every one of the five.
+- assertVisible: '2,418,904,113'
+- assertVisible: '2.42 B'
+- assertVisible: '113.0000 %'
+- assertVisible: '113.0%'
+- takeScreenshot: ${SHOT_DIR}/detail-02-stats
+
+- scrollUntilVisible:
+    element:
+      text: 'exact value left'
+    direction: DOWN
+- takeScreenshot: ${SHOT_DIR}/detail-03-stats-footer
+
+# A player this device added is editable; a synced one would not be (ADR-0020).
+- assertVisible: 'EDIT'
+
+# Vs You. There is no viewer yet — open decision 3 — so this tab must explain itself rather
+# than render an empty comparison.
+- tapOn: 'VS YOU'
+- takeScreenshot: ${SHOT_DIR}/detail-04-versus-no-viewer
+
+# A link nobody can reach from inside the app, and everybody can reach from outside it.
+- openLink: arenascout://player/plr_does_not_exist
+- assertVisible: 'No such player'
+- takeScreenshot: ${SHOT_DIR}/detail-05-not-found

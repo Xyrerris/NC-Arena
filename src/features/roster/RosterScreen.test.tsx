@@ -54,8 +54,8 @@ const record = (opponentId: string, wins: number, losses: number): HeadToHead =>
 });
 
 /**
- * Rank, combat power and wins deliberately disagree. A fixture where they agree — the real
- * seed is one — passes the sort tests whether or not the sort does anything.
+ * Rank, combat power and wins deliberately disagree. A fixture where they agree — the
+ * deleted seed was one — passes the sort tests whether or not the sort does anything.
  */
 const FIXTURE: RosterSnapshot = {
   season: 41,
@@ -161,7 +161,7 @@ describe('RosterScreen', () => {
       expect(renderedNames()).toEqual(['Aurel', 'Brann', 'Cinder', 'Dross']);
     });
 
-    it('labels the season from the seed rather than from a literal', async () => {
+    it('labels the season from the snapshot rather than from a literal', async () => {
       await renderRoster(repository);
       expect(screen.getByTestId('roster-season')).toHaveTextContent('SEASON 41');
     });
@@ -348,5 +348,70 @@ describe('RosterScreen', () => {
       await waitFor(() => expect(mockPush).toHaveBeenCalledTimes(1));
       expect(screen.queryByTestId('roster-error')).toBeNull();
     });
+  });
+});
+
+/**
+ * ADR-0020: the roster is where a new player is started from. The control is a sibling of
+ * the list rather than a floating button, so it has to survive the states the list does —
+ * including the empty one, which is exactly when it matters most.
+ */
+describe('RosterScreen — starting a new player', () => {
+  let handle: TestDatabase;
+  let repository: RosterRepository;
+
+  beforeEach(async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    mockPush.mockClear();
+    handle = createTestDatabase();
+    const wired = createTestRepository(handle.db, sourceOf(FIXTURE));
+    repository = wired.repository;
+    expect((await repository.refresh()).ok).toBe(true);
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    handle.close();
+  });
+
+  it('opens the new-player form from the header', async () => {
+    await renderRoster(repository);
+
+    fireEvent.press(screen.getByTestId('roster-add-player'));
+
+    expect(mockPush).toHaveBeenCalledWith('/player/new');
+  });
+
+  it('keeps the control reachable when a search matches nothing', async () => {
+    await renderRoster(repository);
+    await type('Zzz');
+
+    // The header is a sibling of the list precisely so it does not go down with it
+    // (defect 5, ADR-0018). That has to stay true now that it carries an action.
+    await waitFor(() => expect(screen.getByTestId('roster-empty')).toBeTruthy());
+    expect(screen.getByTestId('roster-add-player')).toBeTruthy();
+  });
+
+  it('offers to add the first player when the ladder itself is empty', async () => {
+    const empty: RosterSnapshot = {
+      season: 41,
+      viewerId: asPlayerId('p-a'),
+      players: [],
+      headToHead: [],
+    };
+    const bare = createTestDatabase();
+    const wired = createTestRepository(bare.db, sourceOf(empty));
+    expect((await wired.repository.refresh()).ok).toBe(true);
+
+    await renderRoster(wired.repository);
+
+    expect(screen.getByTestId('roster-empty')).toBeTruthy();
+    // Two controls now: the header's, and the call to action inside the empty list. The
+    // second is offered only here — "add a player" under a fruitless *search* would read
+    // as "create the person you were looking for".
+    expect(screen.getByTestId('roster-add-player')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('roster-empty-add-player'));
+    expect(mockPush).toHaveBeenCalledWith('/player/new');
+    bare.close();
   });
 });

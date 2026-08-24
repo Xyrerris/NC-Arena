@@ -40,6 +40,13 @@ export interface RosterRowUi {
   scoreLabel: string;
   record: RosterRecordUi | null;
   isViewer: boolean;
+  /**
+   * Added on this device rather than synced (ADR-0020). It is announced rather than drawn:
+   * the design has no badge for it, and inventing one here would put a mark on the roster
+   * that never went past design review. The detail screen is where a local player's edit
+   * control lives, and that control is the visible difference.
+   */
+  isLocal: boolean;
 }
 
 /**
@@ -94,7 +101,7 @@ export const SORT_OPTIONS: readonly { sort: RosterSort; label: string }[] = [
 
 /**
  * Open decision 8 asked where the prototype's hard-coded "SEASON 41" comes from. It comes
- * from the source: `assets/seed.json` carries `meta.season`, the snapshot carries it, and
+ * from the source: a snapshot carries `season`, the preferences remember it, and
  * the repository caches it (ADR-0018). Nothing here invents a number.
  */
 export const seasonLabel = (season: number | null): string | null =>
@@ -119,6 +126,7 @@ export const toRosterRowUi = (entry: RosterEntry): RosterRowUi => ({
   // The viewer has no head-to-head against themselves, so their own row shows no badge.
   record: entry.isViewer || entry.record === null ? null : entry.record,
   isViewer: entry.isViewer,
+  isLocal: entry.origin === 'LOCAL',
 });
 
 export const playerCountLabel = (total: number): string =>

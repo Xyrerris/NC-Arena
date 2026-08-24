@@ -18,6 +18,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import {
+  ArenaButton,
   ArenaText,
   ScreenScaffold,
   SearchField,
@@ -58,6 +59,7 @@ export function RosterScreen() {
   );
   const selectSort = useCallback((sort: RosterSort) => onEvent({ type: 'sort', sort }), [onEvent]);
   const retry = useCallback(() => onEvent({ type: 'refresh' }), [onEvent]);
+  const addPlayer = useCallback(() => router.push('/player/new'), [router]);
 
   const header = state.kind === 'ready' || state.kind === 'empty' ? state.header : null;
 
@@ -69,9 +71,10 @@ export function RosterScreen() {
           input={input}
           onChangeInput={setInput}
           onSelectSort={selectSort}
+          onAddPlayer={addPlayer}
         />
       )}
-      <RosterBody state={state} onOpenPlayer={openPlayer} onRetry={retry} />
+      <RosterBody state={state} onOpenPlayer={openPlayer} onRetry={retry} onAddPlayer={addPlayer} />
     </ScreenScaffold>
   );
 }
@@ -81,9 +84,16 @@ interface RosterHeaderProps {
   input: string;
   onChangeInput: (next: string) => void;
   onSelectSort: (sort: RosterSort) => void;
+  onAddPlayer: () => void;
 }
 
-function RosterHeader({ header, input, onChangeInput, onSelectSort }: RosterHeaderProps) {
+function RosterHeader({
+  header,
+  input,
+  onChangeInput,
+  onSelectSort,
+  onAddPlayer,
+}: RosterHeaderProps) {
   return (
     <View style={styles.header}>
       <View style={styles.titleRow}>
@@ -97,9 +107,23 @@ function RosterHeader({ header, input, onChangeInput, onSelectSort }: RosterHead
         )}
       </View>
 
-      <ArenaText variant="bodySmall" tone="subtle" testID="roster-count">
-        {playerCountLabel(header.totalPlayers)}
-      </ArenaText>
+      {/*
+        The add control sits beside the count rather than floating over the list. A FAB
+        would cover the last row at 200 % font scale, and the bottom of this list is exactly
+        where a newly added player lands.
+      */}
+      <View style={styles.countRow}>
+        <ArenaText variant="bodySmall" tone="subtle" testID="roster-count">
+          {playerCountLabel(header.totalPlayers)}
+        </ArenaText>
+        <ArenaButton
+          label="+ New player"
+          variant="secondary"
+          onPress={onAddPlayer}
+          accessibilityLabel="Add a new player to the roster"
+          testID="roster-add-player"
+        />
+      </View>
 
       {header.viewer === null ? null : (
         <ViewerCard
@@ -133,9 +157,10 @@ interface RosterBodyProps {
   state: RosterUiState;
   onOpenPlayer: (id: PlayerId) => void;
   onRetry: () => void;
+  onAddPlayer: () => void;
 }
 
-function RosterBody({ state, onOpenPlayer, onRetry }: RosterBodyProps) {
+function RosterBody({ state, onOpenPlayer, onRetry, onAddPlayer }: RosterBodyProps) {
   switch (state.kind) {
     case 'loading':
       return (
@@ -178,7 +203,12 @@ function RosterBody({ state, onOpenPlayer, onRetry }: RosterBodyProps) {
           extraData={state.header.sort}
           keyExtractor={(row) => row.id}
           renderItem={({ item }) => <RosterRow row={item} onPress={onOpenPlayer} />}
-          ListEmptyComponent={<RosterEmpty query={state.kind === 'empty' ? state.query : ''} />}
+          ListEmptyComponent={
+            <RosterEmpty
+              query={state.kind === 'empty' ? state.query : ''}
+              onAddPlayer={onAddPlayer}
+            />
+          }
           contentContainerStyle={styles.list}
           testID="roster-list"
         />
@@ -187,7 +217,7 @@ function RosterBody({ state, onOpenPlayer, onRetry }: RosterBodyProps) {
 }
 
 /** Nothing matched. The prototype renders a blank screen here (defect 5). */
-function RosterEmpty({ query }: { query: string }) {
+function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () => void }) {
   const needle = query.trim();
   return (
     <View style={styles.centred} testID="roster-empty">
@@ -196,9 +226,22 @@ function RosterEmpty({ query }: { query: string }) {
       </ArenaText>
       <ArenaText variant="bodySmall" tone="subtle" align="center">
         {needle === ''
-          ? 'The ladder is empty. Pull the roster again once the season opens.'
+          ? 'Add the players you want to track. Everything stays on this device.'
           : `Nothing in the roster matches "${needle}".`}
       </ArenaText>
+      {/*
+        Offered only when the roster itself is empty, not when a search missed. "Add a
+        player" under a fruitless search reads as "create the person you were looking
+        for", which is a different — and usually wrong — intention.
+      */}
+      {needle === '' ? (
+        <ArenaButton
+          label="+ New player"
+          onPress={onAddPlayer}
+          accessibilityLabel="Add the first player to the roster"
+          testID="roster-empty-add-player"
+        />
+      ) : null}
     </View>
   );
 }
@@ -216,6 +259,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: space[8],
+  },
+  countRow: {
+    flexDirection: 'row',
+    // Wraps rather than shrinks: at 200 % font scale the count line and the button cannot
+    // share a row, and a squeezed button is a clipped label.
+    flexWrap: 'wrap',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: space[8],
   },

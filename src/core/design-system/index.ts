@@ -7,8 +7,10 @@
  * `no-restricted-syntax` in eslint.config.js.
  */
 
+export { ArenaButton, type ArenaButtonProps, type ArenaButtonVariant } from './ArenaButton';
 export { ArenaText, type ArenaTextProps, type Tone } from './ArenaText';
 export { CompareBar, type CompareBarProps } from './CompareBar';
+export { FormField, type FormFieldProps } from './FormField';
 export { RecordBadge, type RecordBadgeProps } from './RecordBadge';
 export { ScreenScaffold, screenGutter, type ScreenScaffoldProps } from './ScreenScaffold';
 export { SearchField, type SearchFieldProps } from './SearchField';
