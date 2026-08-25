@@ -33,9 +33,12 @@ const TWIN = asPlayerId('plr_twin');
 const viewer: Player = {
   id: KRIOS,
   name: 'Krios',
+  level: 402,
+  gameCode: 'k77x',
   rank: 3,
   combatPower: 2_145_880,
   score: 1842,
+  hp: 980_112_004,
   atk: 1_184_530_912,
   def: 902_114_887,
   critBp: 584_127,
@@ -47,9 +50,12 @@ const viewer: Player = {
 const opponent: Player = {
   id: VALKROS,
   name: 'Valkros',
+  level: 488,
+  gameCode: 'a984',
   rank: 1,
   combatPower: 3_084_221,
   score: 2415,
+  hp: 1_440_085_258,
   atk: 2_418_904_113,
   def: 1_554_320_778,
   critBp: 712_043,
@@ -120,30 +126,31 @@ describe('usePlayerDetail', () => {
     it('shows every stat twice, exact and rounded', async () => {
       const { result } = await mount();
       expect(statOf(result.current.state, 'ATK')).toMatchObject({
-        exact: '2,418,904,113',
-        short: '2.42 B',
+        exact: '2.418.904.113',
+        short: '2,42 B',
       });
       expect(statOf(result.current.state, 'SPD')).toMatchObject({
-        exact: '1,902,551,440',
-        short: '1.90 B',
+        exact: '1.902.551.440',
+        short: '1,90 B',
       });
     });
 
     it('renders CRIT from basis points, with no float drift', async () => {
       const { result } = await mount();
-      // 712043 basis points is 71.2043 %. Rendered from the integer, so the four decimals
+      // 712043 basis points is 71,2043 %. Rendered from the integer, so the four decimals
       // are the stored value rather than whatever a double happened to hold.
       expect(statOf(result.current.state, 'CRIT')).toMatchObject({
-        exact: '71.2043 %',
-        short: '71.2%',
+        exact: '71,2043 %',
+        short: '71,2%',
       });
     });
 
-    it('lists the five stats in the prototype order', async () => {
+    it('lists the six stats in the prototype order, HP first', async () => {
       const { result } = await mount();
       const state = result.current.state;
       const keys = state.kind === 'ready' ? state.stats.map((stat) => stat.key) : [];
-      expect(keys).toEqual(['ATK', 'DEF', 'CRIT', 'HIT', 'SPD']);
+      // HP joined the front in ADR-0023, which is where the game's own panel puts it.
+      expect(keys).toEqual(['HP', 'ATK', 'DEF', 'CRIT', 'HIT', 'SPD']);
     });
 
     it('shows the header with combat power in both representations', async () => {
@@ -152,8 +159,8 @@ describe('usePlayerDetail', () => {
         header: {
           name: 'Valkros',
           rankLabel: 'RANK #01',
-          combatPowerExact: '3,084,221',
-          combatPowerShort: '3.08 M',
+          combatPowerExact: '3.084.221',
+          combatPowerShort: '3,08 M',
         },
       });
     });
@@ -162,10 +169,10 @@ describe('usePlayerDetail', () => {
   describe('the delta', () => {
     it('is measured from your value, so a positive delta means they are stronger', async () => {
       const { result } = await mount();
-      // (2,418,904,113 - 1,184,530,912) / 1,184,530,912 = +104.2%. The prototype's own
+      // (2.418.904.113 - 1.184.530.912) / 1.184.530.912 = +104,2%. The prototype's own
       // number, and the direction ROADMAP.md Phase 4 flags as reading backwards at a glance.
       expect(rowOf(result.current.state, 'ATK')).toMatchObject({
-        delta: '+104.2%',
+        delta: '+104,2%',
         opponentAhead: true,
       });
     });
@@ -173,7 +180,7 @@ describe('usePlayerDetail', () => {
     it('renders the opponent-ahead direction consistently across every stat', async () => {
       const { result } = await mount();
       const rows = versusOf(result.current.state)?.rows ?? [];
-      expect(rows).toHaveLength(5);
+      expect(rows).toHaveLength(6);
       expect(rows.every((row) => row.opponentAhead)).toBe(true);
       expect(rows.every((row) => row.delta.startsWith('+'))).toBe(true);
     });
@@ -194,20 +201,20 @@ describe('usePlayerDetail', () => {
       // Inherited behaviour, kept deliberately (ADR-0019). Changing it should break this
       // line, which is the point of asserting it rather than leaving it implicit.
       expect(versusOf(result.current.state)?.verdict).toBe(
-        'you lead in 5 of 5 stats · delta shown from your values',
+        'you lead in 6 of 6 stats · delta shown from your values',
       );
     });
 
     it('counts nothing as your lead when they are stronger everywhere', async () => {
       const { result } = await mount();
       expect(versusOf(result.current.state)?.verdict).toBe(
-        'you lead in 0 of 5 stats · delta shown from your values',
+        'you lead in 0 of 6 stats · delta shown from your values',
       );
     });
 
     it('renders a tie as a zero delta rather than as a missing one', async () => {
       const { result } = await mount(TWIN);
-      expect(rowOf(result.current.state, 'ATK')).toMatchObject({ delta: '+0.0%' });
+      expect(rowOf(result.current.state, 'ATK')).toMatchObject({ delta: '+0,0%' });
     });
   });
 
@@ -228,7 +235,7 @@ describe('usePlayerDetail', () => {
       });
       // The comparison rows still render: never having fought someone says nothing about
       // their stats.
-      expect(versusOf(result.current.state)?.rows).toHaveLength(5);
+      expect(versusOf(result.current.state)?.rows).toHaveLength(6);
     });
   });
 
@@ -289,7 +296,7 @@ describe('usePlayerDetail', () => {
         wrapper: wrapperFor(blank.repository),
       });
       expect(result.current.state).toMatchObject({ kind: 'ready', versus: null });
-      expect(statOf(result.current.state, 'ATK')).toMatchObject({ exact: '2,418,904,113' });
+      expect(statOf(result.current.state, 'ATK')).toMatchObject({ exact: '2.418.904.113' });
       blankDb.close();
     });
   });

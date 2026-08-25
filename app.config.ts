@@ -38,6 +38,17 @@ const config: ExpoConfig = {
     'expo-router',
     'expo-background-task',
     [
+      // ADR-0024. The permission string is written here rather than left to the plugin's
+      // default, because Android shows it verbatim and the default says "the app" — which
+      // tells the user nothing about why a stat book wants their photos.
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Arena Scout reads a screenshot of the game to fill in the stats of a player. ' +
+          'The picture is read on this device and never leaves it.',
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         backgroundColor: '#07100d',

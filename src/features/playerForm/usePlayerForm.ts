@@ -23,16 +23,20 @@ import {
   type PlayerDraftErrors,
   type PlayerId,
 } from '@/core/model';
+import { deviceStatScanner, type StatScanner } from '@/core/ocr';
 
 import {
+  applyScan,
   emptyFormValues,
   formTitle,
+  scanNote,
   toDraftValues,
   toFormValues,
   type PlayerFormEvent,
   type PlayerFormMode,
   type PlayerFormUiState,
   type PlayerFormValues,
+  type StatScanUiState,
 } from './playerFormUiState';
 
 export interface PlayerFormOptions {
@@ -40,6 +44,12 @@ export interface PlayerFormOptions {
   /** Called once the row is on disk. The screen navigates; the hook does not. */
   onSaved: (player: Player) => void;
   onDeleted: () => void;
+  /**
+   * Where a screenshot import comes from. Defaults to the device's picker and ML Kit; a
+   * test supplies a fake built from the same ports, which is what keeps this hook testable
+   * without an emulator (ADR-0024).
+   */
+  scanner?: StatScanner;
 }
 
 export interface PlayerFormController {
@@ -58,6 +68,7 @@ export const usePlayerForm = ({
   mode,
   onSaved,
   onDeleted,
+  scanner = deviceStatScanner,
 }: PlayerFormOptions): PlayerFormController => {
   const { repository, useLiveData } = useArenaData();
 
@@ -71,6 +82,7 @@ export const usePlayerForm = ({
   const [errors, setErrors] = useState<PlayerDraftErrors>({});
   const [message, setMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [scan, setScan] = useState<StatScanUiState>({ kind: 'idle' });
 
   /**
    * Set the moment a write succeeds, and it holds the screen on `loading` until the route
@@ -80,6 +92,12 @@ export const usePlayerForm = ({
   const [isClosing, setIsClosing] = useState(false);
 
   const saving = useRef(false);
+  /**
+   * The picker is a native modal and the read that follows it is slow enough to press
+   * twice. A ref rather than reading `scan.kind`, for the same reason `saving` is one: the
+   * handler that just set the state cannot see it.
+   */
+  const scanning = useRef(false);
 
   const loaded = detail.loaded;
   const player = detail.data?.player ?? null;
@@ -136,6 +154,42 @@ export const usePlayerForm = ({
     onSaved(result.value);
   }, [applyFailure, isClosing, mode, onSaved, repository, values]);
 
+  /**
+   * Fills the inputs from a screenshot. It deliberately does **not** save, and does not
+   * clear the errors: a value the scanner read is exactly as unvalidated as one the user
+   * typed, and pressing Save is still what decides whether it is a player.
+   */
+  const scanScreenshot = useCallback(async () => {
+    if (scanning.current || isClosing) return;
+    scanning.current = true;
+    setScan({ kind: 'scanning' });
+
+    const result = await scanner.scan();
+    scanning.current = false;
+
+    if (!result.ok) {
+      setScan({ kind: 'failed', message: result.error.message });
+      return;
+    }
+    // The user dismissed the picker. Nothing happened, and saying so would be noise about
+    // a decision they already know they made.
+    if (result.value === null) {
+      setScan({ kind: 'idle' });
+      return;
+    }
+
+    const sheet = result.value;
+    setValues((current) => applyScan(current, sheet));
+    // Every scanned field's stale rejection goes with it: the value under the message has
+    // just been replaced, so the message describes something that is no longer there.
+    setErrors((current) => {
+      const next = { ...current };
+      for (const field of sheet.found) delete next[field];
+      return next;
+    });
+    setScan({ kind: 'applied', note: scanNote(sheet.found, sheet.missing) });
+  }, [isClosing, scanner]);
+
   const remove = useCallback(() => {
     if (mode.kind !== 'edit' || isClosing) return;
     const result = repository.deletePlayer(mode.id);
@@ -162,6 +216,11 @@ export const usePlayerForm = ({
             return next;
           });
           return;
+        case 'scan':
+          // Floating: the event API is synchronous, and a rejection is impossible —
+          // `scan()` returns a `Result` rather than throwing.
+          void scanScreenshot();
+          return;
         case 'submit':
           submit();
           return;
@@ -170,7 +229,7 @@ export const usePlayerForm = ({
           return;
       }
     },
-    [remove, submit],
+    [remove, scanScreenshot, submit],
   );
 
   const state: PlayerFormUiState = useMemo(() => {
@@ -200,8 +259,9 @@ export const usePlayerForm = ({
       errors,
       message,
       isSaving,
+      scan,
     };
-  }, [errors, isClosing, isSaving, loaded, message, mode, origin, player, seeded, values]);
+  }, [errors, isClosing, isSaving, loaded, message, mode, origin, player, scan, seeded, values]);
 
   return { state, onEvent };
 };

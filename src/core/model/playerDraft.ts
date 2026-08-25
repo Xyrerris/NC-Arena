@@ -25,10 +25,40 @@ export const CRIT_BP_PER_PERCENT = 10_000;
  */
 export const MAX_CRIT_PERCENT = Math.floor(Number.MAX_SAFE_INTEGER / CRIT_BP_PER_PERCENT);
 
+/**
+ * The longest game code that is still a code rather than a paragraph. The game prints
+ * four characters (`#a984`); the ceiling is generous because the codes are the game's to
+ * lengthen, and a scan that read six would otherwise be rejected as malformed.
+ */
+export const MAX_GAME_CODE_LENGTH = 12;
+
+/**
+ * A game code is alphanumeric and case-insensitive, stored without the `#` the game paints
+ * in front of it. Keeping the sigil out of the value is what stops `#a984` and `a984`
+ * being two different players to a comparison — and the scanner reads it off a screen
+ * where the `#` is punctuation, not data.
+ */
+const GAME_CODE_PATTERN = /^[0-9a-z]+$/;
+
 export interface PlayerDraft {
   name: string;
+  /**
+   * The account level printed beside the name (`Lv.488`). It is not a stat — nothing
+   * compares two players by it — but it is the one number on the game's own screen that
+   * says how far along a player is, and leaving it out made the screenshot import
+   * silently lossy (ADR-0023).
+   */
+  level: number;
+  /**
+   * The game's own identifier for the player (`#a984`), without the `#`. Optional, and
+   * deliberately **not** an identity: `PlayerId` is issued by whoever stores the row (see
+   * `core/model/index.ts`), and adopting a code typed by hand — or read off a screenshot —
+   * as a key would make a mis-scan indistinguishable from a merge.
+   */
+  gameCode: string;
   combatPower: number;
   score: number;
+  hp: number;
   atk: number;
   def: number;
   /**
@@ -48,12 +78,14 @@ export interface PlayerDraft {
 
 export type PlayerDraftField = keyof PlayerDraft;
 
-export type PlayerDraftNumericField = Exclude<PlayerDraftField, 'name'>;
+export type PlayerDraftNumericField = Exclude<PlayerDraftField, 'name' | 'gameCode'>;
 
 /** Field order for the form, and the list the validator walks. */
 export const PLAYER_DRAFT_NUMERIC_FIELDS: readonly PlayerDraftNumericField[] = [
+  'level',
   'combatPower',
   'score',
+  'hp',
   'atk',
   'def',
   'critPercent',
@@ -72,8 +104,11 @@ export type PlayerDraftErrors = Partial<Record<PlayerDraftField, string>>;
 
 export const emptyPlayerDraft = (): PlayerDraft => ({
   name: '',
+  level: 0,
+  gameCode: '',
   combatPower: 0,
   score: 0,
+  hp: 0,
   atk: 0,
   def: 0,
   critPercent: 0,
@@ -89,7 +124,7 @@ export const emptyPlayerDraft = (): PlayerDraft => ({
  */
 const numericProblem = (field: PlayerDraftNumericField, value: number): string | null => {
   if (!Number.isSafeInteger(value)) {
-    return 'Enter a whole number below 9,007,199,254,740,991.';
+    return 'Enter a whole number below 9.007.199.254.740.991.';
   }
   if (value < 0) return 'Cannot be negative.';
   if (field === 'critPercent' && value > MAX_CRIT_PERCENT) {
@@ -105,6 +140,16 @@ export const validatePlayerDraft = (draft: PlayerDraft): PlayerDraftErrors => {
   if (name.length === 0) errors.name = 'A player needs a name.';
   else if (name.length > MAX_PLAYER_NAME_LENGTH) {
     errors.name = `At most ${MAX_PLAYER_NAME_LENGTH} characters.`;
+  }
+
+  // Blank is a legitimate answer: not every roster entry is a screenshot, and a player
+  // typed in from memory may genuinely not have their code to hand. What is refused is a
+  // code that is *present and malformed* — the shape a mis-scan produces.
+  const gameCode = normaliseGameCode(draft.gameCode);
+  if (gameCode.length > MAX_GAME_CODE_LENGTH) {
+    errors.gameCode = `At most ${MAX_GAME_CODE_LENGTH} characters.`;
+  } else if (gameCode.length > 0 && !GAME_CODE_PATTERN.test(gameCode)) {
+    errors.gameCode = 'Letters and digits only — the # is added for you.';
   }
 
   for (const field of PLAYER_DRAFT_NUMERIC_FIELDS) {
@@ -124,3 +169,17 @@ export const isPlayerDraftValid = (errors: PlayerDraftErrors): boolean =>
  * screen typed them.
  */
 export const normalisePlayerName = (name: string): string => name.trim();
+
+/**
+ * The game code as it is stored: no `#`, no surrounding space, lower case.
+ *
+ * The sigil is stripped here rather than in the form or the scanner, so that a code typed
+ * as `#A984`, pasted as `a984 ` and read off a screenshot as `#a984` are one value. The
+ * display side adds the `#` back — it is punctuation the game paints, not data the app
+ * stores.
+ */
+export const normaliseGameCode = (code: string): string =>
+  code.trim().replace(/^#/, '').toLowerCase();
+
+/** `"a984"` -> `"#a984"`. Empty in, empty out — there is no `#` for a code nobody gave. */
+export const gameCodeLabel = (code: string): string => (code === '' ? '' : `#${code}`);

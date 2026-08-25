@@ -9,9 +9,12 @@ import type { HeadToHeadRow, PlayerRow } from './schema';
 export const toPlayer = (row: PlayerRow): Player => ({
   id: asPlayerId(row.id),
   name: row.name,
+  level: row.level,
+  gameCode: row.gameCode,
   rank: row.rank,
   combatPower: row.combatPower,
   score: row.score,
+  hp: row.hp,
   atk: row.atk,
   def: row.def,
   critBp: row.critBp,

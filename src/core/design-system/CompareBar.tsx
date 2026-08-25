@@ -32,7 +32,7 @@ export interface CompareBarProps {
   /** Pre-formatted, both representations, for each side. */
   mine: { exact: string; short: string; fraction: number };
   theirs: { exact: string; short: string; fraction: number };
-  /** `"+31.2%"`, or `"—"` where the baseline is zero. */
+  /** `"+31,2%"`, or `"—"` where the baseline is zero. */
   delta: string;
   /** True when the opponent is stronger on this stat. */
   opponentAhead: boolean;

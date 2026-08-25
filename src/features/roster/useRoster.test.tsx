@@ -32,9 +32,12 @@ import { useRoster } from './useRoster';
 const player = (id: string, name: string, rank: number, combatPower: number): Player => ({
   id: asPlayerId(id),
   name,
+  level: 100 + rank,
+  gameCode: `a${rank}`,
   rank,
   combatPower,
   score: 1000 - rank,
+  hp: 5_000_000 + rank,
   atk: 1_000_000 + rank,
   def: 2_000_000 + rank,
   critBp: 500_000 + rank,
@@ -209,8 +212,8 @@ describe('useRoster', () => {
           viewer: {
             name: 'Aurel',
             rank: 1,
-            combatPowerExact: '1,000,000',
-            combatPowerShort: '1.00 M',
+            combatPowerExact: '1.000.000',
+            combatPowerShort: '1,00 M',
           },
         },
       });

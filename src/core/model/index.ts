@@ -33,10 +33,13 @@ export const asPlayerId = (raw: string): PlayerId => raw as PlayerId;
 export {
   CRIT_BP_PER_PERCENT,
   MAX_CRIT_PERCENT,
+  MAX_GAME_CODE_LENGTH,
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_DRAFT_NUMERIC_FIELDS,
   emptyPlayerDraft,
+  gameCodeLabel,
   isPlayerDraftValid,
+  normaliseGameCode,
   normalisePlayerName,
   validatePlayerDraft,
   type PlayerDraft,
@@ -64,20 +67,30 @@ export {
  */
 export type PlayerOrigin = 'REMOTE' | 'LOCAL';
 
-export type StatKey = 'ATK' | 'DEF' | 'CRIT' | 'HIT' | 'SPD';
+export type StatKey = 'HP' | 'ATK' | 'DEF' | 'CRIT' | 'HIT' | 'SPD';
 
-/** Iteration order for the detail screen's stat rows; the prototype's order, kept. */
-export const STAT_KEYS: readonly StatKey[] = ['ATK', 'DEF', 'CRIT', 'HIT', 'SPD'] as const;
+/**
+ * Iteration order for the detail screen's stat rows. The prototype's order, kept, with HP
+ * added at the front — which is where the game's own profile panel puts it (ADR-0023), and
+ * putting it anywhere else would make the app and its source screen disagree about what a
+ * player's stat book looks like.
+ */
+export const STAT_KEYS: readonly StatKey[] = ['HP', 'ATK', 'DEF', 'CRIT', 'HIT', 'SPD'] as const;
 
 export interface Player {
   id: PlayerId; // stable server id — NOT the display name
   name: string;
+  /** Account level as the game prints it (`Lv.488`). Never a rank and never a stat. */
+  level: number;
+  /** The game's `#a984`, stored without the `#`. May be empty; never an identity. */
+  gameCode: string;
   rank: number; // absolute season rank, 1-based
   combatPower: number; // safe integer, < 2^53 (see §2.1)
   score: number;
+  hp: number;
   atk: number;
   def: number;
-  critBp: number; // percent x 10_000. 58.4127% -> 584127
+  critBp: number; // percent x 10_000. 58,4127% -> 584127
   hit: number;
   spd: number;
 }
@@ -110,6 +123,8 @@ export const isRosterSort = (value: unknown): value is RosterSort =>
  */
 export const rawStat = (player: Player, key: Exclude<StatKey, 'CRIT'>): number => {
   switch (key) {
+    case 'HP':
+      return player.hp;
     case 'ATK':
       return player.atk;
     case 'DEF':
@@ -159,8 +174,11 @@ export interface PlayerDetail {
  */
 export const toPlayerDraft = (player: Player): PlayerDraft => ({
   name: player.name,
+  level: player.level,
+  gameCode: player.gameCode,
   combatPower: player.combatPower,
   score: player.score,
+  hp: player.hp,
   atk: player.atk,
   def: player.def,
   // bp -> whole percent. Exact for every player a form created, because the form is the

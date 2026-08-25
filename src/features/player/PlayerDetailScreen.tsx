@@ -180,6 +180,11 @@ function DetailHeader({ header }: { header: PlayerHeaderUi }) {
       <ArenaText variant="displayName" tone="primary" accessibilityRole="header">
         {header.name}
       </ArenaText>
+      {header.identityLabel === null ? null : (
+        <ArenaText variant="bodyCaption" tone="subtle" testID="player-identity">
+          {header.identityLabel}
+        </ArenaText>
+      )}
       <View
         accessible
         accessibilityLabel={`Combat power ${header.combatPowerExact}`}

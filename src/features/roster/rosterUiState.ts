@@ -25,7 +25,7 @@ export interface ViewerCardUi {
   name: string;
   rank: number;
   score: number;
-  /** `"2,145,880"` and `"2.15 M"` — the product's "every huge stat shown twice" promise. */
+  /** `"2.145.880"` and `"2,15 M"` — the product's "every huge stat shown twice" promise. */
   combatPowerExact: string;
   combatPowerShort: string;
 }

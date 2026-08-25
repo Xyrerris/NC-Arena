@@ -22,14 +22,14 @@ const styleOf = (testID: string): Record<string, unknown> => {
 
 describe('ArenaText', () => {
   it('renders its children', async () => {
-    await render(<ArenaText>2,418,904,113</ArenaText>);
-    expect(screen.getByText('2,418,904,113')).toBeTruthy();
+    await render(<ArenaText>2.418.904.113</ArenaText>);
+    expect(screen.getByText('2.418.904.113')).toBeTruthy();
   });
 
   it('gives numeric variants tabular figures, so the column cannot jitter', async () => {
     await render(
       <ArenaText testID="numeric" variant="numericSmall">
-        2,418,904,113
+        2.418.904.113
       </ArenaText>,
     );
     expect(styleOf('numeric').fontVariant).toEqual(['tabular-nums']);
@@ -98,7 +98,7 @@ describe('ArenaText, with the OFL faces bundled', () => {
           Rank
         </ArenaText>
         <ArenaText testID="number" variant="numericHero">
-          2,418,904,113
+          2.418.904.113
         </ArenaText>
       </>,
     );
@@ -110,7 +110,7 @@ describe('ArenaText, with the OFL faces bundled', () => {
   it('keeps the numeric fontWeight in place for the fallback path', async () => {
     await render(
       <ArenaText testID="number" variant="numericHero">
-        2,418,904,113
+        2.418.904.113
       </ArenaText>,
     );
     expect(styleOf('number').fontWeight).toBe('500');

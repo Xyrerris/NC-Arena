@@ -57,6 +57,18 @@ const CASES = [
     expect: 'allow',
   },
   {
+    name: 'core/ocr may not reach the repository',
+    file: 'src/core/ocr/__boundary_probe.ts',
+    source: "import * as data from '@/core/data';\nexport const probe = data;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'features/playerForm may reach the screenshot scanner',
+    file: 'src/features/playerForm/__boundary_probe.ts',
+    source: "import { parseStatSheet } from '@/core/ocr';\nexport const probe = parseStatSheet;\n",
+    expect: 'allow',
+  },
+  {
     name: 'a test file may reach the test fakes',
     file: 'src/features/roster/__boundary_probe.test.ts',
     source:

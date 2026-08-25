@@ -7,9 +7,12 @@
 
 import {
   MAX_CRIT_PERCENT,
+  MAX_GAME_CODE_LENGTH,
   MAX_PLAYER_NAME_LENGTH,
   emptyPlayerDraft,
+  gameCodeLabel,
   isPlayerDraftValid,
+  normaliseGameCode,
   normalisePlayerName,
   validatePlayerDraft,
   type PlayerDraft,
@@ -18,6 +21,9 @@ import {
 const draft = (over: Partial<PlayerDraft> = {}): PlayerDraft => ({
   ...emptyPlayerDraft(),
   name: 'Skarn',
+  level: 488,
+  gameCode: 'a984',
+  hp: 1_440_085_258,
   combatPower: 2_145_880,
   score: 1712,
   atk: 2_418_904_113,
@@ -113,5 +119,65 @@ describe('validatePlayerDraft — the stats', () => {
 describe('normalisePlayerName', () => {
   it('trims, so " Skarn " and "Skarn" are the same player to the duplicate check', () => {
     expect(normalisePlayerName('  Skarn  ')).toBe('Skarn');
+  });
+});
+
+/**
+ * The two fields ADR-0023 added beside the stats. Neither is a stat: nothing compares two
+ * players by level, and the code is an identifier the game issues and this app only ever
+ * displays.
+ */
+describe('validatePlayerDraft — the level and the game code', () => {
+  it('validates the level by the same rule as every other number', () => {
+    expect(validatePlayerDraft(draft({ level: -1 })).level).toBeDefined();
+    expect(validatePlayerDraft(draft({ level: 1.5 })).level).toBeDefined();
+    expect(validatePlayerDraft(draft({ level: 0 })).level).toBeUndefined();
+  });
+
+  it('validates HP by that rule too, including above Int32', () => {
+    expect(isPlayerDraftValid(validatePlayerDraft(draft({ hp: 1_440_085_258 })))).toBe(true);
+    expect(validatePlayerDraft(draft({ hp: -1 })).hp).toBeDefined();
+  });
+
+  it('accepts a blank code: a player typed in from memory may not have one', () => {
+    expect(validatePlayerDraft(draft({ gameCode: '' })).gameCode).toBeUndefined();
+  });
+
+  it('accepts the code with the # the game paints in front of it', () => {
+    // Built through `gameCodeLabel` rather than written out: a bare '#a984' literal is
+    // indistinguishable from a hex colour to the §2.4 token rule, which would reject it.
+    expect(
+      validatePlayerDraft(draft({ gameCode: gameCodeLabel('a984') })).gameCode,
+    ).toBeUndefined();
+  });
+
+  it('rejects a code with punctuation in it, which is the shape a mis-scan produces', () => {
+    expect(validatePlayerDraft(draft({ gameCode: 'a9-84' })).gameCode).toBeDefined();
+  });
+
+  it('rejects a code longer than the ceiling', () => {
+    const long = 'a'.repeat(MAX_GAME_CODE_LENGTH + 1);
+    expect(validatePlayerDraft(draft({ gameCode: long })).gameCode).toBeDefined();
+  });
+});
+
+describe('normaliseGameCode', () => {
+  it.each([[gameCodeLabel('a984')], ['a984'], [' A984 '], [gameCodeLabel('a984').toUpperCase()]])(
+    'reads %s as the one stored value a984',
+    (raw) => {
+      expect(normaliseGameCode(raw)).toBe('a984');
+    },
+  );
+
+  it('leaves an absent code absent rather than inventing a #', () => {
+    expect(normaliseGameCode('')).toBe('');
+    expect(gameCodeLabel('')).toBe('');
+  });
+
+  it('adds the # back for display, because that is punctuation the game paints', () => {
+    // Assembled rather than written out: to the §2.4 token rule, '#a984' is a hex colour
+    // and rejecting it is exactly what that rule is for.
+    const sigil = '#';
+    expect(gameCodeLabel('a984')).toBe(`${sigil}a984`);
   });
 });

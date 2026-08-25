@@ -26,13 +26,17 @@ import {
   space,
 } from '@/core/design-system';
 import type { Player, PlayerDraftField } from '@/core/model';
+import type { StatScanner } from '@/core/ocr';
 
 import {
   PLAYER_FORM_FIELDS,
+  SCAN_HINT,
+  SCAN_LABEL,
   VIEWER_EYEBROW,
   submitLabel,
   type PlayerFormMode,
   type PlayerFormUiState,
+  type StatScanUiState,
 } from './playerFormUiState';
 import { usePlayerForm } from './usePlayerForm';
 
@@ -43,9 +47,15 @@ export interface PlayerFormScreenProps {
    * the form itself holds no opinion about identity (ADR-0022).
    */
   onChangeViewer?: () => void;
+  /**
+   * Where "fill from screenshot" reads from. Omitted everywhere in the app — the hook
+   * defaults to the device's picker and ML Kit — and supplied by tests, which is what lets
+   * a scan be exercised without an emulator or a photo library (ADR-0024).
+   */
+  scanner?: StatScanner;
 }
 
-export function PlayerFormScreen({ mode, onChangeViewer }: PlayerFormScreenProps) {
+export function PlayerFormScreen({ mode, onChangeViewer, scanner }: PlayerFormScreenProps) {
   const router = useRouter();
 
   const leave = useCallback(() => {
@@ -72,13 +82,14 @@ export function PlayerFormScreen({ mode, onChangeViewer }: PlayerFormScreenProps
   // it after a delete lands on the not-found state for a row the user just removed.
   const onDeleted = useCallback(() => router.replace('/'), [router]);
 
-  const { state, onEvent } = usePlayerForm({ mode, onSaved, onDeleted });
+  const { state, onEvent } = usePlayerForm({ mode, onSaved, onDeleted, scanner });
 
   const change = useCallback(
     (field: PlayerDraftField, value: string) => onEvent({ type: 'change', field, value }),
     [onEvent],
   );
   const submit = useCallback(() => onEvent({ type: 'submit' }), [onEvent]);
+  const scan = useCallback(() => onEvent({ type: 'scan' }), [onEvent]);
 
   const confirmDelete = useCallback(() => {
     Alert.alert(
@@ -125,6 +136,7 @@ export function PlayerFormScreen({ mode, onChangeViewer }: PlayerFormScreenProps
         <FormBody
           state={state}
           onChange={change}
+          onScan={scan}
           onSubmit={submit}
           onDelete={confirmDelete}
           onLeave={leave}
@@ -137,12 +149,13 @@ export function PlayerFormScreen({ mode, onChangeViewer }: PlayerFormScreenProps
 interface FormBodyProps {
   state: PlayerFormUiState;
   onChange: (field: PlayerDraftField, value: string) => void;
+  onScan: () => void;
   onSubmit: () => void;
   onDelete: () => void;
   onLeave: () => void;
 }
 
-function FormBody({ state, onChange, onSubmit, onDelete, onLeave }: FormBodyProps) {
+function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave }: FormBodyProps) {
   switch (state.kind) {
     case 'loading':
       return (
@@ -189,6 +202,13 @@ function FormBody({ state, onChange, onSubmit, onDelete, onLeave }: FormBodyProp
               {state.title}
             </ArenaText>
           </View>
+
+          {/*
+            Above the fields rather than beside Save, because it fills them: a control that
+            rewrites nine inputs belongs where the user can see what it changed, and one
+            sitting at the bottom would have scrolled its own effect off the screen.
+          */}
+          <ScanBlock state={state.scan} onScan={onScan} />
 
           {state.message === null ? null : (
             <View style={styles.banner} testID="form-message">
@@ -241,8 +261,46 @@ function FormBody({ state, onChange, onSubmit, onDelete, onLeave }: FormBodyProp
   }
 }
 
+/**
+ * The screenshot import (ADR-0024).
+ *
+ * The status line is a sentence, never a colour or a tick: a partial scan and a complete
+ * one look identical in the form, so the only way the user learns that SPD was missed is
+ * being told which fields still need typing.
+ */
+function ScanBlock({ state, onScan }: { state: StatScanUiState; onScan: () => void }) {
+  return (
+    <View style={styles.scan} testID="form-scan">
+      <ArenaButton
+        label={SCAN_LABEL}
+        variant="secondary"
+        onPress={onScan}
+        busy={state.kind === 'scanning'}
+        accessibilityLabel="Fill the form from a screenshot of the game"
+        fill
+        testID="form-scan-button"
+      />
+
+      {state.kind === 'applied' ? (
+        <ArenaText variant="bodyCaption" tone="accent" testID="form-scan-note">
+          {state.note}
+        </ArenaText>
+      ) : state.kind === 'failed' ? (
+        <ArenaText variant="bodyCaption" tone="negative" testID="form-scan-error">
+          {state.message}
+        </ArenaText>
+      ) : (
+        <ArenaText variant="bodyCaption" tone="subtle">
+          {SCAN_HINT}
+        </ArenaText>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  scan: { gap: space[6] },
   backRow: {
     paddingHorizontal: layout.screenGutter,
     flexDirection: 'row',

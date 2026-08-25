@@ -46,9 +46,12 @@ const VALKROS = asPlayerId('plr_top');
 const viewer: Player = {
   id: KRIOS,
   name: 'Krios',
+  level: 402,
+  gameCode: 'k77x',
   rank: 2,
   combatPower: 2_145_880,
   score: 1842,
+  hp: 980_112_004,
   atk: 1_184_530_912,
   def: 902_114_887,
   critBp: 584_127,
@@ -59,9 +62,12 @@ const viewer: Player = {
 const opponent: Player = {
   id: VALKROS,
   name: 'Valkros',
+  level: 488,
+  gameCode: 'a984',
   rank: 1,
   combatPower: 3_084_221,
   score: 2415,
+  hp: 1_440_085_258,
   atk: 2_418_904_113,
   def: 1_554_320_778,
   critBp: 712_043,
@@ -121,8 +127,8 @@ describe('PlayerDetailScreen', () => {
       await renderDetail();
       expect(screen.getByText('Valkros')).toBeTruthy();
       expect(screen.getByTestId('player-rank')).toHaveTextContent('RANK #01');
-      expect(screen.getByText('3,084,221')).toBeTruthy();
-      expect(screen.getByText('3.08 M')).toBeTruthy();
+      expect(screen.getByText('3.084.221')).toBeTruthy();
+      expect(screen.getByText('3,08 M')).toBeTruthy();
     });
   });
 
@@ -136,11 +142,11 @@ describe('PlayerDetailScreen', () => {
     it('renders every stat exactly and rounded, both at once', async () => {
       await renderDetail();
       const both: [string, string][] = [
-        ['2,418,904,113', '2.42 B'],
-        ['1,554,320,778', '1.55 B'],
-        ['71.2043 %', '71.2%'],
-        ['2,210,884,019', '2.21 B'],
-        ['1,902,551,440', '1.90 B'],
+        ['2.418.904.113', '2,42 B'],
+        ['1.554.320.778', '1,55 B'],
+        ['71,2043 %', '71,2%'],
+        ['2.210.884.019', '2,21 B'],
+        ['1.902.551.440', '1,90 B'],
       ];
       for (const [exact, short] of both) {
         expect(screen.getByText(exact)).toBeTruthy();
@@ -155,7 +161,7 @@ describe('PlayerDetailScreen', () => {
 
     it('announces each stat as one node rather than three', async () => {
       await renderDetail();
-      expect(screen.getByTestId('stat-ATK').props.accessibilityLabel).toBe('ATK, 2,418,904,113');
+      expect(screen.getByTestId('stat-ATK').props.accessibilityLabel).toBe('ATK, 2.418.904.113');
     });
   });
 
@@ -182,11 +188,11 @@ describe('PlayerDetailScreen', () => {
     it('renders one comparison per stat, with the delta in words as well as colour', async () => {
       await renderDetail();
       await openVersus();
-      for (const key of ['ATK', 'DEF', 'CRIT', 'HIT', 'SPD']) {
+      for (const key of ['HP', 'ATK', 'DEF', 'CRIT', 'HIT', 'SPD']) {
         expect(screen.getByTestId(`compare-${key}`)).toBeTruthy();
       }
       expect(screen.getByTestId('compare-ATK').props.accessibilityLabel).toBe(
-        'ATK. You 1,184,530,912, them 2,418,904,113. they lead, +104.2%.',
+        'ATK. You 1.184.530.912, them 2.418.904.113. they lead, +104,2%.',
       );
     });
 
@@ -194,7 +200,7 @@ describe('PlayerDetailScreen', () => {
       await renderDetail();
       await openVersus();
       expect(screen.getByTestId('player-verdict')).toHaveTextContent(
-        'you lead in 0 of 5 stats · delta shown from your values',
+        'you lead in 0 of 6 stats · delta shown from your values',
       );
     });
 
@@ -297,8 +303,11 @@ describe('PlayerDetailScreen — editing a hand-entered player', () => {
   it('offers an edit control for a player added on this device', async () => {
     const created = repository.createPlayer({
       name: 'Nyx',
+      level: 7,
+      gameCode: '',
       combatPower: 2500,
       score: 10,
+      hp: 9,
       atk: 1,
       def: 2,
       critPercent: 3,

@@ -14,9 +14,13 @@
 export { PlayerFormScreen, type PlayerFormScreenProps } from './PlayerFormScreen';
 export {
   PLAYER_FORM_FIELDS,
+  SCAN_HINT,
+  SCAN_LABEL,
   VIEWER_EYEBROW,
+  applyScan,
   emptyFormValues,
   formTitle,
+  scanNote,
   submitLabel,
   toDraftValues,
   toFormValues,
@@ -25,6 +29,7 @@ export {
   type PlayerFormMode,
   type PlayerFormUiState,
   type PlayerFormValues,
+  type StatScanUiState,
 } from './playerFormUiState';
 export { usePlayerForm, type PlayerFormController, type PlayerFormOptions } from './usePlayerForm';
 

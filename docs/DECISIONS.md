@@ -988,3 +988,199 @@ ARCHITECTURE.md §4 forbids it importing them from here, so the two copies would
   of screenshot criteria are already stacked behind an absent emulator, and a fourth unrun flow is
   paperwork. The states are asserted in `ViewerScreen.test.tsx` at 200 % font scale, which is what
   jest can honestly claim.
+
+---
+
+## ADR-0023 — A player gains HP, a level and a game code
+
+**Date:** 2026-08-25 · **Status:** accepted · **Phase:** 4.7 (with ADR-0024, still before the backend)
+
+**Context.** ADR-0024 makes the game's own profile screen an input to the player form. That screen
+shows nine things: a level, a name, an account code, CP, and six stats — HP, ATK, DEF, CRI, HIT,
+SPD. The app's `Player` held six of the nine. HP, the level and the code had nowhere to go, and
+`score` — which the app does hold — is on no screen the game paints.
+
+The cheap answer was to scan only the fields that already existed and drop the other three on the
+floor. It was rejected: an import that silently discards a third of what it reads is worse than no
+import, because the loss is invisible. The user is looking at a picture with HP on it and a form
+without, and nothing tells them which one is the app's opinion.
+
+**Decision 1 — HP is a stat, and joins `STAT_KEYS` at the front.** It is a raw count like ATK and
+SPD, so it needs no new formatting rule and no new column type: the detail screen's stat rows and
+the Vs You comparison bars both pick it up from `STAT_KEYS` with no change. It goes first because
+that is where the game's panel puts it, and a stat book that ordered its rows differently from the
+screen it was copied off would make every check a hunt.
+
+The visible consequence is that the Vs You verdict now reads "you lead in _n_ of **6** stats". That
+is asserted rather than left to drift — ADR-0019's rule about inherited behaviour applies to derived
+behaviour too.
+
+**Decision 2 — the level and the game code are on `Player`, and neither is a stat.** They are
+identity, not power: nothing sorts by them, nothing compares them, and neither appears in a
+`CompareBar`. They render as one subtitle under the name on the detail screen — `LV. 488 · #a984` —
+because that is how they are read, together and at a glance.
+
+**Decision 3 — the game code is not an identity.** `PlayerId` stays server-issued and opaque
+(`core/model`). Adopting the code as a key would make a mis-scan indistinguishable from a merge: two
+players whose codes were misread as one would silently become one row, and the app would have no way
+to notice. The code is stored, displayed, and otherwise inert.
+
+It is stored **without** the sigil, lower-cased, by `normaliseGameCode`. That character is
+punctuation the game paints, so a code typed by hand and one read off a screen are one value;
+`gameCodeLabel` puts it back for display. An empty code is legal — a player entered from memory may
+genuinely not have one — but a code that is present and malformed is refused, because that is the
+shape a mis-scan produces.
+
+**Decision 4 — `score` stays, and stays hand-typed.** It is not on the profile screen, so the
+scanner never supplies it and never will: `ScannedField` excludes it at the type level. The form
+field says so in its hint rather than leaving the user to wonder why one box stayed empty.
+
+**Consequences.**
+
+- **Migration `0002_player_profile.sql` adds three columns**, all with defaults: `level` 0,
+  `game_code` empty, `hp` 0. Defaults rather than a backfill, for the reason `origin` gives in
+  ADR-0020 — the migration must not invent user data for rows written before the field existed.
+- **Level 0 renders as nothing.** `identityLabel` omits a zero level rather than printing `LV. 0`,
+  because on an upgraded database zero means "nobody recorded one", not "a new account".
+- **The form is eleven fields deep.** It is still a `ScrollView` and not a recycler, for the reason
+  `PlayerFormScreen`'s header already gives: a recycled `TextInput` drops the keyboard mid-word.
+- **Every `Player` fixture in the test suite changed.** That is the cost of widening a domain type
+  and it was paid in one pass; nothing was defaulted in a helper to avoid it, because a fixture that
+  quietly fills in HP is a fixture that cannot test HP.
+
+---
+
+## ADR-0024 — Stats can be read off a screenshot, and the scan never saves
+
+**Date:** 2026-08-25 · **Status:** accepted · **Phase:** 4.7 (with ADR-0023)
+
+**Context.** Typing a player in by hand means copying eleven fields off a game screen, several of
+them ten digits long, with no way to catch a transcription error except reading it twice. The
+request was to fill the form from a screenshot instead.
+
+**Decision 1 — on-device OCR, and no network at all.**
+`@infinitered/react-native-mlkit-text-recognition` runs ML Kit locally. A cloud OCR service was not
+considered for long: a screenshot of a profile carries a player's name and account code, there is no
+backend in this app to send it to (open decision 1), and adding one for this would mean writing a
+privacy policy for a stat book. The package is an Expo module rather than a legacy native module,
+which is what makes it safe on RN 0.86's New Architecture — the older and more popular
+`@react-native-ml-kit/text-recognition` is bridge-era and was rejected for that reason.
+
+**Decision 2 — the parser is pure, and lives in `core/ocr`.** `parseStatSheet` takes recognised
+lines with their rectangles and returns a partial `PlayerDraft`. It imports nothing but `core/model`
+and `core/common`, so the whole of the difficult behaviour is provable in the Node test project
+against recorded text — no emulator, no photo library, no ML Kit. A new `core/*` element rather than
+a folder under `features/playerForm`, because a feature imports React and a parser that lived behind
+one would be unreachable from the fast test project.
+
+`core/ocr` may **not** reach `core/data`. A module that could write would make "scanned" and "saved"
+the same act, which Decision 5 exists to prevent. The rule is a boundary policy with a probe in
+`scripts/check-boundaries.mjs`, per ADR-0016.
+
+**Decision 3 — two ports, not one.** `ImageSource` and `TextRecogniser` are separate because they
+fail for different reasons and the user has to be told which: "you did not grant access to your
+photos" and "there was no readable text in that picture" have different fixes, and one port would
+have flattened them into a shrug. Cancelling the picker is a **value**, not an error — it is the
+most common thing that happens after opening a picker by accident, and reporting it as a failure
+would put a red message on screen for a decision the user already made.
+
+**Decision 4 — nothing is repaired.** A token becomes a stat only when, after group separators and a
+trailing percent sign are removed, every remaining character is a digit. There is no letter-to-digit
+rescue. A repair turns an unreadable value into a plausible wrong one, and the user cannot tell the
+difference by looking at the form — whereas a field the scan left alone is visibly empty. Stripping
+dots and commas from a digit run is safe only because every stat is a whole number: there is no
+fractional stat for a decimal point to belong to, so a dotted eleven-digit run can only be one
+integer.
+
+**Decision 5 — a scan is a suggestion.** It writes into the form's inputs and stops. The user reads
+them and presses Save, and the same `validatePlayerDraft` that guards a hand-typed player guards a
+scanned one. Nothing about the write path changed.
+
+**Decision 6 — the stat panel is the anchor.** The screenshot this was built from has **two** combat
+powers on it: the profile dialog's, and the viewer's own on the roster behind it, half-covered.
+Reading order picks the wrong one depending on how the recogniser walks the image. So the six stat
+labels are located first, their bounding box becomes an anchor, and the CP and level nearest to it
+win. The game code is read only from the header row for the same reason — elsewhere on that screen
+the sigil prefixes a build number, and a scan that adopted it as a player's code would be wrong in a
+field nobody thinks to check.
+
+Both distractors are in the test fixture on purpose. Cropped to the dialog, it would pass without
+either rule existing.
+
+**Consequences.**
+
+- **A partial scan is a success, and says what it missed** — naming the gaps rather than celebrating
+  the hits, because a scan that quietly dropped SPD looks identical to a complete one. Zero fields
+  is the one case reported as a failure: an empty success would leave the form untouched and the
+  user unable to tell whether anything ran.
+- **A scan merges; it does not replace.** A screenshot that gave up everything but the name leaves
+  the name the user already typed alone. `score` is never in the result at all.
+- **`allowsEditing` is off in the picker.** A crop dialog would let the user remove the header that
+  the anchor in Decision 6 depends on.
+- **Two root `__mocks__` entries were added**, for `expo-image-picker` and the ML Kit module, so a
+  feature test can import `@/core/ocr` without a native module. Neither recognises anything: what a
+  screenshot parses into is proven in `statSheet.test.ts`, not by a mock pretending an engine ran.
+- **A native rebuild is required.** Both packages are native, so `expo run:android` must run before
+  the scan control does anything on device. Nothing in the JS-only suite catches a failure there,
+  which is one more thing the absent emulator gate (ADR-0017) would have caught.
+
+---
+
+## ADR-0025 — Thousands are separated by a dot, decimals by a comma
+
+**Date:** 2026-08-25 · **Status:** accepted · **Phase:** 4.7
+
+**Context.** Every number in the app was rendered `2,418,904,113`. The game it reads from renders the
+same kind of number `11.724.329.467`. Checking one against the other meant re-reading a twelve-digit
+value in two different notations, which is exactly the work the "show every stat twice" contract
+exists to remove — and ADR-0024 made the mismatch worse by putting the game's own screenshot
+directly into the form.
+
+**Decision 1 — the separators are stated, not derived from a locale name.** `createStatFormatter`
+takes them as an argument, defaulting to `DOT_SEPARATORS`. Switching the pinned locale from `en-US`
+to `it-IT` would have been the one-word version and it is not the same thing: what a locale gives
+back depends on the ICU data compiled into a particular Hermes build, and a build missing the
+requested locale does **not** throw — it silently formats under a default one. That failure used to
+be invisible; now it would put commas on a screen the rest of the app spells with dots.
+
+The locale argument stays, because it still decides _where_ the groups fall — that is the one thing
+`Intl` knows and a hand-rolled grouper does not, for the locales that do not group in threes. But
+`Intl` is used only when its own grouping character matches the one this app chose. Otherwise the
+hand-rolled grouper takes over, and the output is the same on CI, on a device with full ICU data,
+and on one without.
+
+**Decision 2 — the decimal separator moves to a comma with it.** This was not asked for and is not
+optional: `short(n, 'MILLIONS')` groups its thousands and `short(n, 'BILLIONS')` prints two
+decimals, so `2.419 M` and `2.42 B` can appear on the same screen. One glyph meaning both would make
+those two unreadable against each other. The pair is coherent or it is broken; there is no third
+option.
+
+So crit reads `71,2043 %`, a delta reads `+104,2%`, and combat power reads `3,08 M` — while
+`2.418.904.113` and `2.419 M` keep the dot for what it now exclusively means.
+
+**Decision 3 — the form reads a separator as grouping only when three digits follow it.**
+`parseStat` used to strip every comma and space. Extending that to dots was the obvious move and it
+is wrong in a way nobody would catch: `1.5` would arrive as `15`, a perfectly valid stat that
+`validatePlayerDraft` has no reason to reject, and the box would look right. Requiring the run of
+three keeps a mistyped decimal a _visible_ rejection — `1.5` parses as 1.5 and the field says "enter
+a whole number" — while `2.418.904.113`, which is what the roster displays and therefore what gets
+pasted back into it, is read as the integer it is.
+
+Both punctuation marks are accepted on input, not just the app's own. A number copied out of
+somewhere else is still a number the user means, and being strict about its punctuation would refuse
+data for a reason that is about the app rather than about the value.
+
+**Consequences.**
+
+- **Open decision 9 is narrower than it was.** The old `parseStat` comment said stripping commas was
+  safe "only while the app is English-only", because in a comma-decimal locale it would turn 1,5
+  into 15. The three-digit rule removes that hazard for both characters, so the app's display
+  language and its number punctuation are now independent choices.
+- **The scanner was already indifferent.** `core/ocr` strips dots, commas, apostrophes and thin
+  spaces from a digit run and always did, for the reason ADR-0024 gives: there is no fractional stat
+  for a decimal point to belong to, so a dotted run can only be one integer.
+- **One test asserts the opposite convention on purpose.** `createStatFormatter('it-IT', { group:
+',', decimal: '.' })` is exercised, because separators being a parameter rather than a consequence
+  of the locale name is the whole of Decision 1 and would otherwise go untested.
+- **No migration, and nothing stored changed.** Punctuation is a rendering decision; the columns hold
+  integers and basis points exactly as they did.

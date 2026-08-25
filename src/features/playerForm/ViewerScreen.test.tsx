@@ -54,8 +54,11 @@ const sourceOf = (snapshot: RosterSnapshot): RosterSource => ({
 
 const draft = (name: string, combatPower: number): PlayerDraft => ({
   name,
+  level: 12,
+  gameCode: '',
   combatPower,
   score: 10,
+  hp: 9,
   atk: 1,
   def: 2,
   critPercent: 3,

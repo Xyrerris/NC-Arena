@@ -28,9 +28,12 @@ import { PlayerDraftRejected, createRosterRepository } from './rosterRepository'
 const player = (id: string, name: string, rank: number, combatPower: number): Player => ({
   id: asPlayerId(id),
   name,
+  level: 100 + rank,
+  gameCode: `a${rank}`,
   rank,
   combatPower,
   score: 1000 - rank,
+  hp: 5_000_000 + rank,
   atk: 1_000_000 + rank,
   def: 2_000_000 + rank,
   critBp: 500_000 + rank,
@@ -360,8 +363,11 @@ const ranksOf = (repo: ReturnType<typeof repositoryOn>): number[] => {
 
 const localDraft = (name: string): PlayerDraft => ({
   name,
+  level: 12,
+  gameCode: 'ab12',
   combatPower: 500,
   score: 10,
+  hp: 9,
   atk: 1,
   def: 2,
   critPercent: 3,

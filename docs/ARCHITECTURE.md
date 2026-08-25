@@ -207,6 +207,10 @@ src/
                             both the database and the network exist.
   core/network/             DTOs (Zod), API client, DTO->domain mappers.
   core/prefs/               MMKV-backed preferences.
+  core/ocr/                 Reads a player's stats off a game screenshot (ADR-0024).
+                            Pure parser + two ports (pick an image, recognise text) +
+                            their device adapters. May not reach core/data: a scan is a
+                            suggestion the user still has to accept.
   core/testing/             Fakes, in-memory db factory, render helpers.
 
   features/roster/          RosterScreen, useRoster, roster UI types.
@@ -218,9 +222,9 @@ assets/fonts/               Cinzel, Barlow, JetBrains Mono (OFL) + licences
 
 **Dependency rule, enforced in CI** by `eslint-plugin-boundaries` (or
 `import/no-restricted-paths`), failing the lint job exactly as the Gradle task failed the build:
-`features/*` may import from `core/model`, `core/common`, `core/design-system`, `core/data`. A
-feature may **never** import `core/db`, `core/network`, or another feature. `core/model` imports
-nothing.
+`features/*` may import from `core/model`, `core/common`, `core/design-system`, `core/data`,
+`core/ocr`. A feature may **never** import `core/db`, `core/network`, or another feature.
+`core/model` imports nothing, and `core/ocr` imports only `core/model` and `core/common`.
 
 This is the same boundary as the Kotlin proposal and it exists for the same reason: it is what
 stops formatting logic and database row types leaking into components — the exact leak that makes
@@ -238,14 +242,17 @@ review conversation.
 
 export type PlayerId = string & { readonly __brand: 'PlayerId' };
 
-export type StatKey = 'ATK' | 'DEF' | 'CRIT' | 'HIT' | 'SPD';
+export type StatKey = 'HP' | 'ATK' | 'DEF' | 'CRIT' | 'HIT' | 'SPD';
 
 export interface Player {
   id: PlayerId; // stable server id — NOT the display name
   name: string;
+  level: number; // the game's Lv. — identity, never a stat (ADR-0023)
+  gameCode: string; // the game's #a984, stored without the sigil. NOT an identity
   rank: number; // absolute season rank, 1-based
   combatPower: number; // safe integer, < 2^53 (see §2.1)
-  score: number;
+  score: number; // the one field no screenshot supplies (ADR-0024)
+  hp: number;
   atk: number;
   def: number;
   critBp: number; // percent x 10_000. 58.4127% -> 584127
@@ -265,7 +272,11 @@ export const played = (h: HeadToHead): number => h.wins + h.losses;
 export type RosterSort = 'RANK' | 'COMBAT_POWER' | 'MY_WINS';
 ```
 
-Two notes.
+Three notes.
+
+`level` and `gameCode` are **not** stats and not identities (ADR-0023). Nothing sorts or compares
+by them, and `PlayerId` stays server-issued: adopting a code read off a screenshot as a key would
+make a mis-scan indistinguishable from a merge.
 
 `PlayerId` is a **branded string** — the closest TypeScript gets to Kotlin's `value class`. It is
 erased at runtime and costs nothing, but it stops a raw `string` (a name, a route param) being
@@ -288,12 +299,12 @@ model uses a server-issued stable id from day one, and it is what the route is k
 export type ShortUnit = 'BILLIONS' | 'MILLIONS' | 'SCIENTIFIC'; // "B" | "M" | "e9"
 
 export interface StatFormatter {
-  exact(value: number): string; // 2,418,904,113
+  exact(value: number): string; // 2.418.904.113
   short(value: number, unit: ShortUnit): string;
-  combatPowerShort(cp: number): string; // "3.08 M"
-  critExact(bp: number): string; // "71.2043 %"
-  critShort(bp: number): string; // "71.2%"
-  deltaPercent(mine: number, theirs: number): string; // "+31.2%"
+  combatPowerShort(cp: number): string; // "3,08 M"
+  critExact(bp: number): string; // "71,2043 %"
+  critShort(bp: number): string; // "71,2%"
+  deltaPercent(mine: number, theirs: number): string; // "+31,2%"
 }
 ```
 
@@ -310,11 +321,14 @@ Three things this platform must decide explicitly:
 - **Rounding.** Half-up, implemented in `core/common`, **not** `toFixed` — see §2.2 for the
   verified counterexample at the `9.995 B` boundary. Asserted by unit test at every boundary
   (`9.995 B`, `99.95 B`, `100 B`).
-- **Locale.** The prototype hardcodes `toLocaleString('en-US')`. `Intl.NumberFormat` is the right
-  API and Hermes ships an `Intl` implementation, but **coverage differs by platform and by ICU
-  availability in the build** — so Phase 0 verifies grouping output on a real Android device, not
-  in Node, and the formatter keeps a hand-rolled grouper as fallback. Proposal: format with the
-  user's locale (`expo-localization`), pin the tests to `en-US` so CI is deterministic.
+- **Separators.** Thousands are separated by a **dot** and decimals by a **comma**, matching the
+  game's own screens (ADR-0025). Both characters are _stated_ — `createStatFormatter` takes them —
+  rather than derived from a locale name: Hermes ships an `Intl` implementation but **coverage
+  differs by platform and by ICU availability in the build**, and a build missing the requested
+  locale formats under a default one instead of throwing. `Intl` is used only when its own grouping
+  character matches the one the app chose; otherwise the hand-rolled grouper takes over. The locale
+  argument survives because it still decides _where_ the groups fall, which is what `Intl` knows and
+  the fallback does not.
 - **Digit alignment.** The exact column is monospaced for visual alignment. JetBrains Mono handles
   it, and every numeric `<Text>` additionally sets `fontVariant: ['tabular-nums']` so a fallback
   font cannot make the column jitter mid-scroll.

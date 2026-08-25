@@ -63,16 +63,16 @@ describe('SortChip', () => {
 
 describe('StatRow', () => {
   it('shows the exact value and the rounded one — both, always', async () => {
-    await render(<StatRow label="ATK" exact="2,418,904,113" short="2.42 B" />);
-    expect(screen.getByText('2,418,904,113')).toBeTruthy();
-    expect(screen.getByText('2.42 B')).toBeTruthy();
+    await render(<StatRow label="ATK" exact="2.418.904.113" short="2,42 B" />);
+    expect(screen.getByText('2.418.904.113')).toBeTruthy();
+    expect(screen.getByText('2,42 B')).toBeTruthy();
   });
 
   it('is one accessibility stop, not three', async () => {
-    await render(<StatRow testID="row" label="ATK" exact="2,418,904,113" short="2.42 B" />);
+    await render(<StatRow testID="row" label="ATK" exact="2.418.904.113" short="2,42 B" />);
     const row = screen.getByTestId('row');
     expect(row.props.accessible).toBe(true);
-    expect(row.props.accessibilityLabel).toBe('ATK, 2,418,904,113');
+    expect(row.props.accessibilityLabel).toBe('ATK, 2.418.904.113');
   });
 });
 
@@ -155,15 +155,15 @@ describe('SearchField', () => {
 describe('CompareBar', () => {
   const props = {
     label: 'ATK',
-    mine: { exact: '1,184,530,912', short: '1.18 B', fraction: 0.49 },
-    theirs: { exact: '2,418,904,113', short: '2.42 B', fraction: 1 },
-    delta: '+104.2%',
+    mine: { exact: '1.184.530.912', short: '1,18 B', fraction: 0.49 },
+    theirs: { exact: '2.418.904.113', short: '2,42 B', fraction: 1 },
+    delta: '+104,2%',
     opponentAhead: true,
   };
 
   it('renders both representations of both sides', async () => {
     await render(<CompareBar {...props} />);
-    for (const text of ['1,184,530,912', '1.18 B', '2,418,904,113', '2.42 B']) {
+    for (const text of ['1.184.530.912', '1,18 B', '2.418.904.113', '2,42 B']) {
       expect(screen.getByText(text)).toBeTruthy();
     }
   });
@@ -171,13 +171,13 @@ describe('CompareBar', () => {
   it('says who leads in words, not only in colour', async () => {
     await render(<CompareBar {...props} testID="bar" />);
     expect(screen.getByTestId('bar').props.accessibilityLabel).toBe(
-      'ATK. You 1,184,530,912, them 2,418,904,113. they lead, +104.2%.',
+      'ATK. You 1.184.530.912, them 2.418.904.113. they lead, +104,2%.',
     );
     expect(screen.getByText('they lead')).toBeTruthy();
   });
 
   it('flips the verdict when you are ahead', async () => {
-    await render(<CompareBar {...props} opponentAhead={false} delta="-51.0%" />);
+    await render(<CompareBar {...props} opponentAhead={false} delta="-51,0%" />);
     expect(screen.getByText('you lead')).toBeTruthy();
   });
 });
@@ -187,15 +187,15 @@ describe('ViewerCard', () => {
     await render(
       <ViewerCard
         name="Krios"
-        combatPowerExact="2,145,880"
-        combatPowerShort="2.15 M"
+        combatPowerExact="2.145.880"
+        combatPowerShort="2,15 M"
         rank={9}
         score={1842}
       />,
     );
     expect(screen.getByText('Krios')).toBeTruthy();
-    expect(screen.getByText('2,145,880')).toBeTruthy();
-    expect(screen.getByText('2.15 M')).toBeTruthy();
+    expect(screen.getByText('2.145.880')).toBeTruthy();
+    expect(screen.getByText('2,15 M')).toBeTruthy();
     expect(screen.getByText('09')).toBeTruthy();
     expect(screen.getByText('Score 1842')).toBeTruthy();
   });

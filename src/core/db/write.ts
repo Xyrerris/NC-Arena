@@ -21,6 +21,7 @@ import { and, asc, desc, eq, gt, ne, or, sql } from 'drizzle-orm';
 import type { RosterSnapshot } from '../common';
 import {
   CRIT_BP_PER_PERCENT,
+  normaliseGameCode,
   normalisePlayerName,
   type PlayerDraft,
   type PlayerId,
@@ -40,8 +41,11 @@ import type { ArenaDatabase } from './queries';
  */
 const draftColumns = (draft: PlayerDraft) => ({
   name: normalisePlayerName(draft.name),
+  level: draft.level,
+  gameCode: normaliseGameCode(draft.gameCode),
   combatPower: draft.combatPower,
   score: draft.score,
+  hp: draft.hp,
   atk: draft.atk,
   def: draft.def,
   critBp: draft.critPercent * CRIT_BP_PER_PERCENT,
@@ -95,9 +99,12 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
           snapshot.players.map((player) => ({
             id: player.id,
             name: player.name,
+            level: player.level,
+            gameCode: player.gameCode,
             rank: player.rank,
             combatPower: player.combatPower,
             score: player.score,
+            hp: player.hp,
             atk: player.atk,
             def: player.def,
             critBp: player.critBp,

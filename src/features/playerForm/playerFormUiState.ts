@@ -13,10 +13,13 @@
  * non-negative integer typed into a box.
  */
 
+import type { ScannedField, StatSheetScan } from '@/core/ocr';
 import {
+  MAX_GAME_CODE_LENGTH,
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_DRAFT_NUMERIC_FIELDS,
   emptyPlayerDraft,
+  normaliseGameCode,
   type PlayerDraft,
   type PlayerDraftErrors,
   type PlayerDraftField,
@@ -57,8 +60,24 @@ export interface PlayerFormFieldSpec {
  */
 export const PLAYER_FORM_FIELDS: readonly PlayerFormFieldSpec[] = [
   { field: 'name', label: 'Name', numeric: false, maxLength: MAX_PLAYER_NAME_LENGTH },
+  { field: 'level', label: 'Level', hint: 'The Lv. beside the name.', numeric: true },
+  {
+    field: 'gameCode',
+    label: 'Game code',
+    hint: 'The #a984 beside the name. Optional — the # is added for you.',
+    numeric: false,
+    maxLength: MAX_GAME_CODE_LENGTH + 1,
+  },
   { field: 'combatPower', label: 'Combat power', numeric: true },
-  { field: 'score', label: 'Score', numeric: true },
+  {
+    field: 'score',
+    label: 'Score',
+    // The one field a screenshot cannot supply, said out loud: the game's profile panel
+    // does not show it, so a scan leaves this box exactly as it found it (ADR-0024).
+    hint: 'Not on the profile screen — type this one in.',
+    numeric: true,
+  },
+  { field: 'hp', label: 'HP', numeric: true },
   { field: 'atk', label: 'ATK', numeric: true },
   { field: 'def', label: 'DEF', numeric: true },
   {
@@ -78,8 +97,11 @@ export const PLAYER_FORM_FIELDS: readonly PlayerFormFieldSpec[] = [
  */
 export const emptyFormValues = (): PlayerFormValues => ({
   name: '',
+  level: '',
+  gameCode: '',
   combatPower: '',
   score: '',
+  hp: '',
   atk: '',
   def: '',
   critPercent: '',
@@ -89,8 +111,11 @@ export const emptyFormValues = (): PlayerFormValues => ({
 
 export const toFormValues = (draft: PlayerDraft): PlayerFormValues => ({
   name: draft.name,
+  level: String(draft.level),
+  gameCode: draft.gameCode,
   combatPower: String(draft.combatPower),
   score: String(draft.score),
+  hp: String(draft.hp),
   atk: String(draft.atk),
   def: String(draft.def),
   critPercent: String(draft.critPercent),
@@ -99,13 +124,23 @@ export const toFormValues = (draft: PlayerDraft): PlayerFormValues => ({
 });
 
 /**
- * Group separators and spaces are stripped before parsing, because every number this app
- * *displays* carries them — "2,418,904,113" is what the roster shows, so it is what gets
- * pasted back in. This is safe only while the app is English-only (open decision 9): in a
- * locale where the comma is a decimal separator, stripping it turns 1,5 into 15.
+ * A separator only counts as a group separator when it is followed by **exactly three
+ * digits**, and the app's own is a dot (ADR-0025).
+ *
+ * Stripping every `.` and `,` unconditionally was the obvious version and it is wrong in a
+ * way nobody would notice: `1.5` would arrive as `15`, a perfectly valid stat that the
+ * validator has no reason to reject. Requiring the run of three is what keeps a mistyped
+ * decimal a *visible* rejection — `1.5` parses as 1.5 and `validatePlayerDraft` says "enter
+ * a whole number" — while `2.418.904.113`, which is what the roster displays and therefore
+ * what gets pasted back in, is read as the integer it is.
+ *
+ * Both punctuation marks are accepted, not just the app's own: a value copied out of
+ * somewhere else is still a number the user means.
  */
+const GROUP_SEPARATOR = /[.,](?=\d{3}(?:\D|$))/g;
+
 const parseStat = (raw: string): number => {
-  const cleaned = raw.replace(/[\s,]/g, '');
+  const cleaned = raw.replace(/[\s\u00a0]/g, '').replace(GROUP_SEPARATOR, '');
   if (cleaned === '') return 0;
   // `Number` rather than `parseInt`: parseInt("12abc") is 12, which would silently accept
   // a typo. NaN here becomes a validation error the user can see and fix.
@@ -113,11 +148,77 @@ const parseStat = (raw: string): number => {
 };
 
 export const toDraftValues = (values: PlayerFormValues): PlayerDraft => {
-  const draft: PlayerDraft = { ...emptyPlayerDraft(), name: values.name };
+  const draft: PlayerDraft = {
+    ...emptyPlayerDraft(),
+    name: values.name,
+    // Normalised on the way *out* of the form rather than on every keystroke, so a user
+    // who types `#` sees the `#` they typed instead of watching it disappear.
+    gameCode: normaliseGameCode(values.gameCode),
+  };
   for (const field of PLAYER_DRAFT_NUMERIC_FIELDS) {
     draft[field] = parseStat(values[field]);
   }
   return draft;
+};
+
+/**
+ * A scan's values, as form strings — and **only** the fields it actually read.
+ *
+ * Merging rather than replacing is what makes a partial scan useful: a screenshot that
+ * gave up everything but the name leaves the name the user already typed alone, instead of
+ * blanking it in exchange for the eight stats it did find. `score` is never in `values` at
+ * all (see `ScannedField`), so it is never touched.
+ */
+export const applyScan = (values: PlayerFormValues, scan: StatSheetScan): PlayerFormValues => {
+  const next = { ...values };
+  for (const field of scan.found) {
+    const read = scan.values[field];
+    if (read === undefined) continue;
+    next[field] = String(read);
+  }
+  return next;
+};
+
+/**
+ * The screenshot import's own state, beside the form rather than inside it (ADR-0024).
+ *
+ * It is a separate axis because the two really are independent: a scan can be running
+ * while the user edits a field, and a scan that failed must not clear the values the last
+ * one filled in. Folding it into `PlayerFormUiState['kind']` would have made "scanning"
+ * a state in which the form does not exist.
+ */
+export type StatScanUiState =
+  | { kind: 'idle' }
+  /** The picker is open, or the image is being read. One state: the user cannot tell them apart. */
+  | { kind: 'scanning' }
+  /** A scan landed. `note` says how much of it did, because a partial read looks like a full one. */
+  | { kind: 'applied'; note: string }
+  | { kind: 'failed'; message: string };
+
+/** The control that opens the picker. */
+export const SCAN_LABEL = 'Fill from screenshot';
+
+export const SCAN_HINT =
+  'Reads a profile screenshot from your photos. Nothing is saved until you press save.';
+
+const FIELD_LABELS: Readonly<Record<PlayerDraftField, string>> = Object.fromEntries(
+  PLAYER_FORM_FIELDS.map((spec) => [spec.field, spec.label]),
+) as Record<PlayerDraftField, string>;
+
+/**
+ * What the scan managed, in one line the user can act on.
+ *
+ * It names what is *missing* rather than what was found, because the found values are
+ * already visible in the boxes above it — and a scan that quietly dropped SPD is exactly
+ * the failure a "read 9 fields" success message would hide.
+ */
+export const scanNote = (
+  found: readonly ScannedField[],
+  missing: readonly ScannedField[],
+): string => {
+  if (missing.length === 0) return 'Every field was read. Check them against the picture.';
+  const names = missing.map((field) => FIELD_LABELS[field]).join(', ');
+  return `Read ${found.length} of ${found.length + missing.length}. Still to type: ${names}.`;
 };
 
 export type PlayerFormUiState =
@@ -137,10 +238,12 @@ export type PlayerFormUiState =
       message: string | null;
       /** True between pressing Save and the write returning. Blocks a double submit. */
       isSaving: boolean;
+      scan: StatScanUiState;
     };
 
 export type PlayerFormEvent =
   | { type: 'change'; field: PlayerDraftField; value: string }
+  | { type: 'scan' }
   | { type: 'submit' }
   | { type: 'delete' };
 

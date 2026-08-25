@@ -14,9 +14,9 @@ import { color, radius, space } from './tokens';
 
 export interface StatRowProps {
   label: string;
-  /** `"2,418,904,113"` — the whole number, never ellipsised. */
+  /** `"2.418.904.113"` — the whole number, never ellipsised. */
   exact: string;
-  /** `"2.42 B"` */
+  /** `"2,42 B"` */
   short: string;
   testID?: string;
 }

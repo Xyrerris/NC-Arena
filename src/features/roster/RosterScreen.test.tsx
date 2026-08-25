@@ -36,9 +36,12 @@ jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 const player = (id: string, name: string, rank: number, combatPower: number): Player => ({
   id: asPlayerId(id),
   name,
+  level: 100 + rank,
+  gameCode: `a${rank}`,
   rank,
   combatPower,
   score: 1000 - rank,
+  hp: 5_000_000 + rank,
   atk: 1_000_000 + rank,
   def: 2_000_000 + rank,
   critBp: 500_000 + rank,
@@ -177,14 +180,14 @@ describe('RosterScreen', () => {
     it('shows the viewer once as a hero card and once as a row (ADR-0008)', async () => {
       await renderRoster(repository);
       expect(screen.getByTestId('viewer-card')).toBeTruthy();
-      expect(screen.getByText('1,000,000')).toBeTruthy();
-      expect(screen.getByText('1.00 M')).toBeTruthy();
+      expect(screen.getByText('1.000.000')).toBeTruthy();
+      expect(screen.getByText('1,00 M')).toBeTruthy();
       expect(renderedNames().filter((name) => name === 'Aurel')).toHaveLength(1);
     });
 
     it('renders the exact combat power, grouped, in every row', async () => {
       await renderRoster(repository);
-      expect(screen.getByText('CP 4,000,000')).toBeTruthy();
+      expect(screen.getByText('CP 4.000.000')).toBeTruthy();
     });
 
     it('navigates on the stable id rather than the name (defect 2)', async () => {

@@ -15,7 +15,7 @@ import { color, radius, space } from './tokens';
 
 export interface ViewerCardProps {
   name: string;
-  /** Pre-formatted: `"2,145,880"` and `"2.15 M"`. */
+  /** Pre-formatted: `"2.145.880"` and `"2,15 M"`. */
   combatPowerExact: string;
   combatPowerShort: string;
   rank: number;

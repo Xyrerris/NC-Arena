@@ -22,16 +22,16 @@ export const isShortUnit = (value: unknown): value is ShortUnit =>
   value === 'BILLIONS' || value === 'MILLIONS' || value === 'SCIENTIFIC';
 
 export interface StatFormatter {
-  /** `2418904113` -> `"2,418,904,113"` */
+  /** `2418904113` -> `"2.418.904.113"` */
   exact(value: number): string;
   short(value: number, unit: ShortUnit): string;
-  /** `3084221` -> `"3.08 M"` */
+  /** `3084221` -> `"3,08 M"` */
   combatPowerShort(cp: number): string;
-  /** `712043` -> `"71.2043 %"` */
+  /** `712043` -> `"71,2043 %"` */
   critExact(bp: number): string;
-  /** `712043` -> `"71.2%"` */
+  /** `712043` -> `"71,2%"` */
   critShort(bp: number): string;
-  /** `(1184530912, 2418904113)` -> `"+104.2%"` */
+  /** `(1184530912, 2418904113)` -> `"+104,2%"` */
   deltaPercent(mine: number, theirs: number): string;
 }
 
@@ -52,33 +52,22 @@ const ONE_HUNDRED_BILLION = 100 * pow10(BILLION_POW);
  */
 const UNDEFINED_DELTA = '—';
 
-interface Separators {
+export interface Separators {
   readonly group: string;
   readonly decimal: string;
 }
 
 /**
- * Hermes ships an `Intl` implementation, but its coverage depends on the ICU data compiled
- * into the build — so grouping is probed at construction rather than assumed (§6). When
- * `Intl` groups correctly it is used, because it knows the locales whose grouping is not
- * in threes. When it does not, the hand-rolled grouper below takes over and the product
- * still renders a grouped number instead of a wall of digits.
+ * The app's punctuation, matching the game's own screens: `11.724.329.467` (ADR-0025).
+ *
+ * Both characters are stated rather than discovered, and they are stated *together*. The
+ * pair has to be coherent: `short(2_418_904_113, 'MILLIONS')` groups its thousands and
+ * `short(2_418_904_113, 'BILLIONS')` prints two decimals, so a build that used one glyph
+ * for both would put `2.419 M` and `2.42 B` on the same screen meaning different things.
+ * One decision made here, rather than two answers read out of whatever ICU data a
+ * particular Hermes build happens to carry.
  */
-const probeSeparators = (locale: string): Separators => {
-  const fallback: Separators = { group: ',', decimal: '.' };
-  try {
-    const parts = new Intl.NumberFormat(locale, { minimumFractionDigits: 1 }).formatToParts(
-      1234567.5,
-    );
-    return {
-      group: parts.find((part) => part.type === 'group')?.value ?? fallback.group,
-      decimal: parts.find((part) => part.type === 'decimal')?.value ?? fallback.decimal,
-    };
-  } catch {
-    // No Intl at all, or an unsupported locale. Both land on en-US conventions.
-    return fallback;
-  }
-};
+export const DOT_SEPARATORS: Separators = { group: '.', decimal: ',' };
 
 const handRolledGroup = (whole: number, separator: string): string => {
   const digits = String(whole);
@@ -90,12 +79,28 @@ const handRolledGroup = (whole: number, separator: string): string => {
   return out;
 };
 
+/**
+ * Hermes ships an `Intl` implementation, but its coverage depends on the ICU data compiled
+ * into the build — so grouping is probed at construction rather than assumed (§6).
+ *
+ * `Intl` is used only when it both groups *and* groups with the separator this app has
+ * decided on. That second condition is new with ADR-0025 and is the one that matters now:
+ * a build whose ICU data is missing the requested locale does not throw, it silently
+ * formats under a default one — which used to be indistinguishable from success, and would
+ * now put commas on a screen the rest of the app spells with dots.
+ *
+ * When `Intl` is used it is because it knows the locales whose grouping is not in threes.
+ * When it is not, the hand-rolled grouper takes over and the product still renders a
+ * grouped number instead of a wall of digits.
+ */
 const createGrouper = (locale: string, separators: Separators): ((whole: number) => string) => {
   try {
     const intl = new Intl.NumberFormat(locale, { useGrouping: true, maximumFractionDigits: 0 });
-    // The probe is the Phase 0 device check expressed in code: if grouping is missing from
-    // the build's ICU data, `format(1234567)` comes back as the bare digits.
-    if (intl.format(1234567) !== '1234567') {
+    const probe = intl.format(1234567);
+    // The Phase 0 device check expressed in code, now with the separator checked too: no
+    // grouping at all comes back as the bare digits, and the wrong grouping comes back
+    // grouped by a character this app did not choose.
+    if (probe !== '1234567' && probe === handRolledGroup(1234567, separators.group)) {
       return (whole) => intl.format(whole);
     }
   } catch {
@@ -104,8 +109,10 @@ const createGrouper = (locale: string, separators: Separators): ((whole: number)
   return (whole) => handRolledGroup(whole, separators.group);
 };
 
-export const createStatFormatter = (locale = 'en-US'): StatFormatter => {
-  const separators = probeSeparators(locale);
+export const createStatFormatter = (
+  locale = 'it-IT',
+  separators: Separators = DOT_SEPARATORS,
+): StatFormatter => {
   const group = createGrouper(locale, separators);
 
   /** Renders a scaled integer as a fixed-point decimal string. Exact by construction. */
@@ -144,7 +151,7 @@ export const createStatFormatter = (locale = 'en-US'): StatFormatter => {
         return `${fixed(value, MILLION_POW, 0)} M`;
       case 'BILLIONS': {
         // Thresholds are applied to the *unrounded* value, exactly as the prototype does.
-        // That is what makes 9_995_000_000 a two-decimal case, and therefore "10.00 B" —
+        // That is what makes 9_995_000_000 a two-decimal case, and therefore "10,00 B" —
         // the boundary at which toFixed answers "9.99".
         const magnitude = value < 0 ? -value : value;
         const decimals = magnitude >= ONE_HUNDRED_BILLION ? 0 : magnitude >= TEN_BILLION ? 1 : 2;
@@ -188,5 +195,8 @@ export const createStatFormatter = (locale = 'en-US'): StatFormatter => {
   return { exact, short, combatPowerShort, critExact, critShort, deltaPercent };
 };
 
-/** The default formatter. Locale is pinned so CI output is deterministic (§6). */
-export const statFormatter = createStatFormatter('en-US');
+/**
+ * The default formatter. Locale and separators are both pinned, so the output is the same
+ * on CI, on a device with full ICU data and on one without (§6, ADR-0025).
+ */
+export const statFormatter = createStatFormatter();

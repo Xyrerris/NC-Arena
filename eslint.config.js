@@ -80,6 +80,7 @@ module.exports = defineConfig([
         { type: 'core-db', pattern: 'src/core/db' },
         { type: 'core-network', pattern: 'src/core/network' },
         { type: 'core-prefs', pattern: 'src/core/prefs' },
+        { type: 'core-ocr', pattern: 'src/core/ocr' },
         { type: 'core-testing', pattern: 'src/core/testing' },
         { type: 'app', pattern: 'src/app' },
       ],
@@ -111,6 +112,11 @@ module.exports = defineConfig([
             },
             { from: { element: { type: 'core-prefs' } }, allow: to('core-model', 'core-common') },
 
+            // core/ocr reads a screenshot into a draft and stops there. It may not reach
+            // core/data: a scan is a suggestion the user still has to accept, and a module
+            // that could write would make "scanned" and "saved" the same act (ADR-0024).
+            { from: { element: { type: 'core-ocr' } }, allow: to('core-model', 'core-common') },
+
             // core/data is the only place that knows both the database and the network
             // exist.
             {
@@ -121,7 +127,7 @@ module.exports = defineConfig([
             // Features may not reach the database or the network.
             {
               from: { element: { type: 'feature' } },
-              allow: to('core-model', 'core-common', 'core-design-system', 'core-data'),
+              allow: to('core-model', 'core-common', 'core-design-system', 'core-data', 'core-ocr'),
             },
             // ...and may not reach *each other*. Matching the captured folder name to the
             // importer's is what makes a feature a unit rather than a flat namespace.
@@ -147,6 +153,7 @@ module.exports = defineConfig([
                 'core-design-system',
                 'core-data',
                 'core-db',
+                'core-ocr',
                 'core-prefs',
               ),
             },

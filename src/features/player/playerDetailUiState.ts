@@ -10,6 +10,7 @@
 import { statFormatter, type ShortUnit } from '@/core/common';
 import {
   STAT_KEYS,
+  gameCodeLabel,
   played,
   rawStat,
   type HeadToHead,
@@ -28,9 +29,9 @@ export const DETAIL_TABS: readonly { value: PlayerDetailTab; label: string }[] =
 export interface StatRowUi {
   key: StatKey;
   label: string;
-  /** `"2,418,904,113"` or `"71.2043 %"`. Never ellipsised — it is the product's promise. */
+  /** `"2.418.904.113"` or `"71,2043 %"`. Never ellipsised — it is the product's promise. */
   exact: string;
-  /** `"2.42 B"` or `"71.2%"`. */
+  /** `"2,42 B"` or `"71,2%"`. */
   short: string;
 }
 
@@ -46,7 +47,7 @@ export interface CompareRowUi {
   label: string;
   mine: CompareSideUi;
   theirs: CompareSideUi;
-  /** `"+104.2%"`, or `"—"` where your value is zero and the ratio is undefined. */
+  /** `"+104,2%"`, or `"—"` where your value is zero and the ratio is undefined. */
   delta: string;
   opponentAhead: boolean;
 }
@@ -69,6 +70,15 @@ export interface PlayerHeaderUi {
   name: string;
   /** `"RANK #09"` — zero-padded, as the prototype pads it. */
   rankLabel: string;
+  /**
+   * `"LV. 488 · #a984"`, or just one half of it, or null.
+   *
+   * One string rather than two fields, because the two are read together and neither is
+   * worth a line of its own: the game prints them on one row beside the name, and a header
+   * that stacked "level" and "code" as separate labelled rows would give an identifier
+   * nobody looks up the same weight as the stats underneath it.
+   */
+  identityLabel: string | null;
   combatPowerExact: string;
   combatPowerShort: string;
 }
@@ -128,9 +138,23 @@ export const toStatRows = (player: Player, unit: ShortUnit): StatRowUi[] =>
     short: shortOf(player, key, unit),
   }));
 
+/**
+ * Level 0 is "nobody recorded one", not "a brand new account": the column defaults to 0 for
+ * every row written before the field existed (ADR-0023), so rendering it would put `LV. 0`
+ * on players whose level the app simply never knew.
+ */
+const identityLabel = (player: Player): string | null => {
+  const parts = [
+    player.level > 0 ? `LV. ${player.level}` : null,
+    gameCodeLabel(player.gameCode) === '' ? null : gameCodeLabel(player.gameCode),
+  ].filter((part): part is string => part !== null);
+  return parts.length === 0 ? null : parts.join(' · ');
+};
+
 export const toPlayerHeaderUi = (player: Player): PlayerHeaderUi => ({
   name: player.name,
   rankLabel: `RANK #${String(player.rank).padStart(2, '0')}`,
+  identityLabel: identityLabel(player),
   combatPowerExact: statFormatter.exact(player.combatPower),
   combatPowerShort: statFormatter.combatPowerShort(player.combatPower),
 });

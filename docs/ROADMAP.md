@@ -1,14 +1,19 @@
 # Arena Scout (React Native) — Roadmap
 
 **Status:** Phases 0–4 implemented — **the demoable milestone is reached** — plus **Phase 4.5**
-(the offline user-data work in ADR-0020) and **Phase 4.6** (ADR-0022), both out-of-sequence scope
-rather than phases that were planned. The app is no longer read-only: players can be added, edited
-and removed on device, a sync no longer takes them, and the user can say which player is _them_ and
-keep their own stats current.
+(the offline user-data work in ADR-0020), **Phase 4.6** (ADR-0022) and **Phase 4.7** (ADR-0023 and
+ADR-0024), all out-of-sequence scope rather than phases that were planned. The app is no longer
+read-only: players can be added, edited and removed on device, a sync no longer takes them, and the
+user can say which player is _them_ and keep their own stats current.
+Phase 4.7 widened the player with HP, a level and the game's own player code, and made a screenshot
+of the game's profile screen fill the add-player form. Its parser and the two ports under it live in
+`core/ocr` and are tested in Node — but **the OCR itself has never run**: both packages are native,
+nothing in CI builds them, and so the scan control is unproven on a device for the same reason
+ADR-0017's screenshot gate is.
 The Maestro screenshot gate still needs an emulator (ADR-0017), and four phases of visual
 promises are now stacked behind it: Phase 1's component baselines, Phase 3's rendered roster
-order, Phase 4's unclipped-at-200 % criterion, and the two form screens of 4.5 and 4.6. Phase 5 is next and is gated on open
-decision 1. Exit criteria that are _not_ met are marked ⚠️ in each phase below rather than
+order, Phase 4's unclipped-at-200 % criterion, and the form screens of 4.5, 4.6 and 4.7. Phase 5 is
+next and is gated on open decision 1. Exit criteria that are _not_ met are marked ⚠️ in each phase below rather than
 quietly ticked. Open decision 5 (AA contrast) is implemented per ARCHITECTURE.md §2.4 and
 still wants design sign-off (ADR-0013); open decision 8 (season) is half-answered by
 ADR-0018; the delta direction and the tie rule want a product answer (ADR-0019).

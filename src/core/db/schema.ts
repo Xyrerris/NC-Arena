@@ -15,13 +15,22 @@ export const players = sqliteTable(
     /** Stable server id, never the display name (§5). */
     id: text('id').primaryKey(),
     name: text('name').notNull(),
+    /**
+     * Account level as the game prints it. Defaults to 0 so the migration can add the
+     * column to a database written before it existed without inventing a level for rows
+     * whose level nobody ever recorded — the same reasoning `origin` uses below.
+     */
+    level: integer('level').notNull().default(0),
+    /** The game's `#a984`, stored without the `#`. Empty when nobody supplied one. */
+    gameCode: text('game_code').notNull().default(''),
     /** Absolute season rank, 1-based. Stays absolute when the list is sorted by CP or wins. */
     rank: integer('rank').notNull(),
     combatPower: integer('combat_power').notNull(),
     score: integer('score').notNull(),
+    hp: integer('hp').notNull().default(0),
     atk: integer('atk').notNull(),
     def: integer('def').notNull(),
-    /** Percent x 10_000. 58.4127% -> 584127 (§2.2). */
+    /** Percent x 10_000. 58,4127% -> 584127 (§2.2). */
     critBp: integer('crit_bp').notNull(),
     hit: integer('hit').notNull(),
     spd: integer('spd').notNull(),
