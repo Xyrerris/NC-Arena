@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { err, ok, type RosterSnapshot, type RosterSource } from '@/core/common';
+import { err, ok, type Result, type RosterSnapshot, type RosterSource } from '@/core/common';
 import { ArenaDataProvider, type RosterRepository } from '@/core/data';
 import { asPlayerId, type Player, type PlayerId } from '@/core/model';
 import { createStatScanner, type ScannedLine, type StatScanner } from '@/core/ocr';
@@ -407,15 +407,47 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     { text: 'SPD 1014675713', frame: { left: 1398, top: 556, right: 1610, bottom: 590 } },
   ];
 
-  const scannerReading = (lines: ScannedLine[]): StatScanner =>
+  const ASSET_ID = 'content://media/external/images/media/12345';
+
+  /**
+   * A photo library that hands over one screenshot and remembers what it was told to
+   * delete. `deleted` is what makes "the picture is gone" an assertion rather than a
+   * sentence in the note (ADR-0026).
+   */
+  const libraryHolding = (
+    assetId: string | null,
+    onDelete: () => Result<void> = () => ok(undefined),
+  ) => {
+    const deleted: string[] = [];
+    return {
+      deleted,
+      source: {
+        name: 'fake',
+        pick: async () => ok({ uri: 'file:///cache/scan.png', assetId }),
+        discardCopy: async () => ok(undefined),
+        discardOriginal: async (id: string) => {
+          const outcome = onDelete();
+          if (outcome.ok) deleted.push(id);
+          return outcome;
+        },
+      },
+    };
+  };
+
+  const scannerReading = (lines: ScannedLine[], library = libraryHolding(ASSET_ID)): StatScanner =>
     createStatScanner({
-      source: { name: 'fake', pick: async () => ok('file:///cache/scan.png') },
+      source: library.source,
       recogniser: { name: 'fake', recognise: async () => ok(lines) },
     });
 
   const scannerFailing = (message: string): StatScanner =>
     createStatScanner({
-      source: { name: 'fake', pick: async () => err(new Error(message)) },
+      source: {
+        name: 'fake',
+        pick: async () => err(new Error(message)),
+        discardCopy: async () => ok(undefined),
+        discardOriginal: async () => ok(undefined),
+      },
       recogniser: { name: 'fake', recognise: async () => ok([]) },
     });
 
@@ -498,6 +530,52 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     const note = await screen.findByTestId('form-scan-note');
     expect(note.props.children).toContain('Name');
     expect(screen.getByTestId('form-field-name').props.value).toBe('');
+  });
+
+  it('confirms the load and reports the screenshot gone, once it is', async () => {
+    const library = libraryHolding(ASSET_ID);
+    await renderScanning(scannerReading(SHEET, library));
+
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+
+    const note = await screen.findByTestId('form-scan-note');
+    expect(note.props.children).toBe(
+      'Stats loaded — every field was read. The screenshot has been deleted.',
+    );
+    // The note is not taken at its word: the library says it happened.
+    expect(library.deleted).toEqual([ASSET_ID]);
+  });
+
+  it('says the screenshot survived when the deletion was refused', async () => {
+    // The stats are good and the picture is still there. Reporting the first without the
+    // second would be the app claiming something it did not do.
+    const library = libraryHolding(ASSET_ID, () => err(new Error('The user said no.')));
+    await renderScanning(scannerReading(SHEET, library));
+
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+
+    const note = await screen.findByTestId('form-scan-note');
+    expect(note.props.children).toContain('still in your photos');
+    expect(library.deleted).toEqual([]);
+    expect(screen.getByTestId('form-field-name').props.value).toBe('Deus');
+  });
+
+  it('keeps the screenshot when the scan found nothing to load', async () => {
+    const library = libraryHolding(ASSET_ID);
+    const scanner = createStatScanner({
+      source: library.source,
+      recogniser: {
+        name: 'fake',
+        recognise: async () =>
+          ok([{ text: 'Sunset', frame: { left: 0, top: 0, right: 9, bottom: 9 } }]),
+      },
+    });
+    await renderScanning(scanner);
+
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+
+    await screen.findByTestId('form-scan-error');
+    expect(library.deleted).toEqual([]);
   });
 
   it('shows the picker failure rather than a generic shrug', async () => {

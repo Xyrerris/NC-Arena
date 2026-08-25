@@ -178,7 +178,7 @@ export const usePlayerForm = ({
       return;
     }
 
-    const sheet = result.value;
+    const { sheet, screenshot } = result.value;
     setValues((current) => applyScan(current, sheet));
     // Every scanned field's stale rejection goes with it: the value under the message has
     // just been replaced, so the message describes something that is no longer there.
@@ -187,7 +187,7 @@ export const usePlayerForm = ({
       for (const field of sheet.found) delete next[field];
       return next;
     });
-    setScan({ kind: 'applied', note: scanNote(sheet.found, sheet.missing) });
+    setScan({ kind: 'applied', note: scanNote(sheet.found, sheet.missing, screenshot) });
   }, [isClosing, scanner]);
 
   const remove = useCallback(() => {

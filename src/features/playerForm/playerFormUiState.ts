@@ -13,7 +13,7 @@
  * non-negative integer typed into a box.
  */
 
-import type { ScannedField, StatSheetScan } from '@/core/ocr';
+import type { ScannedField, ScreenshotOutcome, StatSheetScan } from '@/core/ocr';
 import {
   MAX_GAME_CODE_LENGTH,
   MAX_PLAYER_NAME_LENGTH,
@@ -198,27 +198,53 @@ export type StatScanUiState =
 /** The control that opens the picker. */
 export const SCAN_LABEL = 'Fill from screenshot';
 
+/**
+ * What the control is about to do, said **before** it is pressed — including the deleting,
+ * because a picture removed from someone's photo library is not something to mention
+ * afterwards (ADR-0026).
+ */
 export const SCAN_HINT =
-  'Reads a profile screenshot from your photos. Nothing is saved until you press save.';
+  'Reads a profile screenshot from your photos and then deletes it. Nothing is saved to ' +
+  'the roster until you press save.';
 
 const FIELD_LABELS: Readonly<Record<PlayerDraftField, string>> = Object.fromEntries(
   PLAYER_FORM_FIELDS.map((spec) => [spec.field, spec.label]),
 ) as Record<PlayerDraftField, string>;
 
 /**
+ * What became of the picture, in the user's terms.
+ *
+ * Every outcome is stated, including the two where the screenshot survived. The control
+ * promises to delete it, so silence after a failed deletion would be the app appearing to
+ * have done something it did not — and "check your gallery" is not a job to leave to the
+ * person who trusted the promise (ADR-0026).
+ */
+const SCREENSHOT_NOTES: Readonly<Record<ScreenshotOutcome, string>> = {
+  DELETED: 'The screenshot has been deleted.',
+  COPY_ONLY: 'The screenshot is still in your photos — this app could not identify it there.',
+  KEPT: 'The screenshot is still in your photos.',
+};
+
+/**
  * What the scan managed, in one line the user can act on.
  *
- * It names what is *missing* rather than what was found, because the found values are
- * already visible in the boxes above it — and a scan that quietly dropped SPD is exactly
- * the failure a "read 9 fields" success message would hide.
+ * It opens by confirming the load, because that is the question being asked at the moment
+ * the picker closes and nine boxes change at once. It then names what is *missing* rather
+ * than what was found — the found values are already visible in the boxes above it, and a
+ * scan that quietly dropped SPD is exactly the failure a "read 9 fields" success message
+ * would hide.
  */
 export const scanNote = (
   found: readonly ScannedField[],
   missing: readonly ScannedField[],
+  screenshot: ScreenshotOutcome,
 ): string => {
-  if (missing.length === 0) return 'Every field was read. Check them against the picture.';
-  const names = missing.map((field) => FIELD_LABELS[field]).join(', ');
-  return `Read ${found.length} of ${found.length + missing.length}. Still to type: ${names}.`;
+  const loaded =
+    missing.length === 0
+      ? 'Stats loaded — every field was read.'
+      : `Stats loaded — ${found.length} of ${found.length + missing.length} fields. ` +
+        `Still to type: ${missing.map((field) => FIELD_LABELS[field]).join(', ')}.`;
+  return `${loaded} ${SCREENSHOT_NOTES[screenshot]}`;
 };
 
 export type PlayerFormUiState =

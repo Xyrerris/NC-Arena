@@ -15,8 +15,14 @@
  */
 
 export { deviceStatScanner } from './deviceStatScanner';
-export type { ImageSource, TextRecogniser } from './ports';
-export { createStatScanner, type StatScanner, type StatScannerDeps } from './statScanner';
+export type { ImageSource, PickedImage, TextRecogniser } from './ports';
+export {
+  createStatScanner,
+  type ScreenshotOutcome,
+  type StatScanResult,
+  type StatScanner,
+  type StatScannerDeps,
+} from './statScanner';
 export {
   SCANNED_FIELDS,
   parseStatSheet,

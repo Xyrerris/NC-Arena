@@ -207,10 +207,11 @@ src/
                             both the database and the network exist.
   core/network/             DTOs (Zod), API client, DTO->domain mappers.
   core/prefs/               MMKV-backed preferences.
-  core/ocr/                 Reads a player's stats off a game screenshot (ADR-0024).
-                            Pure parser + two ports (pick an image, recognise text) +
-                            their device adapters. May not reach core/data: a scan is a
-                            suggestion the user still has to accept.
+  core/ocr/                 Reads a player's stats off a game screenshot (ADR-0024), and
+                            deletes it afterwards (ADR-0026). Pure parser + two ports
+                            (the photo library, text recognition) + their device
+                            adapters. May not reach core/data: a scan is a suggestion the
+                            user still has to accept.
   core/testing/             Fakes, in-memory db factory, render helpers.
 
   features/roster/          RosterScreen, useRoster, roster UI types.

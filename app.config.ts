@@ -49,6 +49,22 @@ const config: ExpoConfig = {
       },
     ],
     [
+      // ADR-0026. Write access, because the app deletes the screenshot once its stats are
+      // in the form. Read access comes with it on Android and is not separable; the app
+      // never browses the library, it only removes the one picture the user handed over.
+      'expo-media-library',
+      {
+        photosPermission:
+          'Arena Scout needs access to your photos to read a screenshot of the game.',
+        savePhotosPermission:
+          'Arena Scout deletes the screenshot it just read, so a picture you no longer ' +
+          'need is not left behind.',
+        // The parser reads text, never where a picture was taken. Off, so the app cannot
+        // ask for a location permission it has no use for.
+        isAccessMediaLocationEnabled: false,
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         backgroundColor: '#07100d',

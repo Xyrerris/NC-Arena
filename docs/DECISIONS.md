@@ -1184,3 +1184,68 @@ data for a reason that is about the app rather than about the value.
   of the locale name is the whole of Decision 1 and would otherwise go untested.
 - **No migration, and nothing stored changed.** Punctuation is a rendering decision; the columns hold
   integers and basis points exactly as they did.
+
+---
+
+## ADR-0026 — The scan says what it loaded, and the screenshot does not survive it
+
+**Date:** 2026-08-25 · **Status:** accepted · **Phase:** 4.7
+
+**Context.** ADR-0024 shipped a scan whose only feedback named what it had _missed_ — the found
+values being visible in the boxes above it. In use that reads as a complaint rather than a
+confirmation: nine fields change at once and the one sentence on screen talks about the tenth. And
+a screenshot taken solely to be imported has no reason to stay in the photo library afterwards.
+
+Deleting somebody's photo is not a small feature. It was asked for explicitly and confirmed
+explicitly; the decisions below are about doing it honestly rather than about whether to do it.
+
+**Decision 1 — the note leads with the confirmation.** "Stats loaded — every field was read." or
+"Stats loaded — 9 of 10 fields. Still to type: Score." The gaps are still named, for the reason
+ADR-0024 gives: a scan that quietly dropped SPD looks identical to a complete one. What changed is
+that the sentence now answers the question actually being asked at the moment the picker closes.
+
+An `Alert` was rejected. It would cover the form at exactly the moment the user wants to check the
+values that just appeared, and it takes the list of missing fields away with it when dismissed.
+
+**Decision 2 — the copy and the original are two different things, and the port says so.** The
+picker does not hand over the photo in the library; it hands over a **copy** it made in the app's
+cache. `PickedImage` carries both — `uri` for the copy, `assetId` for the original — and
+`ImageSource` grew `discardCopy` and `discardOriginal` rather than one `delete`. Collapsing them
+would have made "tidy up after yourself" and "destroy the user's picture" the same call, which is
+the kind of thing that gets done by accident once and cannot be undone.
+
+`assetId` is null when the user browsed the filesystem directly or granted access to selected photos
+only. That is a normal outcome, not a failure: the screenshot is still perfectly readable, it just
+cannot be tidied away, and the note says so.
+
+**Decision 3 — the original goes only after a read that produced stats.** The working copy is
+dropped on every path, because it is the app's litter. The original survives a cancelled picker, a
+recogniser failure, and a picture that held no stat sheet. That last one matters most: a screenshot
+the scan could not read is a screenshot the user still needs — to try again, or to type from — and
+deleting it would turn a recoverable disappointment into a lost picture. It is the evidence.
+
+**Decision 4 — write permission is requested at the moment of deleting, not at the moment of
+picking.** A user whose screenshot could not be read is never asked to hand over the right to delete
+it. A permission asked for next to the act it is for is one the user can actually reason about.
+
+**Decision 5 — every outcome is printed, including the two where the picture survived.**
+`ScreenshotOutcome` has three values and no `'unknown'`. The control promises deletion, so silence
+after a refusal would be the app appearing to have done something it did not — and "go and check
+your gallery" is not a job to hand to the person who trusted the promise. `KEPT` covers a denied
+permission, a declined system dialog and an error alike, because the user's next move is the same
+for all three.
+
+**Consequences.**
+
+- **The hint warns before the fact, not after.** The control's caption reads "Reads a profile
+  screenshot from your photos and then deletes it" — a destructive consequence belongs in front of
+  the button that causes it.
+- **Android asks its own confirmation** from API 30 on, so the irreversible step has a system-level
+  gate this app does not control and cannot suppress. A refusal there is a `KEPT`, not an error.
+- **`expo-media-library` is mocked to throw.** The jest double's `Asset.delete` raises rather than
+  resolving: a test that reaches the real adapter by accident fails loudly instead of quietly
+  appearing to have removed a picture. Deletion behaviour is asserted against a fake `ImageSource`
+  that records what it was told to delete — "the original survives a failed read" is a claim about a
+  call that did _not_ happen, and a recording fake is the only way to state one.
+- **Still unproven on device.** Both new packages are native, so as with ADR-0024 nothing in CI
+  exercises the permission prompt or the system delete dialog.
