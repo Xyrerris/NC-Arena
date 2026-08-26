@@ -14,6 +14,7 @@
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
+import { Platform } from 'react-native';
 
 import { err, ok, type Result } from '../common';
 import type { ImageSource, PickedImage } from './ports';
@@ -27,6 +28,26 @@ const NO_DELETE_PERMISSION = 'Arena Scout was not allowed to remove the screensh
 const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
+/**
+ * The picker's id, in the dialect `expo-media-library`'s `Asset` speaks.
+ *
+ * The two libraries disagree, quietly and without a type error, about what an "asset id"
+ * is. `expo-image-picker` hands back the bare MediaStore row id on Android (`"56"`) and the
+ * bare `PHAsset` localIdentifier on iOS; `new Asset(id)` wants a full `content://` URI on
+ * Android and a `ph://`-prefixed one on iOS — and its iOS constructor drops the first five
+ * characters unconditionally, so an unprefixed id arrives mangled rather than rejected.
+ * Feeding one to the other looks perfectly reasonable and simply never deletes anything.
+ *
+ * Already-qualified ids pass through: if a future picker version starts returning URIs, the
+ * right behaviour is to use them, not to prefix them twice.
+ */
+const toMediaLibraryId = (pickerAssetId: string): string => {
+  if (pickerAssetId.includes('://')) return pickerAssetId;
+  return Platform.OS === 'android'
+    ? `content://media/external/images/media/${pickerAssetId}`
+    : `ph://${pickerAssetId}`;
+};
+
 export const expoImageSource: ImageSource = {
   name: 'expo-image-picker',
 
@@ -39,6 +60,12 @@ export const expoImageSource: ImageSource = {
         mediaTypes: ['images'],
         allowsEditing: false,
         allowsMultipleSelection: false,
+        // Android's modern Photo Picker (the default) hands back a `content://media/picker/…`
+        // URI that carries no MediaStore id, so `discardOriginal` below would never have
+        // anything to delete. `legacy` routes through the document provider instead, whose
+        // URI does resolve to an id — the reason `requestMediaLibraryPermissionsAsync` above
+        // exists at all, since the modern picker needs no permission.
+        legacy: true,
         // No re-encode. Recognition accuracy on a screenshot's small, thin numerals falls
         // off with JPEG artefacts, and there is nothing to save: the file is read once and
         // never stored.
@@ -76,6 +103,18 @@ export const expoImageSource: ImageSource = {
     }
   },
 
+  /**
+   * KNOWN BROKEN on device, 2026-08-26 — the screenshot survives every time (ADR-0026).
+   *
+   * Two causes were found and fixed and the outcome did not change, so a third is still out
+   * there and this is parked rather than solved. Do not read the code below as working: the
+   * last thing confirmed about it is that it does not.
+   *
+   * The note the form prints says where to resume. `COPY_ONLY` means `assetId` was null and
+   * this function was never called — suspect a stale JS bundle, since both fixes are JS-only
+   * and an installed release APK carries its own. `KEPT` means the delete really was
+   * attempted, and the question moves to the permission or to what `delete()` threw.
+   */
   discardOriginal: async (assetId: string): Promise<Result<void>> => {
     try {
       // Write access is asked for **here** rather than beside the read permission at pick
@@ -89,7 +128,7 @@ export const expoImageSource: ImageSource = {
       // Android shows its own confirmation for this from API 30 on, and the user may say
       // no. That rejects the promise, which becomes a `KEPT` outcome upstream — a refusal
       // the form reports, not a failure it hides.
-      await new Asset(assetId).delete();
+      await new Asset(toMediaLibraryId(assetId)).delete();
       return ok(undefined);
     } catch (cause) {
       return err(toError(cause));

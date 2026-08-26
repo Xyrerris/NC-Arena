@@ -1249,3 +1249,25 @@ for all three.
   call that did _not_ happen, and a recording fake is the only way to state one.
 - **Still unproven on device.** Both new packages are native, so as with ADR-0024 nothing in CI
   exercises the permission prompt or the system delete dialog.
+
+**Known defect — deletion does not work on device (open, 2026-08-26).** Decision 3 is implemented and
+passes against the fake, and it does not happen on a real phone: the screenshot always survives. Two
+causes were found and fixed, the outcome did not change, so a third is still out there. Parked, not
+solved.
+
+- **Android's modern Photo Picker returns no asset id.** `launchImageLibraryAsync` defaults to
+  `ACTION_PICK_IMAGES`, whose `content://media/picker/…` URIs `expo-image-picker` cannot resolve to a
+  MediaStore id (`ImagePickerUtils.kt` handles only the document-provider form). `assetId` was
+  therefore always null and `discardOriginal` was never even called — every scan reported `COPY_ONLY`.
+  Fixed with `legacy: true`.
+- **The two libraries mean different things by "asset id", and both are `string`.**
+  `expo-image-picker` yields the bare MediaStore row id on Android and the bare `PHAsset`
+  localIdentifier on iOS; `new Asset(id)` wants `content://media/external/images/media/<id>` and
+  `ph://<localIdentifier>` respectively — and its iOS constructor does an unconditional
+  `dropFirst("ph://".count)`, so an unprefixed id is silently mangled rather than rejected. Fixed with
+  `toMediaLibraryId` in the adapter.
+
+The three-outcome note from Decision 5 is the diagnostic to read next: `COPY_ONLY` means the id is
+still null, so `legacy` is not in effect — suspect a stale JS bundle in an installed release APK.
+`KEPT` means the delete was attempted and refused or threw. Both fixes are JS-only, so the device has
+to be running a freshly built bundle before anything that note says is worth acting on.
