@@ -13,7 +13,7 @@
  */
 
 import { statFormatter } from '@/core/common';
-import type { Player, PlayerId, RosterEntry, RosterSort } from '@/core/model';
+import type { MatchOutcome, Player, PlayerId, RosterEntry, RosterSort } from '@/core/model';
 
 /** Wins and losses stay numeric: `RecordBadge` owns how a record reads and announces. */
 export interface RosterRecordUi {
@@ -40,6 +40,16 @@ export interface RosterRowUi {
   scoreLabel: string;
   record: RosterRecordUi | null;
   isViewer: boolean;
+  /**
+   * Whether a swipe on this row may record a match (ADR-0027). False for your own row —
+   * there is no record against yourself — and false for **every** row while no avatar has
+   * been chosen, because a result is yours against them and there is no "yours" yet.
+   *
+   * It is a field on the row rather than a check inside the row component because the
+   * component would have to be told who the viewer is to make it, and a list item that
+   * knows about the viewer is a list item that re-renders when the viewer changes.
+   */
+  canRecord: boolean;
   /**
    * Added on this device rather than synced (ADR-0020). It is announced rather than drawn:
    * the design has no badge for it, and inventing one here would put a mark on the roster
@@ -87,10 +97,20 @@ export type RosterUiState =
       rows: readonly RosterRowUi[];
       query: string;
       isRefreshing: boolean;
+      /**
+       * Why the last swipe recorded nothing, or null. It is a *line above the list* rather
+       * than the `error` state, because a refused increment is not a broken ladder — and
+       * taking the roster down to report one would be defect 5 with a new cause.
+       */
+      recordError: string | null;
     };
 
 export type RosterEvent =
-  { type: 'search'; query: string } | { type: 'sort'; sort: RosterSort } | { type: 'refresh' };
+  | { type: 'search'; query: string }
+  | { type: 'sort'; sort: RosterSort }
+  | { type: 'refresh' }
+  /** One match against `id`, from a swipe or from the row's accessibility action. */
+  | { type: 'record'; id: PlayerId; outcome: MatchOutcome };
 
 /** Label and order from the prototype's three chips. */
 export const SORT_OPTIONS: readonly { sort: RosterSort; label: string }[] = [
@@ -117,7 +137,13 @@ export const toViewerCardUi = (viewer: Player): ViewerCardUi => ({
   combatPowerShort: statFormatter.combatPowerShort(viewer.combatPower),
 });
 
-export const toRosterRowUi = (entry: RosterEntry): RosterRowUi => ({
+/**
+ * @param hasViewer whether an avatar has been chosen. Passed in rather than derived from
+ * `entry.isViewer`: with no avatar *every* entry reports `isViewer: false`, so a row could
+ * not tell "you are someone else" from "there is no you yet" — and the second of those is
+ * the one where a swipe has nothing to record.
+ */
+export const toRosterRowUi = (entry: RosterEntry, hasViewer: boolean): RosterRowUi => ({
   id: entry.player.id,
   name: entry.player.name,
   rankLabel: rankLabel(entry.player.rank),
@@ -126,6 +152,7 @@ export const toRosterRowUi = (entry: RosterEntry): RosterRowUi => ({
   // The viewer has no head-to-head against themselves, so their own row shows no badge.
   record: entry.isViewer || entry.record === null ? null : entry.record,
   isViewer: entry.isViewer,
+  canRecord: hasViewer && !entry.isViewer,
   isLocal: entry.origin === 'LOCAL',
 });
 

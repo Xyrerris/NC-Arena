@@ -23,11 +23,12 @@ import {
   CRIT_BP_PER_PERCENT,
   normaliseGameCode,
   normalisePlayerName,
+  type MatchOutcome,
   type PlayerDraft,
   type PlayerId,
 } from '../model';
 import { headToHead, players } from './schema';
-import type { PlayerRow } from './schema';
+import type { HeadToHeadRow, PlayerRow } from './schema';
 import type { ArenaDatabase } from './queries';
 
 /**
@@ -203,6 +204,48 @@ export const deleteLocalPlayer = (db: ArenaDatabase, id: PlayerId): boolean =>
       .where(gt(players.rank, row.rank))
       .run();
     return true;
+  });
+
+/**
+ * Adds one match to the viewer's record against a player, creating the pairing the first
+ * time the two meet.
+ *
+ * **Read-modify-write, not `wins = wins + 1`.** The increment is expressed as a SQL
+ * expression nowhere in this function, because the two drivers behind `ArenaDatabase`
+ * would have to agree on how Drizzle qualifies a column inside an upsert's `SET` clause —
+ * and the whole point of that seam is that the same statement runs on device and in Node
+ * (ARCHITECTURE.md §10). Inside a transaction the read and the write cannot be
+ * interleaved, so the plainer form is not the weaker one.
+ *
+ * Returns null when the pairing is not one a match can be recorded for: an unknown viewer,
+ * an unknown opponent, or the viewer against themselves. The caller cannot tell those
+ * apart from the return value — the repository checks the self case first, because that is
+ * the only one of the three the user can reach and it deserves its own sentence.
+ */
+export const recordMatchResult = (
+  db: ArenaDatabase,
+  viewerId: PlayerId,
+  opponentId: PlayerId,
+  outcome: MatchOutcome,
+): HeadToHeadRow | null =>
+  db.transaction((tx) => {
+    if (viewerId === opponentId) return null;
+    if (rowById(tx, viewerId) === undefined) return null;
+    if (rowById(tx, opponentId) === undefined) return null;
+
+    const pairing = and(eq(headToHead.viewerId, viewerId), eq(headToHead.opponentId, opponentId));
+    const before = tx.select().from(headToHead).where(pairing).limit(1).all()[0];
+
+    const wins = (before?.wins ?? 0) + (outcome === 'WIN' ? 1 : 0);
+    const losses = (before?.losses ?? 0) + (outcome === 'LOSS' ? 1 : 0);
+
+    if (before === undefined) {
+      tx.insert(headToHead).values({ viewerId, opponentId, wins, losses }).run();
+    } else {
+      tx.update(headToHead).set({ wins, losses }).where(pairing).run();
+    }
+
+    return tx.select().from(headToHead).where(pairing).limit(1).all()[0] ?? null;
   });
 
 /**

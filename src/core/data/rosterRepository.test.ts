@@ -670,3 +670,109 @@ describe('rosterRepository — choosing who you are', () => {
     expect(live.map(live.query.all())?.combatPower).toBe(2_145_880);
   });
 });
+
+/**
+ * ADR-0027. The roster's swipe is one increment against one player, and every property
+ * worth asserting about it is a property of the write rather than of the gesture: a
+ * gesture needs a touch pipeline Node does not have, so what is proven here is what the
+ * finger eventually reaches.
+ */
+describe('rosterRepository — recording a match from the roster', () => {
+  let handle: TestDatabase;
+  let repo: ReturnType<typeof repositoryOn>;
+
+  const recordOf = (opponentId: string): HeadToHead | null => {
+    const live = repo.observeRoster('RANK', '');
+    return (
+      live.map(live.query.all()).find((entry) => entry.player.id === opponentId)?.record ?? null
+    );
+  };
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    repo = repositoryOn(handle);
+    await repo.refresh();
+  });
+
+  afterEach(() => handle.close());
+
+  it('adds one win to an existing record and leaves the losses alone', () => {
+    const result = repo.recordMatch(asPlayerId('p-b'), 'WIN');
+
+    expect(isOk(result) && result.value).toEqual({
+      viewerId: asPlayerId('p-a'),
+      opponentId: asPlayerId('p-b'),
+      wins: 6,
+      losses: 1,
+    });
+    expect(recordOf('p-b')).toEqual({ ...record('p-b', 6, 1) });
+  });
+
+  it('adds one loss to an existing record and leaves the wins alone', () => {
+    expect(repo.recordMatch(asPlayerId('p-b'), 'LOSS').ok).toBe(true);
+    expect(recordOf('p-b')).toEqual({ ...record('p-b', 5, 2) });
+  });
+
+  it('creates the pairing the first time the two meet', () => {
+    // Dross is in the fixture's ladder and in none of its head-to-head rows.
+    expect(recordOf('p-d')).toBeNull();
+
+    expect(repo.recordMatch(asPlayerId('p-d'), 'LOSS').ok).toBe(true);
+
+    expect(recordOf('p-d')).toEqual({ ...record('p-d', 0, 1) });
+  });
+
+  it('counts repeated swipes rather than collapsing them into one', () => {
+    repo.recordMatch(asPlayerId('p-d'), 'WIN');
+    repo.recordMatch(asPlayerId('p-d'), 'WIN');
+    repo.recordMatch(asPlayerId('p-d'), 'LOSS');
+
+    expect(recordOf('p-d')).toEqual({ ...record('p-d', 2, 1) });
+  });
+
+  it('touches only the pairing it names', () => {
+    repo.recordMatch(asPlayerId('p-b'), 'WIN');
+
+    expect(recordOf('p-c')).toEqual({ ...record('p-c', 9, 0) });
+  });
+
+  it('refuses a match against yourself, and writes nothing', () => {
+    const result = repo.recordMatch(asPlayerId('p-a'), 'WIN');
+
+    expect(result.ok).toBe(false);
+    expect(recordOf('p-a')).toBeNull();
+  });
+
+  it('refuses a player who is not on the roster', () => {
+    expect(repo.recordMatch(asPlayerId('nobody'), 'WIN').ok).toBe(false);
+  });
+
+  it('refuses to record anything while no avatar has been chosen', () => {
+    const empty = createTestDatabase();
+    try {
+      // No refresh, so nothing has said who the viewer is — the state a fresh install is
+      // in (ADR-0021), and the one where "your record" has no owner.
+      const fresh = repositoryOn(empty);
+      const created = fresh.createPlayer(localDraft('Nyx'));
+      if (!isOk(created)) throw new Error('fixture: the player could not be created');
+
+      expect(fresh.getViewerId()).toBeNull();
+      expect(fresh.recordMatch(created.value.id, 'WIN').ok).toBe(false);
+    } finally {
+      empty.close();
+    }
+  });
+
+  it('re-sorts the ladder it just changed, because MY WINS reads that column', () => {
+    const order = () => {
+      const live = repo.observeRoster('MY_WINS', '');
+      return live.map(live.query.all()).map((entry) => entry.player.name);
+    };
+    expect(order()).toEqual(['Cinder', 'Brann', 'Aurel', 'Dross']);
+
+    // Five swipes on Brann, who starts one win behind Cinder.
+    for (let i = 0; i < 5; i += 1) repo.recordMatch(asPlayerId('p-b'), 'WIN');
+
+    expect(order()).toEqual(['Brann', 'Cinder', 'Aurel', 'Dross']);
+  });
+});

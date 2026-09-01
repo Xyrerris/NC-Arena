@@ -1271,3 +1271,69 @@ The three-outcome note from Decision 5 is the diagnostic to read next: `COPY_ONL
 still null, so `legacy` is not in effect — suspect a stale JS bundle in an installed release APK.
 `KEPT` means the delete was attempted and refused or threw. Both fixes are JS-only, so the device has
 to be running a freshly built bundle before anything that note says is worth acting on.
+
+---
+
+## ADR-0027 — A match is recorded by swiping the row it is against
+
+**Date:** 2026-08-26 · **Status:** accepted · **Phase:** 4.8
+
+**Context.** `head_to_head` has existed since Phase 2 and nothing has ever written to it except a
+sync — and there is no sync (ADR-0021). So every record on screen was zero, the `MY WINS` sort
+ordered a column nobody could change, and the Vs You tab compared a scoreboard that could not move.
+The ask was for the roster to record a result in place: drag a row **left** for a win, **right** for
+a loss.
+
+**Decision 1 — the direction is the user's, not the convention's.** Left is a win, right is a loss,
+because that is what was asked for. It is worth naming because it is the opposite of the reflex —
+a green "positive" action is usually the right-swipe — and a later reviewer reading only the code
+would be tempted to "fix" it.
+
+**Decision 2 — the swipe is never the only way to reach it.** Both acts are also
+`accessibilityActions` on the row (`recordWin`, `recordLoss`), because a horizontal drag does not
+exist for TalkBack and does not exist for switch access. This is not an accessibility footnote
+bolted on afterwards: it is the reason the feature is testable at all. A pan needs a touch pipeline
+no Node renderer has, so a jest test that "swiped" would be asserting on the gesture mock; the
+tests drive the actions instead, and what they prove is the wiring the finger also lands on. The
+gesture itself is motion, and motion is the Maestro gate's job (ARCHITECTURE.md §10) — the same
+split ADR-0012 and the reanimated mock already draw.
+
+**Decision 3 — the increment goes through the repository, and the repository resolves "you".**
+`recordMatch(opponentId, outcome)` takes one side, not two. A call that could name both sides could
+write a record between two other players — a fact this app has no way to know and no screen to show
+— and the roster's swipe would then be one argument away from doing it by accident. A missing
+avatar, an unknown opponent and the viewer against themselves are three refusals with two messages,
+because the third is the only one the user can actually reach.
+
+**Decision 4 — read-modify-write, inside a transaction, instead of `wins = wins + 1`.** The
+increment is not written as a SQL expression, because an upsert's `SET` clause would make the two
+drivers behind `ArenaDatabase` agree on how Drizzle qualifies a column — and the whole point of that
+seam is that the same statement runs on device and in Node (ARCHITECTURE.md §10). Inside a
+transaction the read and the write cannot be interleaved, so the plainer form is not the weaker one.
+
+**Decision 5 — a refused write is a line above the ladder, not the `error` state.** The roster is
+not broken because one increment was declined, and taking the list down to say so would be defect 5
+with a new cause. It clears on the next search, which is also when it would start describing a row
+the list no longer shows.
+
+**Consequences.**
+
+- **`useLiveQuery` had to be re-keyed.** It subscribes to the table its select is _from_, so a write
+  to `head_to_head` does not re-run a query that selects from `players` — the limitation
+  `core/data/expoLiveData.ts` has stated since Phase 2, and this is the first feature to hit it. A
+  counter bumped on every successful record is a dependency of the roster observer, which re-runs
+  the query the same way a changed sort does. **The player detail screen has the same staleness and
+  is not fixed here**: nothing on it writes a record yet, so there is nothing to go stale.
+- **Recording re-sorts the ladder under `MY WINS`.** A row can move as a direct result of the swipe
+  that landed on it. That is the sort doing its job, and it is asserted rather than avoided.
+- **`GestureHandlerRootView` now wraps the whole app**, not just the roster. A second gesture
+  anywhere else would otherwise silently do nothing on Android, which is that provider's famous
+  failure and the hardest kind to attribute.
+- **The reanimated mock grew two functions it does not implement.** `GestureDetector` reaches into
+  `react-native-reanimated` directly for `useEvent` and `setGestureState` and refuses to mount
+  without them, so a row that merely _has_ a pan gesture could not render in jest. They are stubs,
+  and the honest reading of them is the one the mock's own header gives: no gesture is dispatched in
+  a Node renderer.
+- **There is no undo.** The only protection against a mis-swipe is `COMMIT_DISTANCE`: a drag that
+  ends short of it springs back having written nothing. Removing a match recorded by mistake is not
+  possible from any screen today — it is the obvious next piece of work, and it is not in this one.

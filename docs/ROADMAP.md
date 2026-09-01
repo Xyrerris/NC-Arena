@@ -1,12 +1,15 @@
 # Arena Scout (React Native) — Roadmap
 
 **Status:** Phases 0–4 implemented — **the demoable milestone is reached** — plus **Phase 4.5**
-(the offline user-data work in ADR-0020), **Phase 4.6** (ADR-0022) and **Phase 4.7** (ADR-0023 and
-ADR-0024), all out-of-sequence scope rather than phases that were planned. The app is no longer
+(the offline user-data work in ADR-0020), **Phase 4.6** (ADR-0022), **Phase 4.7** (ADR-0023 and
+ADR-0024) and **Phase 4.8** (ADR-0027), all out-of-sequence scope rather than phases that were
+planned. The app is no longer
 read-only: players can be added, edited and removed on device, a sync no longer takes them, and the
 user can say which player is _them_ and keep their own stats current.
 Phase 4.7 widened the player with HP, a level and the game's own player code, and made a screenshot
-of the game's profile screen fill the add-player form. Its parser and the two ports under it live in
+of the game's profile screen fill the add-player form. Phase 4.8 gave `head_to_head` its first
+writer: a swipe on a roster row records a match against that player, so the personal record and the
+`MY WINS` sort are no longer columns nothing can move. Its parser and the two ports under it live in
 `core/ocr` and are tested in Node — but **the OCR itself has never run**: both packages are native,
 nothing in CI builds them, and so the scan control is unproven on a device for the same reason
 ADR-0017's screenshot gate is.
@@ -336,6 +339,44 @@ around a hole rather than around a missing server.
 - ⚠️ No Maestro flow, for the reason Phase 4.5 gives: the emulator of ADR-0017 is still absent,
   and this is now the fourth set of visual promises stacked behind it. The states are asserted
   in `ViewerScreen.test.tsx` at 200 % font scale, which cannot see clipping.
+
+---
+
+## Phase 4.8 — Recording a match from the roster (unplanned, ADR-0027)
+
+Numbered like 4.5 and 4.6 for the same reason. Phase 2 built `head_to_head` and Phase 4 read it on
+two screens, but nothing outside a sync had ever written a row — and there is no sync (ADR-0021).
+The personal record was structurally correct and permanently zero.
+
+**Deliverables**
+
+- `MatchOutcome` in `core/model`, and `recordMatchResult` in `core/db/write.ts`: a read-modify-write
+  inside a transaction, creating the pairing the first time the two players meet.
+- `recordMatch(opponentId, outcome)` on the repository, returning a `Result`. It resolves the viewer
+  itself, so no caller can name both sides of a head-to-head.
+- A swipeable `RosterRow`: left records a win, right records a loss, over a pan that activates only
+  on a clearly horizontal drag and commits only past a distance threshold.
+- The same two acts as `accessibilityActions`, which is also what the tests drive.
+- `GestureHandlerRootView` at the root layout, and the two Reanimated entry points
+  `GestureDetector` needs added to the jest mock.
+
+**Exit criteria**
+
+- ✅ A recorded win adds one win and leaves the losses alone; a loss does the reverse. Asserted at
+  the repository and again through the rendered badge.
+- ✅ A player never fought gains a record rather than staying blank, and repeated swipes count
+  rather than collapsing into one.
+- ✅ The badge updates without a reload. That is not free: `useLiveQuery` does not re-run a query
+  over `players` when `head_to_head` changes, so the observer is re-keyed on every recorded match.
+- ✅ Recording re-sorts the ladder under `MY WINS`, because that sort reads the column that changed.
+- ✅ Your own row offers neither action, and **no** row offers them while no avatar has been chosen.
+- ✅ A refused write is reported above the ladder and does not replace it.
+- ⚠️ **There is no undo.** A mis-swipe is a permanent increment; the only protection is the
+  commit distance a short drag falls short of. Removing a recorded match is the obvious next piece
+  of work and is not in this one.
+- ⚠️ **The gesture itself is unproven.** No Node renderer dispatches a pan, so what jest covers is
+  the accessibility path into the same handler. The drag, its thresholds and its spring-back are
+  behind ADR-0017's absent emulator with everything else visual.
 
 ---
 

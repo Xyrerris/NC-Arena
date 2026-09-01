@@ -3,6 +3,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ArenaDataProvider, type ArenaData } from '@/core/data';
@@ -24,6 +25,11 @@ import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-sy
  * exactly one clause: the tables exist, but they may be **empty**. That is not a regression
  * to work around; the empty state was built in Phase 3 and is now the first thing a new
  * user sees rather than an edge case reachable only by a fruitless search.
+ *
+ * `GestureHandlerRootView` wraps everything below it because the roster's rows are
+ * swipeable (ADR-0027). It is here rather than around that one list: a second gesture
+ * anywhere in the app would otherwise silently do nothing on Android, which is the failure
+ * mode this provider is famous for and the hardest kind to attribute.
  */
 void SplashScreen.preventAutoHideAsync();
 
@@ -50,16 +56,18 @@ export default function RootLayout() {
   if (!ready) return null;
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style="light" />
-      {failure ? (
-        <BootFailure message={failure.message} />
-      ) : (
-        <ArenaDataProvider value={ARENA_DATA}>
-          <ArenaStack />
-        </ArenaDataProvider>
-      )}
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        {failure ? (
+          <BootFailure message={failure.message} />
+        ) : (
+          <ArenaDataProvider value={ARENA_DATA}>
+            <ArenaStack />
+          </ArenaDataProvider>
+        )}
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -88,6 +96,7 @@ function BootFailure({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
   failure: {
     flex: 1,
     justifyContent: 'center',

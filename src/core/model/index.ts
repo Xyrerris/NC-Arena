@@ -109,6 +109,16 @@ export interface HeadToHead {
 
 export const played = (h: HeadToHead): number => h.wins + h.losses;
 
+/**
+ * One match, from the viewer's side. It is deliberately not a boolean: `record(id, true)`
+ * reads as nothing at the call site, and the roster's two swipe directions have to be
+ * distinguishable in a log, a test name and an accessibility label alike (ADR-0027).
+ *
+ * There is no `DRAW`. The game the roster tracks has no drawn match, and inventing a third
+ * case here would put a column in `head_to_head` that nothing can ever write.
+ */
+export type MatchOutcome = 'WIN' | 'LOSS';
+
 export type RosterSort = 'RANK' | 'COMBAT_POWER' | 'MY_WINS';
 
 /** Narrowing guard for values read back out of persisted preferences. */

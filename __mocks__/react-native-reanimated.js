@@ -72,4 +72,14 @@ module.exports = {
   withDelay: (_delay, animation) => animation,
   runOnJS: (fn) => fn,
   runOnUI: (fn) => fn,
+  clamp: (value, low, high) => Math.min(Math.max(value, low), high),
+
+  // Reanimated's half of react-native-gesture-handler. `GestureDetector` reaches into
+  // this module directly (`handlers/gestures/reanimatedWrapper`) and refuses to mount
+  // without these two, so a row that merely *has* a pan gesture cannot render in jest
+  // unless the mock admits they exist. Neither does anything: no gesture is dispatched in
+  // a Node renderer, and the accessibility actions beside every swipe are what the tests
+  // drive instead (ADR-0027).
+  useEvent: () => () => {},
+  setGestureState: () => {},
 };

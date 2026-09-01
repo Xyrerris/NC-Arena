@@ -36,6 +36,18 @@ export const useRoster = (): RosterController => {
   const [query, setQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<Error | null>(null);
+  const [recordError, setRecordError] = useState<Error | null>(null);
+
+  /**
+   * Bumped by every recorded match, and a dependency of the roster observer below.
+   *
+   * `useLiveQuery` subscribes to the table its select is *from*, so a write to
+   * `head_to_head` does not re-run a query that selects from `players` — the limitation
+   * `core/data/expoLiveData.ts` states and this is the first feature to hit it. Re-keying
+   * the observer re-runs the query, which is the same mechanism a changed sort already
+   * uses. It is a counter rather than a boolean so two swipes in a row are two updates.
+   */
+  const [recorded, setRecorded] = useState(0);
 
   // Every observer resolves the viewer at call time, so the id is part of each
   // subscription's identity rather than an input to it. It is *subscribed* rather than read
@@ -43,11 +55,20 @@ export const useRoster = (): RosterController => {
   // this screen would otherwise have nothing to re-render for.
   const viewerId = useViewerId();
 
-  const roster = useLiveData(repository.observeRoster(sort, query), [sort, query, viewerId]);
+  const roster = useLiveData(repository.observeRoster(sort, query), [
+    sort,
+    query,
+    viewerId,
+    recorded,
+  ]);
   const viewer = useLiveData(repository.observeViewer(), [viewerId]);
   const rosterSize = useLiveData(repository.observeRosterSize(), []);
 
-  const rows = useMemo(() => roster.data.map(toRosterRowUi), [roster.data]);
+  const hasViewer = viewer.data !== null;
+  const rows = useMemo(
+    () => roster.data.map((entry) => toRosterRowUi(entry, hasViewer)),
+    [roster.data, hasViewer],
+  );
   const viewerUi = useMemo(
     () => (viewer.data === null ? null : toViewerCardUi(viewer.data)),
     [viewer.data],
@@ -76,8 +97,10 @@ export const useRoster = (): RosterController => {
         case 'search':
           setQuery(event.query);
           // A new search clears a stale failure; otherwise the error state outlives the
-          // query that caused it and the roster looks permanently broken.
+          // query that caused it and the roster looks permanently broken. The record
+          // failure goes with it: it names a row the new query may not even show.
           setRefreshError(null);
+          setRecordError(null);
           return;
         case 'sort':
           setSort(event.sort);
@@ -89,6 +112,14 @@ export const useRoster = (): RosterController => {
         case 'refresh':
           refresh();
           return;
+        case 'record': {
+          const result = repository.recordMatch(event.id, event.outcome);
+          setRecordError(result.ok ? null : result.error);
+          // Only on success, so a refused swipe does not re-run the query it changed
+          // nothing in — and so the failure line is not immediately re-rendered away.
+          if (result.ok) setRecorded((count) => count + 1);
+          return;
+        }
       }
     },
     [refresh, repository],
@@ -114,8 +145,15 @@ export const useRoster = (): RosterController => {
     }
     if (!roster.loaded) return { kind: 'loading' };
     if (rows.length === 0) return { kind: 'empty', query, header };
-    return { kind: 'ready', header, rows, query, isRefreshing };
-  }, [failure, roster.loaded, rows, query, header, isRefreshing]);
+    return {
+      kind: 'ready',
+      header,
+      rows,
+      query,
+      isRefreshing,
+      recordError: recordError?.message ?? null,
+    };
+  }, [failure, roster.loaded, rows, query, header, isRefreshing, recordError]);
 
   return { state, onEvent };
 };

@@ -23,6 +23,7 @@ import {
   playerCountQuery,
   playerDetailQuery,
   playerQuery,
+  recordMatchResult,
   replaceRoster,
   sortedRosterQuery,
   toHeadToHead,
@@ -38,6 +39,8 @@ import {
   isPlayerDraftValid,
   normalisePlayerName,
   validatePlayerDraft,
+  type HeadToHead,
+  type MatchOutcome,
   type Player,
   type PlayerDetail,
   type PlayerDraft,
@@ -149,6 +152,15 @@ const NOT_YOURS = 'Only players you added on this device can be edited or remove
 
 /** `setViewerId` picks an existing row; it never creates one (ADR-0022). */
 const NO_SUCH_PLAYER = 'That player is not on the roster.';
+
+/**
+ * A result is *yours against them*, so there has to be a "you" (ARCHITECTURE.md §2.3).
+ * Reachable in one way the roster cannot prevent: the avatar is chosen, a swipe begins, and
+ * the avatar's row is deleted from another screen before the finger lifts.
+ */
+const NO_VIEWER_YET = 'Choose which player is your avatar before recording a match.';
+
+const NOT_AGAINST_YOURSELF = 'You have no record against yourself.';
 
 export interface RosterRepositoryDeps {
   db: ArenaDatabase;
@@ -298,6 +310,26 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     deletePlayer: (id: PlayerId): Result<void> => {
       try {
         return deleteLocalPlayer(db, id) ? ok(undefined) : err(new Error(NOT_YOURS));
+      } catch (cause) {
+        return err(toError(cause));
+      }
+    },
+
+    /**
+     * Adds one match to your record against a player (ADR-0027).
+     *
+     * The **viewer is resolved here**, not passed in. A caller that could name both sides
+     * of a head-to-head could write a record between two other players, which is a fact
+     * this app has no way to know and no screen to show — and the roster's swipe would
+     * then be one argument away from doing it by accident.
+     */
+    recordMatch: (opponentId: PlayerId, outcome: MatchOutcome): Result<HeadToHead> => {
+      const currentViewer = viewerId();
+      if (currentViewer === NO_VIEWER) return err(new Error(NO_VIEWER_YET));
+      if (currentViewer === opponentId) return err(new Error(NOT_AGAINST_YOURSELF));
+      try {
+        const row = recordMatchResult(db, currentViewer, opponentId, outcome);
+        return row === null ? err(new Error(NO_SUCH_PLAYER)) : ok(toHeadToHead(row));
       } catch (cause) {
         return err(toError(cause));
       }

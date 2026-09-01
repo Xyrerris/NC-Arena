@@ -28,7 +28,7 @@ import {
   layout,
   space,
 } from '@/core/design-system';
-import type { PlayerId, RosterSort } from '@/core/model';
+import type { MatchOutcome, PlayerId, RosterSort } from '@/core/model';
 
 import { RosterRow } from './RosterRow';
 import {
@@ -58,6 +58,12 @@ export function RosterScreen() {
     [router],
   );
   const selectSort = useCallback((sort: RosterSort) => onEvent({ type: 'sort', sort }), [onEvent]);
+  // One callback for the whole list, not one per row: `RosterRow` is memoised, and a
+  // handler rebuilt per row would re-render every row on every list update.
+  const record = useCallback(
+    (id: PlayerId, outcome: MatchOutcome) => onEvent({ type: 'record', id, outcome }),
+    [onEvent],
+  );
   const retry = useCallback(() => onEvent({ type: 'refresh' }), [onEvent]);
   const addPlayer = useCallback(() => router.push('/player/new'), [router]);
   const openViewer = useCallback(() => router.push('/me'), [router]);
@@ -76,7 +82,13 @@ export function RosterScreen() {
           onOpenViewer={openViewer}
         />
       )}
-      <RosterBody state={state} onOpenPlayer={openPlayer} onRetry={retry} onAddPlayer={addPlayer} />
+      <RosterBody
+        state={state}
+        onOpenPlayer={openPlayer}
+        onRecord={record}
+        onRetry={retry}
+        onAddPlayer={addPlayer}
+      />
     </ScreenScaffold>
   );
 }
@@ -179,11 +191,12 @@ function RosterHeader({
 interface RosterBodyProps {
   state: RosterUiState;
   onOpenPlayer: (id: PlayerId) => void;
+  onRecord: (id: PlayerId, outcome: MatchOutcome) => void;
   onRetry: () => void;
   onAddPlayer: () => void;
 }
 
-function RosterBody({ state, onOpenPlayer, onRetry, onAddPlayer }: RosterBodyProps) {
+function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: RosterBodyProps) {
   switch (state.kind) {
     case 'loading':
       return (
@@ -221,20 +234,42 @@ function RosterBody({ state, onOpenPlayer, onRetry, onAddPlayer }: RosterBodyPro
       // rebuild a recycler for a message — and the header above it is a sibling precisely
       // so that it does not move when this does.
       return (
-        <FlashList
-          data={state.kind === 'ready' ? state.rows : NO_ROWS}
-          extraData={state.header.sort}
-          keyExtractor={(row) => row.id}
-          renderItem={({ item }) => <RosterRow row={item} onPress={onOpenPlayer} />}
-          ListEmptyComponent={
-            <RosterEmpty
-              query={state.kind === 'empty' ? state.query : ''}
-              onAddPlayer={onAddPlayer}
-            />
-          }
-          contentContainerStyle={styles.list}
-          testID="roster-list"
-        />
+        <>
+          {/*
+            A swipe that recorded nothing says so here, above the ladder rather than in
+            place of it. It is not the `error` state: the roster is fine, one write was
+            refused, and blanking the list to report that would be defect 5 all over again.
+          */}
+          {state.kind === 'ready' && state.recordError !== null ? (
+            <View style={styles.recordError}>
+              <ArenaText
+                variant="bodySmall"
+                tone="negative"
+                accessibilityLiveRegion="polite"
+                testID="roster-record-error"
+              >
+                {state.recordError}
+              </ArenaText>
+            </View>
+          ) : null}
+
+          <FlashList
+            data={state.kind === 'ready' ? state.rows : NO_ROWS}
+            extraData={state.header.sort}
+            keyExtractor={(row) => row.id}
+            renderItem={({ item }) => (
+              <RosterRow row={item} onPress={onOpenPlayer} onRecord={onRecord} />
+            )}
+            ListEmptyComponent={
+              <RosterEmpty
+                query={state.kind === 'empty' ? state.query : ''}
+                onAddPlayer={onAddPlayer}
+              />
+            }
+            contentContainerStyle={styles.list}
+            testID="roster-list"
+          />
+        </>
       );
   }
 }
@@ -295,6 +330,7 @@ const styles = StyleSheet.create({
     gap: space[8],
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
+  recordError: { paddingHorizontal: layout.screenGutter, paddingTop: space[8] },
   list: { paddingBottom: space[40] },
   centred: {
     flex: 1,

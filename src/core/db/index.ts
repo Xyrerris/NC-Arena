@@ -30,6 +30,7 @@ export {
   deleteLocalPlayer,
   insertLocalPlayer,
   isNameTaken,
+  recordMatchResult,
   replaceRoster,
   updateLocalPlayer,
 } from './write';

@@ -17,7 +17,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { err, ok, type RosterSnapshot, type RosterSource } from '@/core/common';
 import { ArenaDataProvider, type RosterRepository } from '@/core/data';
-import { asPlayerId, type HeadToHead, type Player } from '@/core/model';
+import { asPlayerId, type HeadToHead, type Player, type PlayerDraft } from '@/core/model';
 import {
   createStubLiveData,
   createTestDatabase,
@@ -70,6 +70,21 @@ const FIXTURE: RosterSnapshot = {
     player('p-d', 'Dross', 4, 3_000_000),
   ],
   headToHead: [record('p-b', 5, 1), record('p-c', 9, 0)],
+};
+
+/** Enough to pass `validatePlayerDraft`; the numbers are not what any of these assert. */
+const DRAFT: PlayerDraft = {
+  name: 'Nyx',
+  level: 400,
+  gameCode: 'a984',
+  combatPower: 1_500_000,
+  score: 900,
+  hp: 5_000_000,
+  atk: 1_000_000,
+  def: 2_000_000,
+  critPercent: 50,
+  hit: 3_000_000,
+  spd: 4_000_000,
 };
 
 const sourceOf = (snapshot: RosterSnapshot): RosterSource => ({
@@ -475,5 +490,141 @@ describe('RosterScreen — reaching your own stats', () => {
 
     await waitFor(() => expect(screen.getByTestId('roster-empty')).toBeTruthy());
     expect(screen.getByTestId('roster-viewer')).toBeTruthy();
+  });
+});
+
+/**
+ * ADR-0027. A swipe left adds a win against that player, a swipe right adds a loss.
+ *
+ * Every case below goes through the row's **accessibility actions** rather than through a
+ * pan. That is not a workaround for a hard-to-drive gesture: the actions are a first-class
+ * way to reach the same two acts — TalkBack and switch access have no swipe — so driving
+ * them proves the wiring the finger also lands on. The drag itself is motion, and motion is
+ * the Maestro gate's job (ARCHITECTURE.md §10).
+ */
+describe('RosterScreen — recording a match from a row', () => {
+  let handle: TestDatabase;
+  let repository: RosterRepository;
+
+  const recordOn = (id: string, action: 'recordWin' | 'recordLoss'): void => {
+    fireEvent(screen.getByTestId(`roster-row-${id}`), 'accessibilityAction', {
+      nativeEvent: { actionName: action },
+    });
+  };
+
+  const actionsOn = (id: string): string[] =>
+    (screen.getByTestId(`roster-row-${id}`).props.accessibilityActions ?? []).map(
+      (action: { name: string }) => action.name,
+    );
+
+  /**
+   * The badge on one row, as it reads on screen. `exact: false`, because the row's text
+   * content is the whole row — rank, name, CP and score around the record.
+   */
+  const badgeOn = async (id: string, expected: string): Promise<void> => {
+    await waitFor(() =>
+      expect(screen.getByTestId(`roster-row-${id}`)).toHaveTextContent(expected, { exact: false }),
+    );
+  };
+
+  beforeEach(async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    mockPush.mockClear();
+    handle = createTestDatabase();
+    repository = createTestRepository(handle.db, sourceOf(FIXTURE)).repository;
+    expect((await repository.refresh()).ok).toBe(true);
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    handle.close();
+  });
+
+  it('adds a win, and the badge shows it without a reload', async () => {
+    await renderRoster(repository);
+    await badgeOn('p-b', '5W · 1L');
+
+    recordOn('p-b', 'recordWin');
+
+    // The roster query selects from `players`, so a write to `head_to_head` does not
+    // re-run it on its own — `useRoster` re-keys the observer for exactly this reason.
+    await badgeOn('p-b', '6W · 1L');
+  });
+
+  it('adds a loss', async () => {
+    await renderRoster(repository);
+
+    recordOn('p-b', 'recordLoss');
+
+    await badgeOn('p-b', '5W · 2L');
+  });
+
+  it('counts each swipe, rather than remembering only the last one', async () => {
+    await renderRoster(repository);
+
+    recordOn('p-b', 'recordWin');
+    await badgeOn('p-b', '6W · 1L');
+    recordOn('p-b', 'recordWin');
+
+    await badgeOn('p-b', '7W · 1L');
+  });
+
+  it('gives a player never fought a record, rather than leaving them blank', async () => {
+    await renderRoster(repository);
+    expect(screen.getByTestId('roster-row-p-d')).not.toHaveTextContent('W · ', { exact: false });
+
+    recordOn('p-d', 'recordWin');
+
+    await badgeOn('p-d', '1W · 0L');
+  });
+
+  it('changes nobody else', async () => {
+    await renderRoster(repository);
+
+    recordOn('p-b', 'recordWin');
+    await badgeOn('p-b', '6W · 1L');
+
+    expect(screen.getByTestId('roster-row-p-c')).toHaveTextContent('9W · 0L', { exact: false });
+  });
+
+  it('offers both actions on a row that is not you, and says so in the hint', async () => {
+    await renderRoster(repository);
+
+    expect(actionsOn('p-b')).toEqual(['recordWin', 'recordLoss']);
+    expect(screen.getByTestId('roster-row-p-b').props.accessibilityHint).toBe(
+      'Swipe left to add a win, right to add a loss.',
+    );
+  });
+
+  it('offers neither on your own row — there is no record against yourself', async () => {
+    await renderRoster(repository);
+
+    expect(actionsOn('p-a')).toEqual([]);
+    expect(screen.getByTestId('roster-row-p-a').props.accessibilityHint).toBeUndefined();
+  });
+
+  it('offers neither on any row while no avatar has been chosen', async () => {
+    // A fresh install: players added by hand, nothing that says which of them is you
+    // (ADR-0021), so a result has nobody to belong to. Every row has to refuse — not just
+    // the one that would have been yours, because there is no such row to exclude.
+    const bare = createTestDatabase();
+    const wired = createTestRepository(bare.db, sourceOf(FIXTURE));
+    const added = wired.repository.createPlayer(DRAFT);
+    expect(added.ok).toBe(true);
+    expect(wired.repository.getViewerId()).toBeNull();
+
+    await renderRoster(wired.repository);
+
+    expect(screen.queryByTestId('viewer-card')).toBeNull();
+    expect(actionsOn(added.ok ? added.value.id : '')).toEqual([]);
+    bare.close();
+  });
+
+  it('still opens the player when the row is pressed rather than swiped', async () => {
+    await renderRoster(repository);
+
+    fireEvent.press(screen.getByTestId('roster-row-p-b'));
+
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'p-b' } });
   });
 });
