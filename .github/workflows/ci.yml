@@ -21,6 +21,17 @@ jobs:
           node-version: 22
           cache: npm
 
+      # The lockfile is written by npm 11 and `npm ci` refuses a tree it would have
+      # resolved differently. Node 22 ships npm 10, and the two majors disagree about the
+      # optional peer dependencies of `@testing-library/react-hooks@8.0.1` — React 17 test
+      # tooling that `@infinitered/react-native-mlkit-core` ships as a regular dependency,
+      # four levels down. npm 10 wants `@types/react@17` and `react-dom@17` in the tree,
+      # npm 11 leaves them out, so the lock has no entry for them and the sync check fails
+      # on a lockfile that is not actually wrong. Pinning the major here is the fix that
+      # does not make the lock churn every time a developer runs `npm install`.
+      - name: Match the npm that writes the lockfile
+        run: npm install -g npm@11
+
       - run: npm ci
 
       - name: Typecheck
