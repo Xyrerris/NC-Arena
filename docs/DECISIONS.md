@@ -1438,3 +1438,91 @@ anyway — the disabled state is an affordance, not the guard.
   removed, because nothing has ever stored one. A per-match log is a schema this app does not have
   and does not obviously need — but "undo the last thing" is not what this does, and calling it undo
   in the UI would promise that.
+
+## ADR-0030 — MainActivity survives a configuration change, because the picker does not
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 4.9
+
+**Context.** `Fill from screenshot` failed with a Java stack trace where a photo picker should have
+been:
+
+> Call to function 'ExponentImagePicker.launchImageLibraryAsync' has been rejected. → Caused by:
+> java.lang.IllegalStateException: Attempting to launch an unregistered ActivityResultLauncher …
+
+Nothing in this repository is wrong. `expo-image-picker` registers its launchers exactly once, in
+its `RegisterActivityContracts` block, against whichever Activity existed when the module was
+created; expo-modules-core's `AppContextActivityResultRegistry` unregisters them on that Activity's
+`ON_DESTROY`. A configuration change destroys the Activity and React Native keeps the JS host, so
+the module is never recreated and nothing re-registers. The launcher is gone for the life of the
+process: every later tap throws the same exception, and only a force-stop clears it. Backgrounding
+does **not** cause this — there React Native tears the instance down and the module comes back with
+it. It is specifically a configuration change, which is a far narrower door and one this app holds
+open.
+
+`android:configChanges` on `MainActivity` came from the Expo template with the layout-shaped changes
+declared — orientation, `uiMode`, screen size — and four left out: `fontScale`, `density`, `locale`,
+`layoutDirection`. Every one of them recreates the Activity. `fontScale` is the one that matters
+here: ARCHITECTURE.md §10 makes running at 200 % a gate this app has to pass, and
+`scripts/e2e-screenshots.mjs` sets the scale with `adb` **while the app is running** — so the
+project's own visual gate leaves the picker dead in whatever build is installed at the time. That is
+how this was found.
+
+**Decision — declare the four, in a config plugin beside the config they change.** `app.config.ts`
+now ends in a `withAndroidManifest` plugin that appends the missing values to whatever the template
+declared, rather than restating the whole list. The template's set is not ours to own, and a
+hard-coded string would silently drop anything a future SDK adds to it.
+
+The plugin is written inline in `app.config.ts` rather than in `plugins/`: it is nine lines, it
+exists solely because of what the file next to it declares, and a `./plugins/withX.ts` would put the
+reason for the change one file away from the change.
+
+**Decision 2 — the stack remounts on a font scale change, because recreation is what used to
+re-measure it.** Declaring `fontScale` fixed the picker and broke the thing this app is most careful
+about, and the 200 % check caught it within a minute of installing the build: React Native applies
+the new scale to the text and nothing re-lays-out the boxes around it, so `Arena` renders as `Are`
+and `UPDATE MY STATS` as `UPDATE`. Cold-starting at 200 % was, and remains, correct — this is purely
+a stale layout.
+
+`src/app/_layout.tsx` therefore keys `<ArenaStack>` on `useWindowDimensions().fontScale`. A remount
+is exactly what the Activity's recreation used to do, minus the part that killed the launcher, and
+it carries the same visible cost it always did: the stack returns to the roster. That was already
+the behaviour before this ADR — an Activity recreation dropped the user on the roster too — so this
+is a cost kept, not a cost introduced.
+
+**When the remount happens is not our choice, and it is worth being exact about.** React Native
+publishes a font scale change from `DeviceInfoModule.onHostResume` — on resume, not at the moment
+the configuration changes. A user changes text size in the Settings app, which means leaving Arena
+and coming back, so the resume is part of the act and the screen is correct when they see it again.
+A scale changed while the app is in the foreground — reachable with `adb`, and by nothing a user can
+do — leaves the old layout on screen until the next resume. That is upstream behaviour, it was
+measured rather than assumed, and it is why the check that matters is `background → change → resume`
+and not `change → look`.
+
+A more surgical alternative would be to re-measure without unmounting. RN's own
+`enableFontScaleChangesUpdatingLayout` does try (`ReactHostImpl.onConfigurationChanged` calls
+`requestLayout()` on every attached surface, and it is on by default here), and on this build it is
+not sufficient — the roster still clipped. A screen mounted **after** the change lays out perfectly,
+which is what proves the stale measurement is per-mount and that remounting is the honest fix.
+
+**Rejected — patching expo-modules-core to re-register on the new Activity.** This is the real bug,
+and fixing it there would cover every way an Activity can be recreated rather than the four named
+above. It also means a `patch-package` step in CI and a patch to re-audit against a core module on
+every SDK bump, for a failure mode this app can otherwise close in the manifest. Recorded because
+the choice was made, not overlooked: if a fifth cause of recreation turns up, this is the answer.
+
+**Rejected — catching the exception and telling the user to restart.** It is the honest version of
+doing nothing. The launcher cannot be recovered from JS, so the message would be an apology in place
+of a feature.
+
+**Consequences.**
+
+- **A font-scale change no longer restarts the app**, it remounts the stack on the next resume.
+  `scripts/e2e-screenshots.mjs` does not exercise that path and is not weakened by it either: it
+  sets the scale and then `launchApp`s each flow, so its 200 % screenshots were always cold starts.
+  The gate is what caught the half-fix, by leaving a running app clipped — not by failing.
+- **The fix is invisible in the diff of a build.** `android/` is generated and git-ignored, so the
+  only evidence that this is in effect is the manifest after `expo prebuild`. Anyone doubting it
+  should read `android:configChanges` there, not trust this file.
+- **The bug is still upstream.** An Activity destroyed for a reason not in the list — a future
+  configuration key, a device that recreates for its own reasons — will bring it back with exactly
+  the same symptom, and the trace in this ADR is what identifies it on sight.
