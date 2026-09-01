@@ -1,4 +1,5 @@
 import type { ExpoConfig } from 'expo/config';
+import { AndroidConfig, withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
 
 /**
  * Arena Scout — Expo app config.
@@ -81,4 +82,38 @@ const config: ExpoConfig = {
   },
 };
 
-export default config;
+/**
+ * Configuration changes MainActivity handles itself, instead of being recreated for.
+ *
+ * Not a preference about redraws: `expo-image-picker` registers its `ActivityResultLauncher`
+ * once, against the Activity that existed when the module was created, and
+ * expo-modules-core drops that registration on the Activity's `ON_DESTROY`
+ * (`AppContextActivityResultRegistry`). A configuration change destroys the Activity while
+ * React Native keeps the JS host — so nothing recreates the module, nothing re-registers the
+ * launcher, and every later `launchImageLibraryAsync` throws "Attempting to launch an
+ * unregistered ActivityResultLauncher" until the process is killed. `Fill from screenshot` is
+ * dead for the rest of the session (ADR-0030).
+ *
+ * The template already declares the changes it thought were about layout — orientation,
+ * uiMode, screen size. These four are the ones that were left to recreate the Activity, and
+ * `fontScale` is the one that bites: the app asks its users to run at 200 % (ARCHITECTURE.md
+ * §10), and the visual gate itself sets the scale with `adb` while the app is running.
+ *
+ * Handling a change is not the same as ignoring it — React Native forwards the new
+ * `Configuration` to JS, and `scripts/e2e-screenshots.mjs` at 2.0 is what proves the text
+ * still grows.
+ */
+const SELF_HANDLED_CONFIG_CHANGES = ['fontScale', 'density', 'locale', 'layoutDirection'];
+
+const withPickerSurvivingConfigChanges: ConfigPlugin = (expoConfig) =>
+  withAndroidManifest(expoConfig, (mod) => {
+    const activity = AndroidConfig.Manifest.getMainActivityOrThrow(mod.modResults);
+    const declared = (activity.$['android:configChanges'] ?? '').split('|').filter(Boolean);
+    activity.$['android:configChanges'] = [
+      ...declared,
+      ...SELF_HANDLED_CONFIG_CHANGES.filter((change) => !declared.includes(change)),
+    ].join('|');
+    return mod;
+  });
+
+export default withPickerSurvivingConfigChanges(config);

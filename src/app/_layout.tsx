@@ -2,7 +2,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -30,6 +30,14 @@ import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-sy
  * swipeable (ADR-0027). It is here rather than around that one list: a second gesture
  * anywhere in the app would otherwise silently do nothing on Android, which is the failure
  * mode this provider is famous for and the hardest kind to attribute.
+ *
+ * The `key` on the stack is the other half of ADR-0030. MainActivity now handles a font
+ * scale change itself instead of being recreated for it, which is what keeps the photo
+ * picker's launcher alive — but Android's recreation was also what re-measured the tree.
+ * Without it the text grows inside boxes that were laid out for the old scale and the
+ * screen clips, which is the exact failure the 200 % gate exists to catch. Remounting is
+ * the honest equivalent of what recreation used to do, including its cost: the stack
+ * returns to the roster, as it always did when the Activity came back.
  */
 void SplashScreen.preventAutoHideAsync();
 
@@ -43,6 +51,7 @@ const ARENA_DATA: ArenaData = { repository: arenaRepository, useLiveData: useExp
 export default function RootLayout() {
   const { success, error } = useArenaMigrations();
   const fonts = useArenaFonts();
+  const { fontScale } = useWindowDimensions();
 
   const failure = error ?? fonts.error;
   const ready = failure !== null || (success && fonts.loaded);
@@ -63,7 +72,7 @@ export default function RootLayout() {
           <BootFailure message={failure.message} />
         ) : (
           <ArenaDataProvider value={ARENA_DATA}>
-            <ArenaStack />
+            <ArenaStack key={fontScale} />
           </ArenaDataProvider>
         )}
       </SafeAreaProvider>
