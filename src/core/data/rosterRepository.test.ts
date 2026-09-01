@@ -747,6 +747,40 @@ describe('rosterRepository — recording a match from the roster', () => {
     expect(repo.recordMatch(asPlayerId('nobody'), 'WIN').ok).toBe(false);
   });
 
+  /**
+   * The three refusals name three different players, so each is asserted on its sentence
+   * rather than on `ok: false`. The deleted-avatar case is the one that used to answer with
+   * the opponent's sentence: the opponent was on the roster the whole time.
+   */
+  describe('says which of the three refused', () => {
+    const messageOf = (opponentId: string): string => {
+      const result = repo.recordMatch(asPlayerId(opponentId), 'WIN');
+      if (result.ok) throw new Error('expected the match to be refused');
+      return result.error.message;
+    };
+
+    it('names the avatar when the avatar has been deleted', () => {
+      // A local player made the viewer, then removed from the player screen. Nothing clears
+      // the preference, so it points at a row that is gone — the state a swipe can land in
+      // when the delete happens on another screen mid-gesture.
+      const created = repo.createPlayer(localDraft('Nyx'));
+      if (!isOk(created)) throw new Error('fixture: the player could not be created');
+      expect(repo.setViewerId(created.value.id).ok).toBe(true);
+      expect(repo.deletePlayer(created.value.id).ok).toBe(true);
+      expect(repo.getViewerId()).toBe(created.value.id);
+
+      expect(messageOf('p-b')).toBe('Choose which player is your avatar before recording a match.');
+    });
+
+    it('names the opponent when the opponent is the one missing', () => {
+      expect(messageOf('nobody')).toBe('That player is not on the roster.');
+    });
+
+    it('says there is no record against yourself', () => {
+      expect(messageOf('p-a')).toBe('You have no record against yourself.');
+    });
+  });
+
   it('refuses to record anything while no avatar has been chosen', () => {
     const empty = createTestDatabase();
     try {

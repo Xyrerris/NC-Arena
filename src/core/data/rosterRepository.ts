@@ -32,6 +32,7 @@ import {
   type ArenaDatabase,
   type PlayerDetailRow,
   type PlayerRow,
+  type RecordMatchRefusal,
   type RosterRow,
 } from '../db';
 import {
@@ -155,12 +156,25 @@ const NO_SUCH_PLAYER = 'That player is not on the roster.';
 
 /**
  * A result is *yours against them*, so there has to be a "you" (ARCHITECTURE.md §2.3).
- * Reachable in one way the roster cannot prevent: the avatar is chosen, a swipe begins, and
- * the avatar's row is deleted from another screen before the finger lifts.
+ *
+ * It covers two states the user cannot tell apart and does not need to: no avatar has ever
+ * been chosen, and the chosen one has since been deleted from another screen. Both leave
+ * the same hole and both are closed by the same act, so they get the same sentence — what
+ * they must *not* get is a sentence about the opponent, who is present either way.
  */
 const NO_VIEWER_YET = 'Choose which player is your avatar before recording a match.';
 
 const NOT_AGAINST_YOURSELF = 'You have no record against yourself.';
+
+/**
+ * One sentence per refusal. The mapping lives here rather than in `core/db`, which reports
+ * *which* rule refused and stays free of anything the user reads (ARCHITECTURE.md §2.3).
+ */
+const REFUSAL_MESSAGE: Record<RecordMatchRefusal, string> = {
+  NO_VIEWER: NO_VIEWER_YET,
+  NO_OPPONENT: NO_SUCH_PLAYER,
+  SELF: NOT_AGAINST_YOURSELF,
+};
 
 export interface RosterRepositoryDeps {
   db: ArenaDatabase;
@@ -322,14 +336,20 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
      * of a head-to-head could write a record between two other players, which is a fact
      * this app has no way to know and no screen to show — and the roster's swipe would
      * then be one argument away from doing it by accident.
+     *
+     * Only the unset preference is answered before the write. The remaining refusals are
+     * the transaction's to report: a viewer row deleted between this check and the insert
+     * would otherwise be described by whichever sentence was chosen up here, and it was
+     * the opponent's.
      */
     recordMatch: (opponentId: PlayerId, outcome: MatchOutcome): Result<HeadToHead> => {
       const currentViewer = viewerId();
       if (currentViewer === NO_VIEWER) return err(new Error(NO_VIEWER_YET));
-      if (currentViewer === opponentId) return err(new Error(NOT_AGAINST_YOURSELF));
       try {
-        const row = recordMatchResult(db, currentViewer, opponentId, outcome);
-        return row === null ? err(new Error(NO_SUCH_PLAYER)) : ok(toHeadToHead(row));
+        const attempt = recordMatchResult(db, currentViewer, opponentId, outcome);
+        return attempt.recorded
+          ? ok(toHeadToHead(attempt.row))
+          : err(new Error(REFUSAL_MESSAGE[attempt.refusal]));
       } catch (cause) {
         return err(toError(cause));
       }

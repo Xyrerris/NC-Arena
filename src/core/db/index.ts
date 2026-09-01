@@ -33,4 +33,6 @@ export {
   recordMatchResult,
   replaceRoster,
   updateLocalPlayer,
+  type RecordMatchOutcome,
+  type RecordMatchRefusal,
 } from './write';

@@ -217,21 +217,32 @@ export const deleteLocalPlayer = (db: ArenaDatabase, id: PlayerId): boolean =>
  * (ARCHITECTURE.md §10). Inside a transaction the read and the write cannot be
  * interleaved, so the plainer form is not the weaker one.
  *
- * Returns null when the pairing is not one a match can be recorded for: an unknown viewer,
- * an unknown opponent, or the viewer against themselves. The caller cannot tell those
- * apart from the return value — the repository checks the self case first, because that is
- * the only one of the three the user can reach and it deserves its own sentence.
+ * A refusal says **which** of the three it was. The three name different players, so they
+ * cannot share a sentence: "you have no avatar", "that player is gone", and "there is no
+ * record against yourself" are advice about three different things. Collapsing them into
+ * one `null` made the caller guess, and it guessed wrong on the one case a user can
+ * actually reach — an avatar deleted from another screen was answered with a sentence
+ * about the opponent, who was never the problem.
+ *
+ * Which of the three it is, is only knowable *inside* the transaction. Checking the viewer
+ * above this call instead would be a read the delete can still land between, so the answer
+ * is decided where the write is.
  */
+export type RecordMatchRefusal = 'NO_VIEWER' | 'NO_OPPONENT' | 'SELF';
+
+export type RecordMatchOutcome =
+  { recorded: true; row: HeadToHeadRow } | { recorded: false; refusal: RecordMatchRefusal };
+
 export const recordMatchResult = (
   db: ArenaDatabase,
   viewerId: PlayerId,
   opponentId: PlayerId,
   outcome: MatchOutcome,
-): HeadToHeadRow | null =>
+): RecordMatchOutcome =>
   db.transaction((tx) => {
-    if (viewerId === opponentId) return null;
-    if (rowById(tx, viewerId) === undefined) return null;
-    if (rowById(tx, opponentId) === undefined) return null;
+    if (viewerId === opponentId) return { recorded: false, refusal: 'SELF' };
+    if (rowById(tx, viewerId) === undefined) return { recorded: false, refusal: 'NO_VIEWER' };
+    if (rowById(tx, opponentId) === undefined) return { recorded: false, refusal: 'NO_OPPONENT' };
 
     const pairing = and(eq(headToHead.viewerId, viewerId), eq(headToHead.opponentId, opponentId));
     const before = tx.select().from(headToHead).where(pairing).limit(1).all()[0];
@@ -245,7 +256,16 @@ export const recordMatchResult = (
       tx.update(headToHead).set({ wins, losses }).where(pairing).run();
     }
 
-    return tx.select().from(headToHead).where(pairing).limit(1).all()[0] ?? null;
+    const row = tx.select().from(headToHead).where(pairing).limit(1).all()[0];
+    if (row === undefined) {
+      // Unreachable inside the transaction that just wrote this pairing. Thrown rather
+      // than returned as a refusal, because a refusal is a sentence shown to the user and
+      // this is a programmer error (core/common/result.ts).
+      throw new Error(
+        `recordMatchResult: ${viewerId} vs ${opponentId} vanished between the write and the read.`,
+      );
+    }
+    return { recorded: true, row };
   });
 
 /**

@@ -1302,8 +1302,12 @@ split ADR-0012 and the reanimated mock already draw.
 `recordMatch(opponentId, outcome)` takes one side, not two. A call that could name both sides could
 write a record between two other players — a fact this app has no way to know and no screen to show
 — and the roster's swipe would then be one argument away from doing it by accident. A missing
-avatar, an unknown opponent and the viewer against themselves are three refusals with two messages,
-because the third is the only one the user can actually reach.
+avatar, an unknown opponent and the viewer against themselves are three refusals with three
+messages, because the three name three different players: the sentence that helps is the one that
+names the player who is missing.
+
+That last sentence originally read "three refusals with two messages", and the code matched it.
+ADR-0028 records why that was wrong and what replaced it.
 
 **Decision 4 — read-modify-write, inside a transaction, instead of `wins = wins + 1`.** The
 increment is not written as a SQL expression, because an upsert's `SET` clause would make the two
@@ -1337,3 +1341,50 @@ the list no longer shows.
 - **There is no undo.** The only protection against a mis-swipe is `COMMIT_DISTANCE`: a drag that
   ends short of it springs back having written nothing. Removing a match recorded by mistake is not
   possible from any screen today — it is the obvious next piece of work, and it is not in this one.
+
+---
+
+## ADR-0028 — A refused match says which player is missing
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 4.8
+
+**Context.** ADR-0027 gave `recordMatchResult` three reasons to refuse — no viewer, no opponent, the
+viewer against themselves — and one way to say so: `null`. The repository guessed from there. It
+checked the unset preference and the self case ahead of the write and mapped everything else to
+"That player is not on the roster."
+
+The guess is wrong in the one case the doc comment itself called reachable. Deleting a player does
+not clear the viewer preference, so an avatar removed from another screen leaves it pointing at a
+row that is gone. `recordMatch` then finds a viewer id that is not `NO_VIEWER`, falls through to the
+write, gets `null` back and blames the opponent — who was on the roster the whole time. The user is
+told to fix a thing that is not broken, and the thing that is broken is not mentioned.
+
+**Decision 1 — the write layer reports which rule refused.** `recordMatchResult` returns
+`{ recorded: true, row }` or `{ recorded: false, refusal }`, where `refusal` is `NO_VIEWER`,
+`NO_OPPONENT` or `SELF`. Three outcomes that need three different sentences cannot share one `null`;
+the alternative — the repository re-reading the viewer row before the write — is a check the delete
+can still land after, so the answer is decided inside the transaction that already knows it.
+
+**Decision 2 — the sentences stay in `core/data`.** `core/db` names the rule, not the wording. A
+refusal is something a user reads, and the layer that speaks SQL has no business holding a string
+that appears on screen (ARCHITECTURE.md §2.3). The mapping is one `Record<RecordMatchRefusal, string>`
+in the repository, so a fourth refusal cannot be added without a sentence for it.
+
+**Decision 3 — a deleted avatar and an unchosen one get the same sentence.** "Choose which player is
+your avatar before recording a match" is true of both, and the difference between them is not
+something the user can act on differently. What they must not get is the opponent's sentence.
+
+**Consequences.**
+
+- The repository no longer checks the self case ahead of the write; the transaction owns it, and the
+  rule is stated once. The unset-preference check stays, because it saves opening a transaction to
+  learn something the preference already knew.
+- `recordMatchResult` now throws when the pairing it just wrote cannot be read back, rather than
+  folding that into a refusal. It is a programmer error and not a sentence for anyone
+  (`core/common/result.ts`), and the same shape `insertLocalPlayer` already uses.
+- Three tests assert the three sentences by their text rather than by `ok: false`. Asserting the
+  flag is what let the wrong message pass review in the first place.
+- **Nothing clears the viewer preference on delete, and this does not change that.** The dangling id
+  is still reachable; it is now merely described correctly. Clearing it — or refusing to delete the
+  avatar at all — is a separate decision about what deleting yourself should mean, and it is not
+  made here.
