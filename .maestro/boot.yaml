@@ -16,7 +16,7 @@ appId: com.ncarena.arenascout
 - assertVisible: 'No players yet'
 # The way out of the empty state has to be visible in the same frame as the emptiness.
 - assertVisible: '+ NEW PLAYER'
-- takeScreenshot: ${SHOT_DIR}/boot-empty-roster
+- takeScreenshot: boot-empty-roster
 
 # No season label before anything is known: absent rather than rendered as a placeholder
 # (ADR-0018). The viewer hero card is absent for the same reason — open decision 3.

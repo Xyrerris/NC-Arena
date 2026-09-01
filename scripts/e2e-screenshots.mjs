@@ -17,8 +17,8 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { adbPath } from './android-sdk.mjs';
@@ -61,6 +61,29 @@ const requireTooling = () => {
   return devices.length;
 };
 
+/**
+ * Maestro writes a run's screenshots to `<--test-output-dir>/<timestamp>/<flow>/takeScreenshot/`,
+ * and refuses any name that would escape that folder — which is what the old `SHOT_DIR` absolute
+ * paths did. The timestamp is the problem for a baseline: it moves every run, so there would be no
+ * fixed path to compare against or to point a reviewer at. The pixels are therefore copied back up
+ * to the flat `screenshots/scale-<scale>/` layout the flows' names were always written for, while
+ * the run folder underneath keeps the logs and manifest for a failure worth reading.
+ */
+const collectScreenshots = (runDir, destDir) => {
+  const shots = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (entry.endsWith('.png') && basename(dir) === 'takeScreenshot') shots.push(full);
+    }
+  };
+  if (existsSync(runDir)) walk(runDir);
+  if (shots.length > 0 && !existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+  for (const shot of shots) copyFileSync(shot, join(destDir, basename(shot)));
+  return shots.length;
+};
+
 const readFontScale = () => {
   const value = adb('shell', 'settings', 'get', 'system', 'font_scale');
   return value === 'null' || value === '' ? '1.0' : value;
@@ -81,17 +104,20 @@ const main = () => {
       setFontScale(scale);
       for (const flow of FLOWS) {
         const label = `${flow} @ ${scale}x`;
-        const shotDir = join(SHOT_ROOT, `scale-${scale}`);
-        if (!existsSync(shotDir)) mkdirSync(shotDir, { recursive: true });
+        // One directory per flow per scale. Maestro writes `takeScreenshot/` inside it, so
+        // sharing a directory between flows would have them overwrite each other's manifest.
+        const outDir = join(SHOT_ROOT, `scale-${scale}`, basename(flow, '.yaml'));
+        if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
         const startedAt = Date.now();
         const result = run(
           'maestro',
-          ['test', '-e', `SHOT_DIR=${shotDir}`, join('.maestro', flow)],
+          ['test', '--test-output-dir', outDir, join('.maestro', flow)],
           { stdio: 'inherit', shell: process.platform === 'win32' },
         );
         const seconds = (Date.now() - startedAt) / 1000;
-        timings.push({ label, seconds, ok: result.status === 0 });
+        const shots = collectScreenshots(outDir, join(SHOT_ROOT, `scale-${scale}`));
+        timings.push({ label, seconds, ok: result.status === 0, shots });
         if (result.status !== 0) failures += 1;
       }
     }
@@ -102,9 +128,10 @@ const main = () => {
   console.log('\nWall-clock cost (ARCHITECTURE.md §10 — this is the number that decides');
   console.log('whether the gate stays on every PR or moves to a merge queue):');
   let total = 0;
-  for (const { label, seconds, ok } of timings) {
+  for (const { label, seconds, ok, shots } of timings) {
     total += seconds;
-    console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${label.padEnd(24)} ${seconds.toFixed(1)}s`);
+    const shot = `${shots} shot${shots === 1 ? '' : 's'}`;
+    console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${label.padEnd(24)} ${seconds.toFixed(1)}s  ${shot}`);
   }
   console.log(`  ${''.padEnd(30)} ${total.toFixed(1)}s total`);
   console.log(`\nScreenshots: ${SHOT_ROOT}`);

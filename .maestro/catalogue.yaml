@@ -3,14 +3,27 @@
 # pixels can tell whether "2,418,904,113" is actually all there.
 #
 # The font scale is set by scripts/e2e-screenshots.mjs before this runs — Maestro has no way
-# to change a system setting, and the 200 % pass is the one that matters. That script also
-# passes SHOT_DIR, so the two passes do not overwrite each other's baselines.
+# to change a system setting, and the 200 % pass is the one that matters. Screenshot names
+# are bare: Maestro refuses a path that escapes the run's own output folder, so that script
+# gives each flow and scale its own folder via --test-output-dir instead.
 appId: com.ncarena.arenascout
 ---
 - launchApp
+# Wait for the roster to paint before deep-linking. A VIEW intent that arrives while the
+# bundle is still loading finds no router listening and is dropped — there is no retry, so
+# the app simply stays on "/" and the flow spends its whole timeout photographing the roster.
+# That is what happened on this flow's first run against a device.
+- assertVisible: 'Arena'
 - openLink: arenascout://catalogue
-- assertVisible: 'VIEWERCARD'
-- takeScreenshot: ${SHOT_DIR}/catalogue-01-viewer
+# The deep link returns as soon as the intent is delivered, and this screen is the whole
+# design system mounted at once — the default assertion timeout expires while the roster is
+# still on screen, which is how this read as "VIEWERCARD is not visible" on the first run
+# against a device. The wait is on the assertion rather than a blind pause so the flow still
+# fails fast if the catalogue never arrives.
+- extendedWaitUntil:
+    visible: 'VIEWERCARD'
+    timeout: 20000
+- takeScreenshot: catalogue-01-viewer
 
 # The widest value the formatter takes. If this assertion passes but the screenshot shows an ellipsis,
 # the promise the product is built on is broken and only the image says so.
@@ -18,17 +31,17 @@ appId: com.ncarena.arenascout
     element:
       text: 'STATROW.*'
     direction: DOWN
-- assertVisible: '2,418,904,113'
-- takeScreenshot: ${SHOT_DIR}/catalogue-02-stat-row
+- assertVisible: '2\.418\.904\.113'
+- takeScreenshot: catalogue-02-stat-row
 
 - scrollUntilVisible:
     element:
       text: 'COMPAREBAR'
     direction: DOWN
-- takeScreenshot: ${SHOT_DIR}/catalogue-03-compare-bar
+- takeScreenshot: catalogue-03-compare-bar
 
 - scrollUntilVisible:
     element:
       text: 'ARENATEXT.*'
     direction: DOWN
-- takeScreenshot: ${SHOT_DIR}/catalogue-04-numerics
+- takeScreenshot: catalogue-04-numerics
