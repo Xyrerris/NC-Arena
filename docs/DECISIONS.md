@@ -1388,3 +1388,53 @@ something the user can act on differently. What they must not get is the opponen
   is still reachable; it is now merely described correctly. Clearing it — or refusing to delete the
   avatar at all — is a separate decision about what deleting yourself should mean, and it is not
   made here.
+
+---
+
+## ADR-0029 — The record is editable where it is read
+
+**Date:** 2026-09-01 · **Status:** accepted · **Phase:** 4.9
+
+**Context.** ADR-0027 shipped the swipe and said plainly what it lacked: "There is no undo. A
+mis-swipe is a permanent increment." The roster is the wrong place to fix that — a row has two
+directions and both are spoken for — but the detail screen already shows the record it would edit,
+beside the comparison that gives it meaning.
+
+**Decision 1 — a stepper, not a form.** Two rows, `WINS` and `LOSSES`, each with a minus, the count,
+and a plus. Typing an absolute value was the alternative and it is strictly more powerful; it is also
+a keyboard, a validator and a Save button in front of an act that is otherwise one tap. The stepper
+matches what the swipe already does, and `-1` is the undo.
+
+**Decision 2 — one write, signed.** `recordMatchResult` grew a `MatchDelta` of `1` or `-1` rather
+than gaining a sibling. "Add a win" and "take a win back" differ only in sign, and two functions
+would have given the same four refusals two homes to drift between. The repository still exposes two
+_names_ — `recordMatch` and `removeMatch` — because no call site outside this screen has both.
+
+**Decision 3 — the floor is a refusal, not a clamp.** A record counts matches that happened, so
+neither column means anything below zero. Clamping would report a write that did not occur and leave
+the screen showing the number it already showed, with nothing to explain it. `BELOW_ZERO` is the
+fourth refusal, and it carries its own sentence like the other three (ADR-0028).
+
+**Decision 4 — the minus is disabled at zero, not removed.** This is the opposite of the call
+ADR-0020 made for the Edit button, and deliberately: an absent Edit control is a screen that has no
+edit, while a stepper missing one of its two buttons reads as a layout fault. It is announced with
+`accessibilityState.disabled` so the reason reaches a screen reader, and `core/db` refuses the press
+anyway — the disabled state is an affordance, not the guard.
+
+**Consequences.**
+
+- **`observePlayer` had to be re-keyed**, exactly as `observeRoster` was. ADR-0027 noted this screen
+  carried the same `useLiveQuery` staleness and left it alone because nothing here wrote a record.
+  That is no longer true, so the counter that fixed the roster now has a twin here. **The staleness
+  is a property of the observer, not of either screen** — a third writer will need the same thing,
+  and the third time is when it should become something other than a convention.
+- **The Vs You tab now has a control on your own page's version of itself**, or rather does not:
+  `canAdjust` is false when the viewer and the player are the same row. The tab still renders and
+  still compares you against yourself, which is pre-existing and untouched here.
+- **A refused step clears on the next thing the user does**, the rule `useRoster` now states once
+  over every non-record event. Both screens gained that in the same change, which is what turned it
+  from a habit into a stated rule.
+- **There is still no history.** The stepper edits a running total; it cannot say which match was
+  removed, because nothing has ever stored one. A per-match log is a schema this app does not have
+  and does not obviously need — but "undo the last thing" is not what this does, and calling it undo
+  in the UI would promise that.

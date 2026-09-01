@@ -41,6 +41,7 @@ import {
   normalisePlayerName,
   validatePlayerDraft,
   type HeadToHead,
+  type MatchDelta,
   type MatchOutcome,
   type Player,
   type PlayerDetail,
@@ -167,6 +168,13 @@ const NO_VIEWER_YET = 'Choose which player is your avatar before recording a mat
 const NOT_AGAINST_YOURSELF = 'You have no record against yourself.';
 
 /**
+ * The stepper hides a `-1` it cannot honour, so reaching this means the count changed under
+ * the press — two taps racing, or a swipe on the roster beneath. It names the floor rather
+ * than the race, because the floor is the part that will still be true a second later.
+ */
+const NOTHING_TO_REMOVE = 'There is no match left to take back.';
+
+/**
  * One sentence per refusal. The mapping lives here rather than in `core/db`, which reports
  * *which* rule refused and stays free of anything the user reads (ARCHITECTURE.md §2.3).
  */
@@ -174,6 +182,7 @@ const REFUSAL_MESSAGE: Record<RecordMatchRefusal, string> = {
   NO_VIEWER: NO_VIEWER_YET,
   NO_OPPONENT: NO_SUCH_PLAYER,
   SELF: NOT_AGAINST_YOURSELF,
+  BELOW_ZERO: NOTHING_TO_REMOVE,
 };
 
 export interface RosterRepositoryDeps {
@@ -230,6 +239,36 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     try {
       write(fetched.value);
       return ok(undefined);
+    } catch (cause) {
+      return err(toError(cause));
+    }
+  };
+
+  /**
+   * The one write behind `recordMatch` and `removeMatch` (ADR-0027, ADR-0029).
+   *
+   * The **viewer is resolved here**, not passed in. A caller that could name both sides of
+   * a head-to-head could write a record between two other players, which is a fact this app
+   * has no way to know and no screen to show — and the roster's swipe would then be one
+   * argument away from doing it by accident.
+   *
+   * Only the unset preference is answered before the write. The remaining refusals are the
+   * transaction's to report: a viewer row deleted between this check and the insert would
+   * otherwise be described by whichever sentence was chosen up here, and it was the
+   * opponent's (ADR-0028).
+   */
+  const moveRecord = (
+    opponentId: PlayerId,
+    outcome: MatchOutcome,
+    delta: MatchDelta,
+  ): Result<HeadToHead> => {
+    const currentViewer = viewerId();
+    if (currentViewer === NO_VIEWER) return err(new Error(NO_VIEWER_YET));
+    try {
+      const attempt = recordMatchResult(db, currentViewer, opponentId, outcome, delta);
+      return attempt.recorded
+        ? ok(toHeadToHead(attempt.row))
+        : err(new Error(REFUSAL_MESSAGE[attempt.refusal]));
     } catch (cause) {
       return err(toError(cause));
     }
@@ -329,31 +368,20 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
       }
     },
 
+    /** Adds one match to your record against a player (ADR-0027). */
+    recordMatch: (opponentId: PlayerId, outcome: MatchOutcome): Result<HeadToHead> =>
+      moveRecord(opponentId, outcome, 1),
+
     /**
-     * Adds one match to your record against a player (ADR-0027).
+     * Takes one match back off your record against a player (ADR-0029).
      *
-     * The **viewer is resolved here**, not passed in. A caller that could name both sides
-     * of a head-to-head could write a record between two other players, which is a fact
-     * this app has no way to know and no screen to show — and the roster's swipe would
-     * then be one argument away from doing it by accident.
-     *
-     * Only the unset preference is answered before the write. The remaining refusals are
-     * the transaction's to report: a viewer row deleted between this check and the insert
-     * would otherwise be described by whichever sentence was chosen up here, and it was
-     * the opponent's.
+     * The counterpart to `recordMatch` and the undo ADR-0027 shipped without. It is a
+     * separate name rather than a signed argument on the one above, because the two are
+     * different acts at every call site that has one: the roster only ever adds, and the
+     * detail screen's stepper is the only place both are reachable.
      */
-    recordMatch: (opponentId: PlayerId, outcome: MatchOutcome): Result<HeadToHead> => {
-      const currentViewer = viewerId();
-      if (currentViewer === NO_VIEWER) return err(new Error(NO_VIEWER_YET));
-      try {
-        const attempt = recordMatchResult(db, currentViewer, opponentId, outcome);
-        return attempt.recorded
-          ? ok(toHeadToHead(attempt.row))
-          : err(new Error(REFUSAL_MESSAGE[attempt.refusal]));
-      } catch (cause) {
-        return err(toError(cause));
-      }
-    },
+    removeMatch: (opponentId: PlayerId, outcome: MatchOutcome): Result<HeadToHead> =>
+      moveRecord(opponentId, outcome, -1),
 
     /** Rows currently in the ladder. A one-off read; the header subscribes instead. */
     playerCount: (): number => playerCountQuery(db).all()[0]?.count ?? 0,

@@ -64,6 +64,10 @@ export const useRoster = (): RosterController => {
   const viewer = useLiveData(repository.observeViewer(), [viewerId]);
   const rosterSize = useLiveData(repository.observeRosterSize(), []);
 
+  // Whether an avatar exists at all, which is what decides if a row may be swiped. It is
+  // only an answer once the query behind it has run: until then `data` is null for the same
+  // reason it is null when nobody has chosen one, and a row cannot tell those apart. The
+  // `loaded` gate below is what keeps that ambiguity off the screen.
   const hasViewer = viewer.data !== null;
   const rows = useMemo(
     () => roster.data.map((entry) => toRosterRowUi(entry, hasViewer)),
@@ -93,14 +97,18 @@ export const useRoster = (): RosterController => {
 
   const onEvent = useCallback(
     (event: RosterEvent) => {
+      // A record failure names one row. Anything that changes which rows are on screen — a
+      // new search, a new sort, a refresh — can take that row away, so the message goes
+      // with it rather than outliving the list it described. Stated once, over every event
+      // that is not itself a record, so a fourth event cannot forget it.
+      if (event.type !== 'record') setRecordError(null);
+
       switch (event.type) {
         case 'search':
           setQuery(event.query);
-          // A new search clears a stale failure; otherwise the error state outlives the
-          // query that caused it and the roster looks permanently broken. The record
-          // failure goes with it: it names a row the new query may not even show.
+          // A new search clears a stale refresh failure too; otherwise the error state
+          // outlives the query that caused it and the roster looks permanently broken.
           setRefreshError(null);
-          setRecordError(null);
           return;
         case 'sort':
           setSort(event.sort);
@@ -143,7 +151,11 @@ export const useRoster = (): RosterController => {
     if (failure !== null) {
       return { kind: 'error', message: failure.message, canRetry: true };
     }
-    if (!roster.loaded) return { kind: 'loading' };
+    // Both queries, not just the roster's. They are independent subscriptions, so the rows
+    // can arrive first — and rows rendered before the viewer is known are rows that offer
+    // no swipe, then grow one a frame later. Waiting for both trades a flicker of wrong
+    // affordances for a slightly longer spinner.
+    if (!roster.loaded || !viewer.loaded) return { kind: 'loading' };
     if (rows.length === 0) return { kind: 'empty', query, header };
     return {
       kind: 'ready',
@@ -153,7 +165,7 @@ export const useRoster = (): RosterController => {
       isRefreshing,
       recordError: recordError?.message ?? null,
     };
-  }, [failure, roster.loaded, rows, query, header, isRefreshing, recordError]);
+  }, [failure, roster.loaded, viewer.loaded, rows, query, header, isRefreshing, recordError]);
 
   return { state, onEvent };
 };

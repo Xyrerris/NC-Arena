@@ -223,6 +223,66 @@ describe('PlayerDetailScreen', () => {
     });
   });
 
+  /**
+   * ADR-0029. `usePlayerDetail.test.tsx` proves what each step writes; what is proven here
+   * is that the two rows of buttons exist, are reachable by their labels rather than by
+   * their glyphs, and that the count on screen follows the write.
+   */
+  describe('stepping the record', () => {
+    const openVersus = async (): Promise<void> => {
+      fireEvent.press(screen.getByRole('tab', { name: 'VS YOU' }));
+      await waitFor(() => expect(screen.getByTestId('player-versus-tab')).toBeTruthy());
+    };
+
+    it('offers a plus and a minus for each of the two counts', async () => {
+      await renderDetail();
+      await openVersus();
+
+      // Named, not glyphed: "−" alone is announced as "minus" and says nothing about which
+      // column it moves.
+      expect(screen.getByLabelText('Add a win against this player')).toBeTruthy();
+      expect(screen.getByLabelText('Remove a win against this player')).toBeTruthy();
+      expect(screen.getByLabelText('Add a loss against this player')).toBeTruthy();
+      expect(screen.getByLabelText('Remove a loss against this player')).toBeTruthy();
+    });
+
+    it('moves the count on screen when a match is added', async () => {
+      await renderDetail();
+      await openVersus();
+      expect(screen.getByTestId('record-count-WIN')).toHaveTextContent('1');
+
+      fireEvent.press(screen.getByLabelText('Add a win against this player'));
+
+      await waitFor(() => expect(screen.getByTestId('record-count-WIN')).toHaveTextContent('2'));
+      // The other column did not move with it.
+      expect(screen.getByTestId('record-count-LOSS')).toHaveTextContent('6');
+    });
+
+    it('takes a match back, and then closes the minus that emptied the column', async () => {
+      await renderDetail();
+      await openVersus();
+
+      fireEvent.press(screen.getByLabelText('Remove a win against this player'));
+
+      await waitFor(() => expect(screen.getByTestId('record-count-WIN')).toHaveTextContent('0'));
+      expect(
+        screen.getByLabelText('Remove a win against this player').props.accessibilityState,
+      ).toMatchObject({ disabled: true });
+      // Announced as unavailable rather than removed: a stepper missing a button reads as a
+      // layout fault, not as a floor.
+      expect(
+        screen.getByLabelText('Remove a loss against this player').props.accessibilityState,
+      ).toMatchObject({ disabled: false });
+    });
+
+    it('shows no stepper on your own page', async () => {
+      await renderDetail(KRIOS);
+      await openVersus();
+
+      expect(screen.queryByTestId('record-stepper')).toBeNull();
+    });
+  });
+
   describe('going back', () => {
     it('pops the stack when there is one', async () => {
       await renderDetail();

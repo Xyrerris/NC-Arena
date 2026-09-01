@@ -2,14 +2,15 @@
 
 **Status:** Phases 0–4 implemented — **the demoable milestone is reached** — plus **Phase 4.5**
 (the offline user-data work in ADR-0020), **Phase 4.6** (ADR-0022), **Phase 4.7** (ADR-0023 and
-ADR-0024) and **Phase 4.8** (ADR-0027), all out-of-sequence scope rather than phases that were
-planned. The app is no longer
+ADR-0024), **Phase 4.8** (ADR-0027) and **Phase 4.9** (ADR-0028, ADR-0029), all out-of-sequence
+scope rather than phases that were planned. The app is no longer
 read-only: players can be added, edited and removed on device, a sync no longer takes them, and the
 user can say which player is _them_ and keep their own stats current.
 Phase 4.7 widened the player with HP, a level and the game's own player code, and made a screenshot
 of the game's profile screen fill the add-player form. Phase 4.8 gave `head_to_head` its first
 writer: a swipe on a roster row records a match against that player, so the personal record and the
-`MY WINS` sort are no longer columns nothing can move. Its parser and the two ports under it live in
+`MY WINS` sort are no longer columns nothing can move. Phase 4.9 made that record editable from the
+detail screen, so a mis-swipe is no longer permanent. Its parser and the two ports under it live in
 `core/ocr` and are tested in Node — but **the OCR itself has never run**: both packages are native,
 nothing in CI builds them, and so the scan control is unproven on a device for the same reason
 ADR-0017's screenshot gate is.
@@ -371,12 +372,48 @@ The personal record was structurally correct and permanently zero.
 - ✅ Recording re-sorts the ladder under `MY WINS`, because that sort reads the column that changed.
 - ✅ Your own row offers neither action, and **no** row offers them while no avatar has been chosen.
 - ✅ A refused write is reported above the ladder and does not replace it.
+- ✅ **Undo — closed by Phase 4.9 below**, one phase after this one admitted the gap. The sentence
+  it answers is left standing underneath, because the gap was real while it stood.
 - ⚠️ **There is no undo.** A mis-swipe is a permanent increment; the only protection is the
   commit distance a short drag falls short of. Removing a recorded match is the obvious next piece
   of work and is not in this one.
 - ⚠️ **The gesture itself is unproven.** No Node renderer dispatches a pan, so what jest covers is
   the accessibility path into the same handler. The drag, its thresholds and its spring-back are
   behind ADR-0017's absent emulator with everything else visual.
+
+---
+
+## Phase 4.9 — Editing the record, and two roster corrections (unplanned, ADR-0029)
+
+Phase 4.8 could only ever add. This phase makes the record editable where it is read, and closes two
+defects the same review found in the roster.
+
+**Deliverables**
+
+- A stepper in the detail screen's Vs You tab: minus, count, plus, on each of `WINS` and `LOSSES`.
+- `MatchDelta` in `core/model`, and a signed `recordMatchResult` — one write for both directions,
+  with `BELOW_ZERO` as its fourth refusal.
+- `removeMatch` on the repository, beside `recordMatch`.
+- `observePlayer` re-keyed on every step, the fix `observeRoster` already carries.
+- The roster's refused-record line now clears on **any** event that is not itself a record, rather
+  than on search alone.
+- The roster waits for the viewer query as well as the ladder before rendering rows.
+
+**Exit criteria**
+
+- ✅ A step in either direction moves one column and leaves the other alone, asserted at the
+  repository and again through the rendered count.
+- ✅ A first match against a never-fought opponent writes a record rather than being refused.
+- ✅ Neither column goes below zero: the minus is disabled at zero, and the write refuses it anyway
+  with its own sentence.
+- ✅ No stepper on your own page — there is no record against yourself.
+- ✅ The badge follows the write with no reload, which is only true because the observer is re-keyed.
+- ✅ A refused record clears on a sort, a refresh or a search, and survives a second refusal.
+- ✅ No row offers a swipe before the viewer is known: rows are not rendered until both queries have
+  loaded, so the affordance cannot appear a frame late.
+- ⚠️ **The stepper edits a total, not a history.** Nothing stores individual matches, so "take one
+  back" cannot name which. It is not undo and the UI does not call it that.
+- ⚠️ No Maestro flow, for the reason every phase since 4.5 gives.
 
 ---
 

@@ -14,6 +14,8 @@ import {
   played,
   rawStat,
   type HeadToHead,
+  type MatchDelta,
+  type MatchOutcome,
   type Player,
   type PlayerId,
   type StatKey,
@@ -57,6 +59,20 @@ export interface HeadToHeadUi {
   record: { wins: number; losses: number } | null;
   /** `"you won 8 of 10 matches"`, or `"never fought"`. */
   note: string;
+  /**
+   * Whether the stepper is offered at all (ADR-0029). False on your own page: the Vs You tab
+   * still renders there, comparing you against yourself, but there is no record between one
+   * player and themselves to move.
+   */
+  canAdjust: boolean;
+  /**
+   * Whether a `-1` has anything to take back. A record counts matches that happened, so
+   * neither column goes below zero, and the control that cannot act is disabled rather than
+   * removed: a stepper missing one of its two buttons reads as a layout fault, not as a
+   * floor. `core/db` refuses it as well — this only keeps the press from being offered.
+   */
+  canRemoveWin: boolean;
+  canRemoveLoss: boolean;
 }
 
 export interface VersusUi {
@@ -107,9 +123,19 @@ export type PlayerDetailUiState =
        * is fully readable without a viewer; Vs You is the half that has nothing to say.
        */
       versus: VersusUi | null;
+      /**
+       * Why the last step of the record changed nothing, or null. It sits above the tab
+       * rather than replacing the screen, for the reason the roster's own line gives: a
+       * refused increment is not a broken stat book.
+       */
+      recordError: string | null;
     };
 
-export type PlayerDetailEvent = { type: 'selectTab'; tab: PlayerDetailTab } | { type: 'refresh' };
+export type PlayerDetailEvent =
+  | { type: 'selectTab'; tab: PlayerDetailTab }
+  | { type: 'refresh' }
+  /** One match on or off your record against this player (ADR-0029). */
+  | { type: 'adjustRecord'; outcome: MatchOutcome; delta: MatchDelta };
 
 /**
  * CRIT is stored in basis points and every other stat is a raw count, so `rawStat`
@@ -159,16 +185,28 @@ export const toPlayerHeaderUi = (player: Player): PlayerHeaderUi => ({
   combatPowerShort: statFormatter.combatPowerShort(player.combatPower),
 });
 
-export const toHeadToHeadUi = (record: HeadToHead | null): HeadToHeadUi => {
+export const toHeadToHeadUi = (record: HeadToHead | null, canAdjust: boolean): HeadToHeadUi => {
+  // Read off the record rather than off the badge: a pairing that exists with 0–0 shows no
+  // badge and still has nothing to take back, and one that has never been written has the
+  // same two zeroes. The stepper cannot tell them apart and does not need to.
+  const wins = record?.wins ?? 0;
+  const losses = record?.losses ?? 0;
+  const steps = {
+    canAdjust,
+    canRemoveWin: canAdjust && wins > 0,
+    canRemoveLoss: canAdjust && losses > 0,
+  };
+
   const matches = record === null ? 0 : played(record);
   if (record === null || matches === 0) {
     // No division happens on this path at all, which is how "zero-match opponents do not
     // divide by zero" is guaranteed rather than merely tested (ROADMAP.md Phase 4).
-    return { record: null, note: 'never fought' };
+    return { record: null, note: 'never fought', ...steps };
   }
   return {
     record: { wins: record.wins, losses: record.losses },
     note: `you won ${record.wins} of ${matches} matches`,
+    ...steps,
   };
 };
 
@@ -220,7 +258,13 @@ export const toVersusUi = (
   unit: ShortUnit,
 ): VersusUi => {
   const rows = toCompareRows(viewer, opponent, unit);
-  return { headToHead: toHeadToHeadUi(record), rows, verdict: toVerdict(rows) };
+  // Both players are in hand here, so "is this my own page" is answered where it is cheap
+  // rather than passed down as one more argument the caller could get wrong.
+  return {
+    headToHead: toHeadToHeadUi(record, viewer.id !== opponent.id),
+    rows,
+    verdict: toVerdict(rows),
+  };
 };
 
 /** The Stats tab's footer, quoted from the design. */

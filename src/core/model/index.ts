@@ -119,6 +119,15 @@ export const played = (h: HeadToHead): number => h.wins + h.losses;
  */
 export type MatchOutcome = 'WIN' | 'LOSS';
 
+/**
+ * One match up or one match down. There is no other size of change to a record: the roster's
+ * swipe adds one and the detail screen's stepper takes one back (ADR-0029).
+ *
+ * It lives here rather than beside the write that applies it, because the screens are what
+ * name it and `features/` may not reach `core/db` (ARCHITECTURE.md §4).
+ */
+export type MatchDelta = 1 | -1;
+
 export type RosterSort = 'RANK' | 'COMBAT_POWER' | 'MY_WINS';
 
 /** Narrowing guard for values read back out of persisted preferences. */

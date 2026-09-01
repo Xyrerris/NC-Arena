@@ -22,7 +22,7 @@ import {
   type TestRepository,
 } from '@/core/testing';
 
-import type { PlayerDetailUiState } from './playerDetailUiState';
+import type { PlayerDetailEvent, PlayerDetailUiState } from './playerDetailUiState';
 import { usePlayerDetail } from './usePlayerDetail';
 
 const KRIOS = asPlayerId('plr_viewer');
@@ -224,6 +224,10 @@ describe('usePlayerDetail', () => {
       expect(versusOf(result.current.state)?.headToHead).toEqual({
         record: { wins: 1, losses: 6 },
         note: 'you won 1 of 7 matches',
+        // Both columns have something to take back, so both minus buttons are live.
+        canAdjust: true,
+        canRemoveWin: true,
+        canRemoveLoss: true,
       });
     });
 
@@ -232,6 +236,11 @@ describe('usePlayerDetail', () => {
       expect(versusOf(result.current.state)?.headToHead).toEqual({
         record: null,
         note: 'never fought',
+        // The stepper is offered — this is where a first match gets recorded — but neither
+        // minus has anything to take back yet.
+        canAdjust: true,
+        canRemoveWin: false,
+        canRemoveLoss: false,
       });
       // The comparison rows still render: never having fought someone says nothing about
       // their stats.
@@ -298,6 +307,105 @@ describe('usePlayerDetail', () => {
       expect(result.current.state).toMatchObject({ kind: 'ready', versus: null });
       expect(statOf(result.current.state, 'ATK')).toMatchObject({ exact: '2.418.904.113' });
       blankDb.close();
+    });
+  });
+
+  /**
+   * ADR-0029. The stepper is the only place a match comes back *off* a record, so the −1
+   * cases are the ones worth the most here: the roster's swipe already covers +1, and what
+   * is new is the floor underneath it.
+   */
+  describe('stepping the record', () => {
+    const h2hOf = (state: PlayerDetailUiState) => versusOf(state)?.headToHead;
+
+    const step = async (
+      result: { current: { onEvent: (e: PlayerDetailEvent) => void } },
+      outcome: 'WIN' | 'LOSS',
+      delta: 1 | -1,
+    ) => {
+      await act(async () => {
+        result.current.onEvent({ type: 'adjustRecord', outcome, delta });
+      });
+    };
+
+    it('adds a win, and the badge shows it without a reload', async () => {
+      const { result } = await mount();
+      expect(h2hOf(result.current.state)?.record).toEqual({ wins: 1, losses: 6 });
+
+      await step(result, 'WIN', 1);
+
+      // `observePlayer` selects from `players`, so this only updates because the hook
+      // re-keys the observer on every step — the staleness ADR-0027 left for later.
+      await waitFor(() =>
+        expect(h2hOf(result.current.state)?.record).toEqual({ wins: 2, losses: 6 }),
+      );
+    });
+
+    it('takes a win back, which is the undo the roster has no room for', async () => {
+      const { result } = await mount();
+
+      await step(result, 'WIN', -1);
+
+      await waitFor(() =>
+        expect(h2hOf(result.current.state)?.record).toEqual({ wins: 0, losses: 6 }),
+      );
+    });
+
+    it('closes the minus once the column it empties reaches zero', async () => {
+      const { result } = await mount();
+
+      await step(result, 'WIN', -1);
+
+      await waitFor(() => expect(h2hOf(result.current.state)?.canRemoveWin).toBe(false));
+      // The other column is untouched and still has six to give back.
+      expect(h2hOf(result.current.state)?.canRemoveLoss).toBe(true);
+    });
+
+    it('refuses a step below zero and says so, rather than silently clamping', async () => {
+      const { result } = await mount();
+      await step(result, 'WIN', -1);
+      await waitFor(() => expect(h2hOf(result.current.state)?.canRemoveWin).toBe(false));
+
+      // Reachable past the disabled button: two presses racing, or a swipe on the roster
+      // underneath. The count must not move, and the screen must not stay silent.
+      await step(result, 'WIN', -1);
+
+      expect(result.current.state).toMatchObject({
+        recordError: 'There is no match left to take back.',
+      });
+      expect(h2hOf(result.current.state)?.record).toEqual({ wins: 0, losses: 6 });
+    });
+
+    it('retires the failure as soon as the user does anything else', async () => {
+      const { result } = await mount();
+      await step(result, 'WIN', -1);
+      await step(result, 'WIN', -1);
+      expect(result.current.state).toMatchObject({ recordError: expect.any(String) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'selectTab', tab: 'VS_YOU' });
+      });
+
+      expect(result.current.state).toMatchObject({ recordError: null });
+    });
+
+    it('writes a first record for an opponent never fought', async () => {
+      const { result } = await mount(TWIN);
+      expect(h2hOf(result.current.state)?.record).toBeNull();
+
+      await step(result, 'LOSS', 1);
+
+      await waitFor(() =>
+        expect(h2hOf(result.current.state)?.record).toEqual({ wins: 0, losses: 1 }),
+      );
+    });
+
+    it('offers no stepper on your own page', async () => {
+      const { result } = await mount(KRIOS);
+
+      // The tab still renders — it compares you with yourself — but there is no record
+      // between one player and themselves to move.
+      expect(h2hOf(result.current.state)?.canAdjust).toBe(false);
     });
   });
 

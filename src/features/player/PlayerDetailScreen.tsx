@@ -25,11 +25,12 @@ import {
   radius,
   space,
 } from '@/core/design-system';
-import type { PlayerId } from '@/core/model';
+import type { MatchDelta, MatchOutcome, PlayerId } from '@/core/model';
 
 import {
   DETAIL_TABS,
   STATS_FOOTER,
+  type HeadToHeadUi,
   type PlayerDetailTab,
   type PlayerDetailUiState,
   type PlayerHeaderUi,
@@ -59,6 +60,10 @@ export function PlayerDetailScreen({ id }: PlayerDetailScreenProps) {
     [onEvent],
   );
   const retry = useCallback(() => onEvent({ type: 'refresh' }), [onEvent]);
+  const adjust = useCallback(
+    (outcome: MatchOutcome, delta: MatchDelta) => onEvent({ type: 'adjustRecord', outcome, delta }),
+    [onEvent],
+  );
 
   const edit = useCallback(
     () => router.push({ pathname: '/player/edit/[id]', params: { id } }),
@@ -95,7 +100,7 @@ export function PlayerDetailScreen({ id }: PlayerDetailScreenProps) {
         ) : null}
       </View>
 
-      <DetailBody state={state} onSelectTab={selectTab} onRetry={retry} />
+      <DetailBody state={state} onSelectTab={selectTab} onRetry={retry} onAdjust={adjust} />
     </ScreenScaffold>
   );
 }
@@ -104,9 +109,10 @@ interface DetailBodyProps {
   state: PlayerDetailUiState;
   onSelectTab: (tab: PlayerDetailTab) => void;
   onRetry: () => void;
+  onAdjust: (outcome: MatchOutcome, delta: MatchDelta) => void;
 }
 
-function DetailBody({ state, onSelectTab, onRetry }: DetailBodyProps) {
+function DetailBody({ state, onSelectTab, onRetry, onAdjust }: DetailBodyProps) {
   switch (state.kind) {
     case 'loading':
       return (
@@ -161,10 +167,24 @@ function DetailBody({ state, onSelectTab, onRetry }: DetailBodyProps) {
             accessibilityLabel="Stats or comparison"
             testID="player-tabs"
           />
+          {/*
+            A step that changed nothing says so here, above the tab rather than in place of
+            it. The stat book is fine; one write was refused (ADR-0029).
+          */}
+          {state.recordError === null ? null : (
+            <ArenaText
+              variant="bodySmall"
+              tone="negative"
+              accessibilityLiveRegion="polite"
+              testID="player-record-error"
+            >
+              {state.recordError}
+            </ArenaText>
+          )}
           {state.tab === 'STATS' ? (
             <StatsTab stats={state.stats} />
           ) : (
-            <VersusTab versus={state.versus} />
+            <VersusTab versus={state.versus} onAdjust={onAdjust} />
           )}
         </ScrollView>
       );
@@ -223,7 +243,12 @@ function StatsTab({ stats }: { stats: readonly StatRowUi[] }) {
   );
 }
 
-function VersusTab({ versus }: { versus: VersusUi | null }) {
+interface VersusTabProps {
+  versus: VersusUi | null;
+  onAdjust: (outcome: MatchOutcome, delta: MatchDelta) => void;
+}
+
+function VersusTab({ versus, onAdjust }: VersusTabProps) {
   if (versus === null) {
     // No avatar yet (open decision 3). The Stats tab beside this one is fully readable, so
     // this is a missing comparison rather than a broken screen.
@@ -259,6 +284,8 @@ function VersusTab({ versus }: { versus: VersusUi | null }) {
         )}
       </View>
 
+      <RecordStepper headToHead={versus.headToHead} onAdjust={onAdjust} />
+
       {versus.rows.map((row) => (
         <CompareBar
           key={row.key}
@@ -275,6 +302,123 @@ function VersusTab({ versus }: { versus: VersusUi | null }) {
         {versus.verdict}
       </ArenaText>
     </View>
+  );
+}
+
+/**
+ * The record, editable in place (ADR-0029).
+ *
+ * The roster's swipe only ever adds, so this is the only screen where a match can come back
+ * off — the undo ADR-0027 shipped without. Two rows rather than one, because "wins" and
+ * "losses" are separate counts and a single control would have to invent a direction.
+ */
+function RecordStepper({
+  headToHead,
+  onAdjust,
+}: {
+  headToHead: HeadToHeadUi;
+  onAdjust: (outcome: MatchOutcome, delta: MatchDelta) => void;
+}) {
+  // Absent on your own page. There is no record against yourself, so this is a control with
+  // nothing to act on rather than one that would explain itself (ADR-0027).
+  if (!headToHead.canAdjust) return null;
+
+  return (
+    <View style={styles.stepper} testID="record-stepper">
+      <StepperRow
+        label="WINS"
+        outcome="WIN"
+        value={headToHead.record?.wins ?? 0}
+        canRemove={headToHead.canRemoveWin}
+        onAdjust={onAdjust}
+      />
+      <StepperRow
+        label="LOSSES"
+        outcome="LOSS"
+        value={headToHead.record?.losses ?? 0}
+        canRemove={headToHead.canRemoveLoss}
+        onAdjust={onAdjust}
+      />
+    </View>
+  );
+}
+
+function StepperRow({
+  label,
+  outcome,
+  value,
+  canRemove,
+  onAdjust,
+}: {
+  label: string;
+  outcome: MatchOutcome;
+  value: number;
+  canRemove: boolean;
+  onAdjust: (outcome: MatchOutcome, delta: MatchDelta) => void;
+}) {
+  const noun = outcome === 'WIN' ? 'win' : 'loss';
+  return (
+    <View style={styles.stepRow}>
+      <ArenaText variant="labelNano" tone="subtle" style={styles.stepLabel}>
+        {label}
+      </ArenaText>
+      <StepButton
+        glyph="−"
+        // Spelled out, because "minus" is what a screen reader would otherwise say about a
+        // button whose only content is a glyph.
+        label={`Remove a ${noun} against this player`}
+        disabled={!canRemove}
+        onPress={() => onAdjust(outcome, -1)}
+        testID={`record-remove-${outcome}`}
+      />
+      <ArenaText
+        variant="numericMedium"
+        tone="primary"
+        align="center"
+        style={styles.stepValue}
+        testID={`record-count-${outcome}`}
+      >
+        {String(value)}
+      </ArenaText>
+      <StepButton
+        glyph="+"
+        label={`Add a ${noun} against this player`}
+        onPress={() => onAdjust(outcome, 1)}
+        testID={`record-add-${outcome}`}
+      />
+    </View>
+  );
+}
+
+function StepButton({
+  glyph,
+  label,
+  onPress,
+  disabled = false,
+  testID,
+}: {
+  glyph: string;
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      // Announced as unavailable rather than silently inert, which is the whole reason the
+      // button stays on screen at zero instead of disappearing.
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.step, disabled && styles.stepOff]}
+      testID={testID}
+    >
+      <ArenaText variant="labelStrong" tone={disabled ? 'subtle' : 'accent'}>
+        {glyph}
+      </ArenaText>
+    </Pressable>
   );
 }
 
@@ -316,6 +460,30 @@ const styles = StyleSheet.create({
     borderColor: color.decorative.hairline,
   },
   h2hText: { gap: space[6], flexShrink: 1 },
+  stepper: {
+    gap: space[10],
+    padding: space[16],
+    backgroundColor: color.raised,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: color.decorative.hairline,
+  },
+  stepRow: { flexDirection: 'row', alignItems: 'center', gap: space[12] },
+  stepLabel: { flexGrow: 1, flexShrink: 1 },
+  stepValue: { minWidth: layout.minTouchTarget },
+  step: {
+    minWidth: layout.minTouchTarget,
+    minHeight: layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.decorative.hairline,
+    backgroundColor: color.decorative.fill,
+  },
+  // No opacity: a dimmed control is a contrast failure waiting for Phase 6. The border and
+  // fill drop back to the divider tokens instead, and the glyph's tone carries the rest.
+  stepOff: { borderColor: color.decorative.divider, backgroundColor: color.decorative.fill },
   centred: {
     flex: 1,
     alignItems: 'center',

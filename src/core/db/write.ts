@@ -23,6 +23,7 @@ import {
   CRIT_BP_PER_PERCENT,
   normaliseGameCode,
   normalisePlayerName,
+  type MatchDelta,
   type MatchOutcome,
   type PlayerDraft,
   type PlayerId,
@@ -207,8 +208,13 @@ export const deleteLocalPlayer = (db: ArenaDatabase, id: PlayerId): boolean =>
   });
 
 /**
- * Adds one match to the viewer's record against a player, creating the pairing the first
+ * Moves the viewer's record against a player by one match, creating the pairing the first
  * time the two meet.
+ *
+ * `delta` is `1` for the roster's swipe and `-1` for the detail screen's stepper, which is
+ * the undo ADR-0027 shipped without (ADR-0029). One function rather than two, because "add
+ * a win" and "take a win back" differ only in sign: splitting them would give the same
+ * three refusals two homes and let them drift.
  *
  * **Read-modify-write, not `wins = wins + 1`.** The increment is expressed as a SQL
  * expression nowhere in this function, because the two drivers behind `ArenaDatabase`
@@ -224,11 +230,12 @@ export const deleteLocalPlayer = (db: ArenaDatabase, id: PlayerId): boolean =>
  * actually reach — an avatar deleted from another screen was answered with a sentence
  * about the opponent, who was never the problem.
  *
- * Which of the three it is, is only knowable *inside* the transaction. Checking the viewer
- * above this call instead would be a read the delete can still land between, so the answer
- * is decided where the write is.
+ * Which of them it is, is only knowable *inside* the transaction. Checking the viewer above
+ * this call instead would be a read the delete can still land between, so the answer is
+ * decided where the write is. `BELOW_ZERO` is there for the same reason: the stepper hides
+ * a `-1` it cannot honour, but what the column holds is only certain under the write.
  */
-export type RecordMatchRefusal = 'NO_VIEWER' | 'NO_OPPONENT' | 'SELF';
+export type RecordMatchRefusal = 'NO_VIEWER' | 'NO_OPPONENT' | 'SELF' | 'BELOW_ZERO';
 
 export type RecordMatchOutcome =
   { recorded: true; row: HeadToHeadRow } | { recorded: false; refusal: RecordMatchRefusal };
@@ -238,6 +245,7 @@ export const recordMatchResult = (
   viewerId: PlayerId,
   opponentId: PlayerId,
   outcome: MatchOutcome,
+  delta: MatchDelta,
 ): RecordMatchOutcome =>
   db.transaction((tx) => {
     if (viewerId === opponentId) return { recorded: false, refusal: 'SELF' };
@@ -247,8 +255,13 @@ export const recordMatchResult = (
     const pairing = and(eq(headToHead.viewerId, viewerId), eq(headToHead.opponentId, opponentId));
     const before = tx.select().from(headToHead).where(pairing).limit(1).all()[0];
 
-    const wins = (before?.wins ?? 0) + (outcome === 'WIN' ? 1 : 0);
-    const losses = (before?.losses ?? 0) + (outcome === 'LOSS' ? 1 : 0);
+    const wins = (before?.wins ?? 0) + (outcome === 'WIN' ? delta : 0);
+    const losses = (before?.losses ?? 0) + (outcome === 'LOSS' ? delta : 0);
+
+    // A record counts matches that happened, so neither column has a meaning below zero.
+    // Refused rather than clamped: clamping would report a write that did not occur, and
+    // the screen would show the same number it already showed with nothing to explain it.
+    if (wins < 0 || losses < 0) return { recorded: false, refusal: 'BELOW_ZERO' };
 
     if (before === undefined) {
       tx.insert(headToHead).values({ viewerId, opponentId, wins, losses }).run();

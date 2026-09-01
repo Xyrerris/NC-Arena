@@ -27,7 +27,7 @@ import {
 } from '@/core/testing';
 
 import type { RosterUiState } from './rosterUiState';
-import { useRoster } from './useRoster';
+import { useRoster, type RosterController } from './useRoster';
 
 const player = (id: string, name: string, rank: number, combatPower: number): Player => ({
   id: asPlayerId(id),
@@ -239,6 +239,66 @@ describe('useRoster', () => {
       expect(rows.find((row) => row.isViewer)).toMatchObject({ name: 'Aurel', record: null });
       expect(rows.find((row) => row.name === 'Brann')).toMatchObject({
         record: { wins: 5, losses: 1 },
+      });
+    });
+  });
+
+  /**
+   * A refused swipe leaves a line above the ladder. It names one row, so it must not
+   * survive anything that changes which rows are on screen — the failure mode is a roster
+   * that looks stuck, complaining about a player the list no longer shows.
+   */
+  describe('a refused record', () => {
+    const refuse = async (result: { current: RosterController }) => {
+      await act(async () => {
+        result.current.onEvent({ type: 'record', id: asPlayerId('p-a'), outcome: 'WIN' });
+      });
+      // p-a is the viewer, so this is the one refusal reachable by pressing a real control.
+      expect(result.current.state).toMatchObject({
+        recordError: 'You have no record against yourself.',
+      });
+    };
+
+    it('is cleared by a new sort', async () => {
+      const { result } = await mount();
+      await refuse(result);
+
+      await act(async () => {
+        result.current.onEvent({ type: 'sort', sort: 'MY_WINS' });
+      });
+
+      expect(result.current.state).toMatchObject({ recordError: null });
+    });
+
+    it('is cleared by a refresh', async () => {
+      const { result } = await mount();
+      await refuse(result);
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() => expect(result.current.state).toMatchObject({ recordError: null }));
+    });
+
+    it('is cleared by a new search', async () => {
+      const { result } = await mount();
+      await refuse(result);
+
+      await act(async () => {
+        result.current.onEvent({ type: 'search', query: 'br' });
+      });
+
+      expect(result.current.state).toMatchObject({ recordError: null });
+    });
+
+    it('survives a second refusal, rather than blinking off and on', async () => {
+      const { result } = await mount();
+      await refuse(result);
+      await refuse(result);
+
+      expect(result.current.state).toMatchObject({
+        recordError: 'You have no record against yourself.',
       });
     });
   });
