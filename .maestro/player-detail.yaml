@@ -19,29 +19,71 @@ appId: com.ncarena.arenascout
     id: 'roster-add-player'
 - assertVisible: 'New player'
 
+# The form is eleven fields in one ScrollView, and this flow fills six of them. Every field
+# after the first sits below the fold once the keyboard is up, and `tapOn` only matches what
+# is on screen — so each one is reached by dismissing the keyboard and scrolling to it by id.
+# Leaving that out is what failed on this flow's first real run against a device
+# ("Element not found: form-field-combatPower", with the field simply off-screen).
 - tapOn:
     id: 'form-field-name'
 - inputText: 'Valkros'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'form-field-combatPower'
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: 'form-field-combatPower'
 - inputText: '3084221'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'form-field-atk'
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: 'form-field-atk'
 - inputText: '2418904113'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'form-field-def'
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: 'form-field-def'
 - inputText: '1554320778'
 # Whole percentages only, and above 100 is legal (ADR-0020, amended 2026-08-24).
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'form-field-critPercent'
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: 'form-field-critPercent'
 - inputText: '113'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'form-field-hit'
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: 'form-field-hit'
 - inputText: '2210884019'
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: 'form-field-spd'
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: 'form-field-spd'
 - inputText: '1902551440'
-- takeScreenshot: ${SHOT_DIR}/form-01-filled
+- hideKeyboard
+- takeScreenshot: form-01-filled
 
 - tapOn:
     id: 'form-submit'
@@ -50,22 +92,22 @@ appId: com.ncarena.arenascout
 # at the bottom of it.
 - assertVisible: 'Valkros'
 - assertVisible: 'RANK #01'
-- assertVisible: '3,084,221'
-- assertVisible: '3.08 M'
-- takeScreenshot: ${SHOT_DIR}/detail-01-header
+- assertVisible: '3\.084\.221'
+- assertVisible: '3,08 M'
+- takeScreenshot: detail-01-header
 
 # The stat book. Exact on the left, rounded on the right, for every one of the five.
-- assertVisible: '2,418,904,113'
-- assertVisible: '2.42 B'
-- assertVisible: '113.0000 %'
-- assertVisible: '113.0%'
-- takeScreenshot: ${SHOT_DIR}/detail-02-stats
+- assertVisible: '2\.418\.904\.113'
+- assertVisible: '2,42 B'
+- assertVisible: '113,0000 %'
+- assertVisible: '113,0%'
+- takeScreenshot: detail-02-stats
 
 - scrollUntilVisible:
     element:
-      text: 'exact value left'
+      text: 'exact value left.*'
     direction: DOWN
-- takeScreenshot: ${SHOT_DIR}/detail-03-stats-footer
+- takeScreenshot: detail-03-stats-footer
 
 # A player this device added is editable; a synced one would not be (ADR-0020).
 - assertVisible: 'EDIT'
@@ -73,9 +115,9 @@ appId: com.ncarena.arenascout
 # Vs You. There is no viewer yet — open decision 3 — so this tab must explain itself rather
 # than render an empty comparison.
 - tapOn: 'VS YOU'
-- takeScreenshot: ${SHOT_DIR}/detail-04-versus-no-viewer
+- takeScreenshot: detail-04-versus-no-viewer
 
 # A link nobody can reach from inside the app, and everybody can reach from outside it.
 - openLink: arenascout://player/plr_does_not_exist
 - assertVisible: 'No such player'
-- takeScreenshot: ${SHOT_DIR}/detail-05-not-found
+- takeScreenshot: detail-05-not-found

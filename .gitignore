@@ -42,3 +42,8 @@ example
 # generated native folders
 /ios
 /android
+
+# Maestro visual-gate output — screenshots, run logs and logcat dumps written by
+# scripts/e2e-screenshots.mjs. Baselines are not committed yet; when they are, this line
+# narrows to the run folders rather than the whole tree.
+.maestro/screenshots/
