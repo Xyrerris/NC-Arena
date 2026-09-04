@@ -12,6 +12,7 @@ export type { LiveData, UseLiveData } from './liveData';
 export {
   PlayerDraftRejected,
   createRosterRepository,
+  type ImportMatch,
   type LiveQuery,
   type RosterRepository,
   type RosterRepositoryDeps,

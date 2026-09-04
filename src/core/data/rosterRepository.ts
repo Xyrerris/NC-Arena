@@ -18,6 +18,7 @@ import {
 } from '../common';
 import {
   deleteLocalPlayer,
+  findPlayerByIdentity,
   insertLocalPlayer,
   isNameTaken,
   playerCountQuery,
@@ -48,6 +49,7 @@ import {
   type PlayerDraft,
   type PlayerDraftErrors,
   type PlayerId,
+  type PlayerOrigin,
   type RosterEntry,
   type RosterSort,
 } from '../model';
@@ -185,6 +187,17 @@ const REFUSAL_MESSAGE: Record<RecordMatchRefusal, string> = {
   BELOW_ZERO: NOTHING_TO_REMOVE,
 };
 
+/**
+ * The row a screenshot import would land on, and whether it is the user's to write.
+ *
+ * Returned by `findImportMatch` rather than a bare `Player`, so the form can tell "Save
+ * updates Deus" from "Save will be refused, Aurel came from the sync" (ADR-0031).
+ */
+export interface ImportMatch {
+  player: Player;
+  origin: PlayerOrigin;
+}
+
 export interface RosterRepositoryDeps {
   db: ArenaDatabase;
   /**
@@ -290,6 +303,40 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     return null;
   };
 
+  /**
+   * Adds a player by hand, offline (ADR-0020).
+   *
+   * Validation runs here rather than only in the form, because this is the boundary the
+   * data actually crosses — a second entry point (a deep link, a future import, Phase 5's
+   * sync) must not be able to write a row the form would have refused. The form calls the
+   * same `validatePlayerDraft`, so the two cannot drift.
+   *
+   * The name check is a *query*, not a unique index, on purpose: uniqueness is a rule
+   * about what this device lets the user create, and a remote ladder that ships two
+   * players with one name is the server's business, not a reason to fail a migration.
+   */
+  const createPlayer = (draft: PlayerDraft): Result<Player> => {
+    const rejection = rejectionFor(draft);
+    if (rejection !== null) return err(rejection);
+    try {
+      return ok(toPlayer(insertLocalPlayer(db, newLocalPlayerId(), draft)));
+    } catch (cause) {
+      return err(toError(cause));
+    }
+  };
+
+  /** Edits a player this device added. A `REMOTE` row is refused — see `PlayerOrigin`. */
+  const updatePlayer = (id: PlayerId, draft: PlayerDraft): Result<Player> => {
+    const rejection = rejectionFor(draft, id);
+    if (rejection !== null) return err(rejection);
+    try {
+      const row = updateLocalPlayer(db, id, draft);
+      return row === null ? err(new Error(NOT_YOURS)) : ok(toPlayer(row));
+    } catch (cause) {
+      return err(toError(cause));
+    }
+  };
+
   return {
     observeRoster: (sort: RosterSort, search: string) => {
       const currentViewer = viewerId();
@@ -325,38 +372,59 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
 
     refresh,
 
+    createPlayer,
+
+    updatePlayer,
+
     /**
-     * Adds a player by hand, offline (ADR-0020).
+     * Which player an import would write to, if any — the same `name + game code` pair
+     * `importPlayer` matches on, asked *before* the write so the form can say what Save is
+     * about to do (ADR-0031).
      *
-     * Validation runs here rather than only in the form, because this is the boundary the
-     * data actually crosses — a second entry point (a deep link, a future import, Phase 5's
-     * sync) must not be able to write a row the form would have refused. The form calls the
-     * same `validatePlayerDraft`, so the two cannot drift.
+     * A one-off read like `playerCount`, not an observer. It is re-read whenever the name
+     * or the code in the form changes, which is the only thing that can change the answer
+     * from this screen — and a subscription re-keyed on every keystroke would cost more
+     * than the query it is avoiding.
      *
-     * The name check is a *query*, not a unique index, on purpose: uniqueness is a rule
-     * about what this device lets the user create, and a remote ladder that ships two
-     * players with one name is the server's business, not a reason to fail a migration.
+     * `origin` comes back with the player because the two answers differ: a `LOCAL` match
+     * is a row Save will rewrite, and a `REMOTE` one is a row Save will refuse. A form told
+     * only "there is a match" would promise the update in both cases and be wrong in one.
      */
-    createPlayer: (draft: PlayerDraft): Result<Player> => {
-      const rejection = rejectionFor(draft);
-      if (rejection !== null) return err(rejection);
-      try {
-        return ok(toPlayer(insertLocalPlayer(db, newLocalPlayerId(), draft)));
-      } catch (cause) {
-        return err(toError(cause));
-      }
+    findImportMatch: (name: string, gameCode: string): ImportMatch | null => {
+      const row = findPlayerByIdentity(db, name, gameCode);
+      return row === undefined ? null : { player: toPlayer(row), origin: row.origin };
     },
 
-    /** Edits a player this device added. A `REMOTE` row is refused — see `PlayerOrigin`. */
-    updatePlayer: (id: PlayerId, draft: PlayerDraft): Result<Player> => {
-      const rejection = rejectionFor(draft, id);
-      if (rejection !== null) return err(rejection);
+    /**
+     * Writes a player read off a screenshot: an **update** when the draft's name and game
+     * code together match a row already on the ladder, an insert when they match nothing
+     * (ADR-0031).
+     *
+     * Separate from `createPlayer` rather than folded into it, because the two answer
+     * different questions. "Add this player I am typing" should still collide with a name
+     * already on the ladder — that rejection is how a user finds out they are entering
+     * somebody twice. "Import this screenshot" has a picture of *which* player it is, and
+     * the pair is specific enough to say so: a second row would be the duplicate, not the
+     * thing that prevents one.
+     *
+     * The whole draft is written, not merged field by field. A screenshot shows the
+     * profile as it is now, so a stat it did not read is one the user has just confirmed
+     * in the form before pressing Save — and a merge would leave yesterday's HP beside
+     * today's ATK with nothing on screen saying which is which.
+     */
+    importPlayer: (draft: PlayerDraft): Result<Player> => {
+      let existing: PlayerRow | undefined;
       try {
-        const row = updateLocalPlayer(db, id, draft);
-        return row === null ? err(new Error(NOT_YOURS)) : ok(toPlayer(row));
+        existing = findPlayerByIdentity(db, draft.name, draft.gameCode);
       } catch (cause) {
         return err(toError(cause));
       }
+      // A `REMOTE` match takes the update path deliberately, where `updatePlayer` refuses
+      // it by name (ADR-0020). Falling back to an insert would be worse than the refusal:
+      // it would add a second row for a player the ladder plainly already holds.
+      return existing === undefined
+        ? createPlayer(draft)
+        : updatePlayer(asPlayerId(existing.id), draft);
     },
 
     /** Removes a player this device added, closing the gap in the ranking behind them. */

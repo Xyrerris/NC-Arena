@@ -29,9 +29,11 @@ import {
   applyScan,
   emptyFormValues,
   formTitle,
+  importNotice,
   scanNote,
   toDraftValues,
   toFormValues,
+  type ImportNotice,
   type PlayerFormEvent,
   type PlayerFormMode,
   type PlayerFormUiState,
@@ -83,6 +85,19 @@ export const usePlayerForm = ({
   const [message, setMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [scan, setScan] = useState<StatScanUiState>({ kind: 'idle' });
+  /**
+   * Has a screenshot ever filled this form? It decides whether Save *adds* a player or
+   * *updates* the one the screenshot turns out to be (ADR-0031), and it is what gates the
+   * notice that says so before the press.
+   *
+   * State rather than a ref, unlike the two guards below: it is set by the scan and read
+   * by the submit and by the render, which are different events — there is no handler here
+   * trying to see a value it has just written. And unlike `scan.kind`, it does not go back
+   * to `idle` when the user reopens the picker and dismisses it: the scanned values are
+   * still in the boxes at that point, so a form that consulted the last scan's state would
+   * quietly go back to inserting and add the row this rule exists to prevent.
+   */
+  const [hasScanned, setHasScanned] = useState(false);
 
   /**
    * Set the moment a write succeeds, and it holds the screen on `loading` until the route
@@ -136,10 +151,16 @@ export const usePlayerForm = ({
     setIsSaving(true);
 
     const draft = toDraftValues(values);
+    // Three cases, not two. An edit rewrites the row it opened; a hand-typed create adds a
+    // row and collides with a name already on the ladder, which is how the user finds out
+    // they are entering somebody twice; a create the scanner filled in *knows which player
+    // it photographed*, so it rewrites the match instead of adding a duplicate (ADR-0031).
     const result =
-      mode.kind === 'create'
-        ? repository.createPlayer(draft)
-        : repository.updatePlayer(mode.id, draft);
+      mode.kind !== 'create'
+        ? repository.updatePlayer(mode.id, draft)
+        : hasScanned
+          ? repository.importPlayer(draft)
+          : repository.createPlayer(draft);
 
     saving.current = false;
     setIsSaving(false);
@@ -152,7 +173,7 @@ export const usePlayerForm = ({
     setMessage(null);
     setIsClosing(true);
     onSaved(result.value);
-  }, [applyFailure, isClosing, mode, onSaved, repository, values]);
+  }, [applyFailure, hasScanned, isClosing, mode, onSaved, repository, values]);
 
   /**
    * Fills the inputs from a screenshot. It deliberately does **not** save, and does not
@@ -179,6 +200,7 @@ export const usePlayerForm = ({
     }
 
     const { sheet, screenshot } = result.value;
+    setHasScanned(true);
     setValues((current) => applyScan(current, sheet));
     // Every scanned field's stale rejection goes with it: the value under the message has
     // just been replaced, so the message describes something that is no longer there.
@@ -232,6 +254,23 @@ export const usePlayerForm = ({
     [remove, scanScreenshot, submit],
   );
 
+  /**
+   * Who Save is about to write over, said before it is pressed (ADR-0031).
+   *
+   * Re-read when the name or the code changes rather than computed once at scan time,
+   * because the user can edit either of them afterwards — and a notice naming a player the
+   * form no longer describes is worse than no notice at all. `hasScanned` gates it because
+   * the *behaviour* it describes is the import's: a hand-typed name that collides is still
+   * a rejection, and promising an update there would be a lie.
+   */
+  const notice: ImportNotice | null = useMemo(
+    () =>
+      hasScanned && mode.kind === 'create'
+        ? importNotice(repository.findImportMatch(values.name, values.gameCode))
+        : null,
+    [hasScanned, mode.kind, repository, values.gameCode, values.name],
+  );
+
   const state: PlayerFormUiState = useMemo(() => {
     if (isClosing) return { kind: 'loading' };
 
@@ -260,8 +299,22 @@ export const usePlayerForm = ({
       message,
       isSaving,
       scan,
+      importNotice: notice,
     };
-  }, [errors, isClosing, isSaving, loaded, message, mode, origin, player, scan, seeded, values]);
+  }, [
+    errors,
+    isClosing,
+    isSaving,
+    loaded,
+    message,
+    mode,
+    notice,
+    origin,
+    player,
+    scan,
+    seeded,
+    values,
+  ]);
 
   return { state, onEvent };
 };

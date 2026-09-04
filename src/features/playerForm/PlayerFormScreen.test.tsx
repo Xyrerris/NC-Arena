@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
 import { Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { err, ok, type Result, type RosterSnapshot, type RosterSource } from '@/core/common';
+import { err, isOk, ok, type Result, type RosterSnapshot, type RosterSource } from '@/core/common';
 import { ArenaDataProvider, type RosterRepository } from '@/core/data';
 import { asPlayerId, type Player, type PlayerId } from '@/core/model';
 import { createStatScanner, type ScannedLine, type StatScanner } from '@/core/ocr';
@@ -521,6 +521,148 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
       // boundary, exactly as a hand-typed crit is.
       critBp: 1_490_000,
     });
+  });
+
+  /**
+   * ADR-0031. The roster already holds Deus — the same name and the same `#a984` — so the
+   * screenshot is a *re-import* of a player, not a second one.
+   */
+  it('rewrites the player the screenshot is of, instead of adding a second row', async () => {
+    const before = repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'a984' });
+    expect(before.ok).toBe(true);
+
+    await renderScanning(scannerReading(SHEET));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Deus'));
+    fireEvent.press(screen.getByTestId('form-submit'));
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    // One Deus, holding what the screenshot said — not a duplicate beside the old row.
+    expect(namesInRoster(repository).filter((name) => name === 'Deus')).toHaveLength(1);
+    const live = repository.observeRoster('RANK', '');
+    const deus = live.map(live.query.all()).find((entry) => entry.player.name === 'Deus');
+    expect(deus?.player).toMatchObject({
+      id: isOk(before) ? before.value.id : '',
+      combatPower: 11_724_329_467,
+      // The rank the row already had. An import is not a new arrival, so it does not go to
+      // the bottom of the ladder and nothing below it has to move.
+      rank: 3,
+    });
+  });
+
+  it('sends the user to the player the import turned out to be', async () => {
+    const before = repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'a984' });
+
+    await renderScanning(scannerReading(SHEET));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Deus'));
+    fireEvent.press(screen.getByTestId('form-submit'));
+
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith({
+        pathname: '/player/[id]',
+        params: { id: isOk(before) ? before.value.id : '' },
+      }),
+    );
+  });
+
+  it('still refuses a name already on the ladder under a different code', async () => {
+    // Same name, a code that is not the screenshot's. The pair does not match, so this is
+    // an ordinary duplicate and the user is told so rather than silently overwriting Deus.
+    const before = repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'zz99' });
+    expect(before.ok).toBe(true);
+
+    await renderScanning(scannerReading(SHEET));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Deus'));
+    fireEvent.press(screen.getByTestId('form-submit'));
+
+    await waitFor(() => expect(screen.getByTestId('form-field-name-error')).toBeTruthy());
+    expect(namesInRoster(repository).filter((name) => name === 'Deus')).toHaveLength(1);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it('declines to rewrite a synced player, and says why', async () => {
+    const synced: ScannedLine[] = [
+      { text: 'Lv.101 Aurel #a1', frame: { left: 700, top: 58, right: 922, bottom: 92 } },
+      ...SHEET.slice(1),
+    ];
+    await renderScanning(scannerReading(synced));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Aurel'));
+    fireEvent.press(screen.getByTestId('form-submit'));
+
+    const message = await screen.findByTestId('form-message');
+    expect(message).toBeTruthy();
+    // Neither written nor duplicated: the next sync would undo the write (ADR-0020).
+    expect(namesInRoster(repository).filter((name) => name === 'Aurel')).toHaveLength(1);
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The notice ADR-0031 puts beside Save. Every case below is about what the screen says
+   * *before* the press, because the press navigates away and there is nowhere after it to
+   * put a correction.
+   */
+  it('says which player Save is about to update, and relabels the button', async () => {
+    expect(repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'a984' }).ok).toBe(true);
+
+    await renderScanning(scannerReading(SHEET));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+
+    const notice = await screen.findByTestId('form-import-notice');
+    expect(notice.props.children).toContain('Deus');
+    expect(notice.props.children).toContain('already on the ladder');
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
+  });
+
+  it('says nothing when the screenshot is of somebody new', async () => {
+    await renderScanning(scannerReading(SHEET));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Deus'));
+    expect(screen.queryByTestId('form-import-notice')).toBeNull();
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
+  });
+
+  it('withdraws the notice when the user edits the code away from the match', async () => {
+    // The pair is the rule, so changing half of it changes what Save does — and a notice
+    // still naming Deus would be describing a form that no longer describes Deus.
+    expect(repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'a984' }).ok).toBe(true);
+
+    await renderScanning(scannerReading(SHEET));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+    await screen.findByTestId('form-import-notice');
+
+    await type('gameCode', 'zz99');
+
+    await waitFor(() => expect(screen.queryByTestId('form-import-notice')).toBeNull());
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
+  });
+
+  it('warns rather than promises when the match is a synced player', async () => {
+    const synced: ScannedLine[] = [
+      { text: 'Lv.101 Aurel #a1', frame: { left: 700, top: 58, right: 922, bottom: 92 } },
+      ...SHEET.slice(1),
+    ];
+    await renderScanning(scannerReading(synced));
+    fireEvent.press(screen.getByTestId('form-scan-button'));
+
+    const notice = await screen.findByTestId('form-import-notice');
+    expect(notice.props.children).toContain('roster sync');
+    // Save is going to be refused, not turned into an update, so the label does not move.
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
+  });
+
+  it('offers no notice on a hand-typed name, where a collision is still a rejection', async () => {
+    expect(repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'a984' }).ok).toBe(true);
+
+    await renderScanning(scannerReading(SHEET));
+    await type('name', 'Deus');
+    await type('gameCode', 'a984');
+
+    expect(screen.queryByTestId('form-import-notice')).toBeNull();
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
   });
 
   it('names the fields it could not read, so a partial scan does not look complete', async () => {

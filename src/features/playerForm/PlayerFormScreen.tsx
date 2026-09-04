@@ -237,9 +237,24 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave }: Form
             />
           ))}
 
+          {/*
+            Beside Save rather than up with the scan's own note, because it describes what
+            *this button* is about to do — and because the user can still change the name or
+            the code, which is what makes saying it beforehand worth anything (ADR-0031).
+          */}
+          {state.importNotice === null ? null : (
+            <ArenaText
+              variant="bodyCaption"
+              tone={state.importNotice.writable ? 'accent' : 'negative'}
+              testID="form-import-notice"
+            >
+              {state.importNotice.message}
+            </ArenaText>
+          )}
+
           <View style={styles.actions}>
             <ArenaButton
-              label={submitLabel(state.mode)}
+              label={submitLabel(state.mode, state.importNotice)}
               onPress={onSubmit}
               busy={state.isSaving}
               fill
