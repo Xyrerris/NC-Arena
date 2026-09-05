@@ -47,3 +47,6 @@ example
 # scripts/e2e-screenshots.mjs. Baselines are not committed yet; when they are, this line
 # narrows to the run folders rather than the whole tree.
 .maestro/screenshots/
+
+# Coverage reports from `jest --coverage`. Generated on demand, never a build input.
+coverage/

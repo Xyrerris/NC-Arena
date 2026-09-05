@@ -16,8 +16,11 @@ nothing in CI builds them, and so the scan control is unproven on a device for t
 ADR-0017's screenshot gate is.
 The Maestro screenshot gate still needs an emulator (ADR-0017), and four phases of visual
 promises are now stacked behind it: Phase 1's component baselines, Phase 3's rendered roster
-order, Phase 4's unclipped-at-200 % criterion, and the form screens of 4.5, 4.6 and 4.7. Phase 5 is
-next and is gated on open decision 1. Exit criteria that are _not_ met are marked ⚠️ in each phase below rather than
+order, Phase 4's unclipped-at-200 % criterion, and the form screens of 4.5, 4.6 and 4.7.
+**Phase 4.10 is next, and Phase 5 is gated on it** — it carries no new features, only two confirmed
+defects in shipped behaviour, the durability hole ADR-0021 opened, and the housekeeping a review of
+those five out-of-sequence phases turned up. Phase 5 remains gated on open decision 1 as well.
+Exit criteria that are _not_ met are marked ⚠️ in each phase below rather than
 quietly ticked. Open decision 5 (AA contrast) is implemented per ARCHITECTURE.md §2.4 and
 still wants design sign-off (ADR-0013); open decision 8 (season) is half-answered by
 ADR-0018; the delta direction and the tie rule want a product answer (ADR-0019).
@@ -417,10 +420,217 @@ defects the same review found in the roster.
 
 ---
 
+## Phase 4.10 — Correctness and durability before the backend (4.5 days)
+
+Numbered like 4.5 through 4.9 for the same reason: it is unplanned scope, found by a review of the
+code those five phases produced rather than by the plan. It differs from them in the one way that
+decides its position — **nothing in it is a new feature.** Every item is a defect in something that
+already shipped, or a hole underneath it, and each one gets harder to close after Phase 5 rather
+than easier. So it runs first, and Phase 5 does not start until its exit criteria are met.
+
+The first three are ordered by what they would cost to discover later:
+
+1. **Unicode identity** is wrong on device _today_, for real users with real names.
+2. **Records across a sync** is wrong only once a sync exists — which is Phase 5, so this is the
+   last phase in which it is a change to one function rather than a data-loss incident.
+3. **Export** is the answer to a question ADR-0021 opened and never closed: the roster is typed in
+   by hand and lives in exactly one place.
+
+---
+
+### 4.10.1 — A name is one string, folded in one language (1 day)
+
+`lower()` in SQLite folds ASCII only; `String.prototype.toLowerCase()` folds Unicode. The needle is
+folded in JavaScript and the column is folded in SQL, so for any name outside ASCII the two never
+meet. Reproduced against the committed migrations:
+
+```
+insertLocalPlayer(db, p1, { name: 'ÄRA' })
+isNameTaken(db, 'ÄRA')                -> false   // the identical string
+findPlayerByIdentity(db, 'ära', 'a1') -> null
+roster search for 'ÄRA'               -> 0 rows
+```
+
+Three shipped promises are broken by one cause. The player is **invisible to the roster's own
+search** (`nameMatches`, `core/db/queries.ts`); the duplicate-name guard never fires
+(`isNameTaken`); and the screenshot import of ADR-0031 matches nothing, so it adds a second row for
+a player plainly already on the ladder — the exact outcome that ADR was written to prevent.
+
+Non-ASCII names are not an edge case in this product. The ladder is a game's roster, and accented
+Latin, Cyrillic and Greek are ordinary there.
+
+**Deliverables**
+
+- A migration adding `name_folded`, written by `draftColumns` in `core/db/write.ts` as
+  `normalisePlayerName(name).normalize('NFC').toLowerCase()`. Backfilled in the same migration —
+  the fold is a pure function of a column that is already there.
+- `isNameTaken`, `findPlayerByIdentity` and `nameMatches` compare against `name_folded` only.
+  **No `lower()` survives in the query layer**; the whole point of the column is that folding
+  happens in one language, once, on the way in.
+- ADR-0032 recording why the fold is a stored column rather than a collation or an expression
+  index: `NOCASE` is ASCII-only too, so it moves the bug rather than fixing it, and ICU is not
+  available in `expo-sqlite`.
+- Node tests over the pair — the case-folding assertions belong in the fast project, because
+  strings and arithmetic with no renderer is exactly what it is for.
+
+**Exit criteria**
+
+- The four probes above all invert: `isNameTaken('ÄRA')` is true against a stored `ÄRA`, a search
+  for `ära` finds it, and importing its screenshot updates the row instead of adding one.
+- A name that differs only by Unicode normalisation form — `é` as one code point or as two — is one
+  name to all three, which is what `.normalize('NFC')` is for and what a test must assert rather
+  than assume.
+- No occurrence of `lower(` remains under `src/core/db`.
+
+---
+
+### 4.10.2 — A sync may not take the user's record either (1 day)
+
+`write.ts` states its second invariant as "a `LOCAL` row is the user's, and a sync may not take
+it", and `replaceRoster` honours it for the row. It does not honour it for the record _against_
+that row:
+
+```
+before: Me:LOCAL, Rival:LOCAL, 1 head_to_head row
+after replaceRoster({ players: [Aurel:REMOTE], headToHead: [] }):
+        Aurel:REMOTE:1, Me:LOCAL:2, Rival:LOCAL:3 — head_to_head: 0 rows
+```
+
+`tx.delete(headToHead).run()` clears the whole table, and only the snapshot's rows are written
+back. The snapshot comes from a server that has never heard of a `LOCAL` player, so every match the
+user swiped in against one is gone. A match record is user data by exactly the argument ADR-0020
+makes about the player row; the invariant was written about half of it.
+
+This is latent — there is no `source` (ADR-0021), so nothing calls `replaceRoster` in anger. That
+is the reason it is in this phase and not in Phase 5: fixed now it is a change to one function with
+a test beside it; fixed later it is the same change plus an apology.
+
+**Deliverables**
+
+- `replaceRoster` preserves every `head_to_head` row whose **both** ends survive the replace — read
+  out alongside the `kept` players, written back after the snapshot's own records.
+- A snapshot record and a preserved local record for the same pairing resolves to the snapshot's,
+  under the "last-write-wins from server" policy ARCHITECTURE.md §7 already states. Written down
+  rather than left to insert order.
+- The rule stated in `write.ts`'s header invariant 2, which currently describes only the row.
+
+**Exit criteria**
+
+- The probe above ends with the local record intact and its counts unchanged.
+- A record whose opponent the snapshot _claims_ — the player upstream has caught up with, whose
+  local row is deliberately dropped — does not come back as an orphan pointing at a row that no
+  longer exists.
+- A record between two remote players is still the snapshot's to define.
+
+---
+
+### 4.10.3 — The roster can leave the device (2 days)
+
+ADR-0021 removed the seed, and manual entry was confirmed as the data source (ADR-0020,
+2026-08-24). Both were right, and together they left something neither says out loud: the roster
+now exists in exactly one place, and that place is an app-private SQLite file on one phone. There
+is no backend (open decision 1), no Android Auto Backup configuration, and no export. An uninstall,
+a factory reset, a "clear data" tap or a new phone is total, silent, unrecoverable loss of
+everything the user typed.
+
+It appears in no ADR and no phase. That is what earns it a section rather than a line in a
+hardening list: it is not missing polish, it is the absence of an answer to a question the last
+five phases created.
+
+The data layer is already shaped for it. `RosterSnapshot` is the serialised form — it is the type
+Phase 5's sync will hand to `replaceRoster` — and `replaceRoster` is already the atomic writer that
+applies one. Export is that type reaching a file; import is it coming back.
+
+**Deliverables**
+
+- ADR-0033 fixing the format, answering three things: that it is JSON rather than a copied `.db` (a
+  schema-versioned document survives a migration, a binary written under an older schema does not),
+  that it carries the schema version it was written at, and what an import does to what is already
+  there — **replace, not merge**, for the same reason `replaceRoster` replaces.
+- `core/data`: `exportSnapshot(): RosterSnapshot` and `importSnapshot(snapshot): Result<void>`, the
+  second validating before it writes and refusing a version it does not understand with a sentence
+  that names the version.
+- A file written through `expo-file-system` and handed to the system share sheet; an import through
+  the document picker. No new screen — a pair of controls where the app already has a settings-free
+  home for them, which is `/me`.
+- Round-trip tests in the Node project: export, wipe, import, and the ladder comes back identical,
+  including every head-to-head and the viewer.
+
+**Exit criteria**
+
+- A roster exported, the app's data cleared, and the file imported produces the same ladder in the
+  same order with the same records and the same viewer.
+- An import refuses a truncated file, a file from a future schema version, and a file that is not
+  ours, each with its own sentence — and refuses them **before** touching the database, so a bad
+  file cannot leave a half-replaced roster.
+- The exported file is readable by a human. It is the user's only copy of their own data, and an
+  opaque one would be a worse answer than none.
+
+---
+
+### 4.10.4 — Housekeeping the review turned up (0.5 day)
+
+Small and individually trivial. Listed rather than done silently because the first two are wrong in
+a way a reader would believe.
+
+**Deliverables**
+
+- **`README.md` says "Current state: planning. No application code exists yet."** It is the first
+  file anyone opens and it has been false since Phase 1. Rewrite it to what is actually shipped,
+  and keep it a _state_ line rather than a changelog so it can stay true.
+- **`deletePlayer` leaves `pref.viewerId` pointing at a deleted row.** The app degrades correctly —
+  `/me` says "Pick another" — but the roster silently loses its hero card with nothing saying why.
+  Clear the preference where the row is removed, and notify the viewer listeners, which is what
+  every other viewer change already does.
+- **Dependency audit, with the parked ones named.** `zod`, `@tanstack/react-query` and
+  `expo-background-task` are unreferenced but are explicit Phase 5 deliverables — they stay, and the
+  audit's job is to say so in writing so that the next reader does not remove them. `react-dom`,
+  `expo-linking`, `expo-localization`, `expo-constants` and `expo-system-ui` have no reference and
+  no phase; remove them unless one is a transitive requirement, which the audit checks rather than
+  assumes. Separately: `expo-background-task` is declared as a **config plugin** in
+  `app.config.ts`, so whatever it contributes to the manifest ships today for a feature that does
+  not exist — establish what that is, and move the declaration to Phase 5 beside its code if it is
+  anything at all.
+- **A `coverageThreshold` on the `node` project**, set at the level the suite currently holds. There
+  is no gate today, so the next phase can lower coverage in the layer that carries the rules and
+  nothing objects.
+- **The native project's `testMatch` lists only design-system `.test.tsx` files.** One written
+  anywhere else under `core/` — `core/data`, `core/ocr` — would never run, and nothing would report
+  that it had not. Widen it to the whole of `core/`; the extension already encodes the split the two
+  projects care about.
+- **One comment block in `app.config.ts` is in Italian** in an otherwise English codebase. Translate
+  it — the reason it gives is a good one and deserves the same audience as the rest.
+
+**Exit criteria**
+
+- `npm run verify` green, with the coverage gate now part of it.
+- A deliberately failing `.test.tsx` placed in `core/data` fails the run — the probe-the-rule
+  discipline of ADR-0006 and ADR-0016, applied to the test configuration itself.
+- Deleting the player who is the viewer leaves no preference pointing at a missing row.
+
+---
+
+### What this phase deliberately does not do
+
+- **It does not close the visual gate.** ADR-0017's emulator is still absent and four phases of
+  screenshot promises are still stacked behind it. That debt is real and it is larger than this
+  phase; folding it in would turn a defect sweep into an infrastructure project and neither would
+  land.
+- **It does not add FTS5.** `LIKE '%needle%'` cannot use an index and will scan the whole table on a
+  season-sized ladder — but the roster is small today, the debounce hides it, and 4.10.1 removes the
+  _correctness_ reason to touch that query. It belongs with the first real ladder, beside the
+  1 000-row scroll check Phase 3 already owes, not here.
+- **It does not touch `features/`.** If any item above turns out to need a screen to change, the
+  boundary was in the wrong place — and that is the finding, not the diff.
+
+---
+
 ## Phase 5 — Backend integration & offline-first (5 days)
 
-Gated on open decision 1. If unanswered by the start of Phase 5, this phase stalls while 6 and 7
-continue — sequence accordingly.
+Gated on open decision 1, and now on Phase 4.10 as well: this is the phase that makes
+`replaceRoster` run in anger, so the record-preservation fix in 4.10.2 has to be in before it, not
+alongside it. If open decision 1 is unanswered by the start of Phase 5, this phase stalls while 6
+and 7 continue — sequence accordingly.
 
 **Deliverables**
 
