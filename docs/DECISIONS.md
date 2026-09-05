@@ -1625,3 +1625,86 @@ every single import.
   knowing on sight: the fix is to type the code in, not to loosen the match.
 - **`createPlayer` and `updatePlayer` moved above the returned object** in `rosterRepository.ts`, so
   `importPlayer` can call them. No behaviour changed with them.
+
+---
+
+## ADR-0032 — A name is folded in JavaScript, once, and the fold is stored
+
+**Date:** 2026-09-05 · **Status:** accepted · **Phase:** 4.10
+
+**Context.** Three shipped behaviours compared names case-insensitively, and all three did it the
+same wrong way: the needle was folded in JavaScript with `toLowerCase()`, and the column was folded
+in SQL with `lower()`. SQLite's `lower()` folds ASCII and nothing else. For any name outside ASCII
+the two never met.
+
+```
+insertLocalPlayer(db, p1, { name: 'ÄRA' })
+isNameTaken(db, 'ÄRA')                -> false   // the identical string
+findPlayerByIdentity(db, 'ära', 'a1') -> null
+roster search for 'ÄRA'               -> 0 rows
+```
+
+Each failure was silent and each looked like ordinary product behaviour. The player was invisible
+to the roster's own search; the duplicate guard of ADR-0020 never fired, so the same person could
+be entered twice; and the screenshot import of ADR-0031 matched nothing, so it added a second row
+for a player plainly already on the ladder — the exact outcome that ADR exists to prevent. The
+ladder is a game's roster, where accented Latin, Cyrillic and Greek are ordinary.
+
+**Decision 1 — the fold is a function in `core/model`, not an expression in SQL.** `foldPlayerName`
+is now the single definition of "the same name" in the app. It lives beside `normalisePlayerName`
+because it is a domain rule about identity, and it is a function rather than SQL because **SQLite
+cannot express it**: there is no Unicode-aware `lower()` in `expo-sqlite`, and there is no way to
+add one that both drivers behind `ArenaDatabase` would share.
+
+**Decision 2 — the fold is stored in `players.name_folded`, and every lookup compares that column.**
+If the fold can only be computed in JavaScript, it has to be computed on the way _in_. `draftColumns`
+derives it for every hand-entered write, and `replaceRoster` derives it for every synced row, for
+the same reason it is derived at all: a second write path that skipped it would put a name in the
+table that no lookup can find. No `lower()` remains in the query layer.
+
+**Decision 3 — normalise to NFC _after_ folding, not before.** Case folding can move a string
+between normalisation forms, so composing last is what makes `é` as one code point and `é` as
+`e` + U+0301 one name. They render identically, so two rows would look like the same player listed
+twice with nothing on screen to tell them apart.
+
+**Decision 4 — the migration writes an empty default, and a JavaScript pass backfills.**
+`0003_folded_player_name.sql` adds the column with `DEFAULT ''` and does **not** attempt
+`UPDATE players SET name_folded = lower(name)`. A SQL backfill would have written a wrong fold into
+exactly the rows the column exists for, and a wrong fold is indistinguishable from a right one
+until a search quietly fails. `refoldPlayerNames` does the backfill in JavaScript, runs after the
+migrations on device and in the test database alike, and is idempotent — so it also repairs a fold
+written by an older rule, which makes changing `foldPlayerName` a code change rather than a
+migration.
+
+**Rejected — `COLLATE NOCASE` on the column.** SQLite's built-in `NOCASE` collation is ASCII-only,
+by the same documented limitation as `lower()`. It would have moved the bug rather than fixed it,
+and moved it somewhere harder to see: a collation is invisible at the call site, so the next reader
+would have had no reason to doubt the comparison.
+
+**Rejected — an ICU build of SQLite.** ICU has a Unicode-aware `lower()`, and it is not available
+in `expo-sqlite` without shipping a custom native build. That is a native-dependency decision the
+size of a phase, taken to avoid storing one derived text column.
+
+**Rejected — a custom `lower` function registered on the connection.** `better-sqlite3` can do this;
+`expo-sqlite` through Drizzle is not the same seam, and the entire test strategy rests on the same
+statements running on both (ARCHITECTURE.md §10). A rule that only holds in Node is not a rule.
+
+**Rejected — folding accents away entirely, so `Ara` and `ÄRA` are one name.** That is a
+transliteration, not a case fold. It would merge two genuinely different players, which is a worse
+failure than the one being fixed and is not recoverable by the user. There is a test asserting it
+does not happen.
+
+**Consequences.**
+
+- **The repair is part of the boot gate.** `useArenaMigrations` holds the splash screen until
+  `refoldPlayerNames` has run, because every name lookup reads that column — a roster rendered
+  mid-repair is a roster whose search cannot find half of it. After the first launch it is one
+  scan with no writes.
+- **`name` is still exactly what the user typed.** The fold is never displayed and never round-trips
+  into a form; `toPlayer` does not map it, so it does not reach the domain at all.
+- **`players_name_folded_idx` covers the two equality lookups.** The roster's `LIKE '%…%'` search
+  cannot use it — that is a performance question for the first season-sized ladder, and it is
+  unchanged by this ADR.
+- **The game code needed no equivalent.** `normaliseGameCode` already lower-cases in JavaScript and
+  the column stores the result, so that half of `findPlayerByIdentity` was always comparing like
+  with like. Only the name was broken.

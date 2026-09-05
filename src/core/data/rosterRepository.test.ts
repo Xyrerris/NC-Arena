@@ -12,7 +12,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { eq } from 'drizzle-orm';
+
 import { err, isOk, ok, type RosterSnapshot, type RosterSource } from '../common';
+import { players, refoldPlayerNames } from '../db';
 import {
   asPlayerId,
   type HeadToHead,
@@ -633,6 +636,126 @@ describe('rosterRepository — importing a player from a screenshot', () => {
 
     expect(imported.ok).toBe(false);
     expect(!imported.ok && imported.error).toBeInstanceOf(PlayerDraftRejected);
+  });
+});
+
+/**
+ * ADR-0032. Every assertion below failed before `name_folded` existed, and each one failed
+ * *silently* — a name outside ASCII was simply not there as far as the search and the
+ * duplicate guard were concerned.
+ *
+ * `ÄRA` is the fixture because it is the shortest name that separates the two folds:
+ * SQLite's `lower()` leaves it as `Ära`, JavaScript's gives `ära`, and the old code
+ * compared one against the other.
+ */
+describe('rosterRepository — names outside ASCII', () => {
+  let handle: TestDatabase;
+  let repo: ReturnType<typeof repositoryOn>;
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    repo = repositoryOn(handle);
+    await repo.refresh();
+    const created = repo.createPlayer(localDraft('ÄRA'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+  });
+
+  afterEach(() => handle.close());
+
+  it('finds a name searched for exactly as it is stored', () => {
+    // The one that made the defect impossible to argue with: the query was
+    // character-for-character the stored name, and the roster returned nothing.
+    expect(namesOf(repo, 'RANK', 'ÄRA')).toEqual(['ÄRA']);
+  });
+
+  it('finds it whatever case the search is typed in', () => {
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+    expect(namesOf(repo, 'RANK', 'Ära')).toEqual(['ÄRA']);
+    expect(namesOf(repo, 'RANK', 'är')).toEqual(['ÄRA']);
+  });
+
+  it('refuses a second player whose name differs only by case', () => {
+    const duplicate = repo.createPlayer(localDraft('ära'));
+
+    expect(duplicate.ok).toBe(false);
+    expect(!duplicate.ok && duplicate.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('updates the player a screenshot matches instead of adding a second row', () => {
+    // ADR-0031's whole promise, which non-ASCII names were quietly exempt from.
+    const imported = repo.importPlayer({ ...localDraft('ära'), combatPower: 9_999 });
+
+    expect(isOk(imported) && imported.value.combatPower).toBe(9_999);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('treats the two Unicode spellings of one accent as one name', () => {
+    // 'é' as a single code point, and as 'e' followed by U+0301. They render identically,
+    // so two rows would look like the same player listed twice with no way to tell them
+    // apart on screen.
+    const composed = 'Ré';
+    const decomposed = `Re${String.fromCharCode(0x0301)}`;
+    expect(composed).not.toBe(decomposed);
+
+    const created = repo.createPlayer(localDraft(composed));
+    expect(created.ok).toBe(true);
+
+    expect(repo.createPlayer(localDraft(decomposed)).ok).toBe(false);
+    expect(namesOf(repo, 'RANK', decomposed)).toEqual([composed]);
+  });
+
+  it('still tells two genuinely different names apart', () => {
+    // The fold is not a fuzzy match. Guarding against a "fix" that folds accents away
+    // entirely, which would make Ara and ÄRA one player.
+    const created = repo.createPlayer(localDraft('ARA'));
+
+    expect(created.ok).toBe(true);
+    expect(namesOf(repo, 'RANK', 'ara')).toEqual(['ARA']);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+  });
+});
+
+describe('refoldPlayerNames — the backfill the migration could not do', () => {
+  let handle: TestDatabase;
+  let repo: ReturnType<typeof repositoryOn>;
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    repo = repositoryOn(handle);
+    await repo.refresh();
+    const created = repo.createPlayer(localDraft('ÄRA'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+  });
+
+  afterEach(() => handle.close());
+
+  /** The state a database upgraded by `0003` is in before the repair runs. */
+  const clearFolds = (): void => {
+    handle.db.update(players).set({ nameFolded: '' }).run();
+  };
+
+  it('repairs a row whose fold the migration left empty', () => {
+    clearFolds();
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual([]);
+
+    expect(refoldPlayerNames(handle.db)).toBe(5);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+  });
+
+  it('repairs a fold written by an older rule', () => {
+    // What a SQL backfill would have produced. It is why `0003` writes an empty default
+    // instead: a wrong fold is indistinguishable from a right one until a search fails.
+    handle.db.update(players).set({ nameFolded: 'Ära' }).where(eq(players.name, 'ÄRA')).run();
+
+    expect(refoldPlayerNames(handle.db)).toBe(1);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+  });
+
+  it('writes nothing on a database that is already correct', () => {
+    expect(refoldPlayerNames(handle.db)).toBe(0);
+    expect(refoldPlayerNames(handle.db)).toBe(0);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
   });
 });
 

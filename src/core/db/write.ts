@@ -21,6 +21,7 @@ import { and, asc, desc, eq, gt, ne, or, sql } from 'drizzle-orm';
 import type { RosterSnapshot } from '../common';
 import {
   CRIT_BP_PER_PERCENT,
+  foldPlayerName,
   normaliseGameCode,
   normalisePlayerName,
   type MatchDelta,
@@ -40,9 +41,14 @@ import type { ArenaDatabase } from './queries';
  * basis points because that is what §2.2's formatting contract reads. Multiplying an
  * already-validated integer is exact, so the conversion cannot lose anything — which is
  * precisely why it happens after validation rather than inside the form.
+ *
+ * `nameFolded` is derived here for the same reason crit is scaled here: it is a stored
+ * consequence of a field the form owns, and deriving it anywhere else would let a second
+ * write path put a name in the table that no lookup can find (ADR-0032).
  */
 const draftColumns = (draft: PlayerDraft) => ({
   name: normalisePlayerName(draft.name),
+  nameFolded: foldPlayerName(draft.name),
   level: draft.level,
   gameCode: normaliseGameCode(draft.gameCode),
   combatPower: draft.combatPower,
@@ -101,6 +107,10 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
           snapshot.players.map((player) => ({
             id: player.id,
             name: player.name,
+            // A synced row is folded on arrival, exactly like a typed one. The server has
+            // no idea this column exists, and a remote player the search cannot find would
+            // be the same defect wearing a different hat.
+            nameFolded: foldPlayerName(player.name),
             level: player.level,
             gameCode: player.gameCode,
             rank: player.rank,
@@ -285,12 +295,16 @@ export const recordMatchResult = (
  * Is this name already on the ladder? Case-insensitively, because the roster's own search
  * is: two players the search cannot tell apart are two the user cannot either.
  *
+ * The comparison is an equality on `name_folded`, not `lower()` on `name`. Folding the
+ * needle in JavaScript and the column in SQL is what made this guard silently useless for
+ * any name outside ASCII — it answered "no" to a name identical to one already stored
+ * (ADR-0032).
+ *
  * `exceptId` is what keeps "save a player without renaming them" from colliding with
  * itself.
  */
 export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId): boolean => {
-  const needle = normalisePlayerName(name).toLowerCase();
-  const sameName = sql`lower(${players.name}) = ${needle}`;
+  const sameName = eq(players.nameFolded, foldPlayerName(name));
   return (
     db
       .select({ id: players.id })
@@ -310,9 +324,12 @@ export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId
  * The code alone is not one either — it is optional, so half the ladder can share the
  * empty string.
  *
- * Both sides are compared the way they are stored: the name case-insensitively, because
- * the roster's own search is; the code after `normaliseGameCode`, so `#A984` typed by hand,
- * `a984 ` pasted, and `#a984` read off a screenshot are one value rather than three.
+ * Both sides are compared the way they are stored, and both are folded in JavaScript on the
+ * way in: the name through `foldPlayerName` into `name_folded`, the code through
+ * `normaliseGameCode`, so `#A984` typed by hand, `a984 ` pasted, and `#a984` read off a
+ * screenshot are one value rather than three. Neither side asks SQLite to fold anything —
+ * this lookup decides whether a screenshot updates a player or adds a second one, and
+ * `lower()` got that wrong for every non-ASCII name (ADR-0032).
  *
  * It matches a `REMOTE` row like any other. Who may be *written* is `updateLocalPlayer`'s
  * rule and stays there — a lookup that quietly skipped synced rows would answer "no such
@@ -328,9 +345,41 @@ export const findPlayerByIdentity = (
     .from(players)
     .where(
       and(
-        sql`lower(${players.name}) = ${normalisePlayerName(name).toLowerCase()}`,
+        eq(players.nameFolded, foldPlayerName(name)),
         eq(players.gameCode, normaliseGameCode(gameCode)),
       ),
     )
     .limit(1)
     .all()[0];
+
+/**
+ * Rewrites `name_folded` for every row whose stored fold disagrees with `foldPlayerName`,
+ * and reports how many it repaired.
+ *
+ * This is the backfill the migration could not do. `0003_folded_player_name.sql` adds the
+ * column with an empty default rather than `lower(name)`, because SQLite's `lower()` is the
+ * very thing that cannot fold these names — a SQL backfill would have written a wrong value
+ * into exactly the rows the column exists for, and a wrong value is worse than an obviously
+ * empty one (ADR-0032).
+ *
+ * It runs after the migrations, on device and in the test database alike, and it is
+ * idempotent: once every row agrees it is a single scan and no writes. It also repairs a
+ * row folded by an older rule, which is what makes changing `foldPlayerName` a code change
+ * rather than a migration.
+ */
+export const refoldPlayerNames = (db: ArenaDatabase): number =>
+  db.transaction((tx) => {
+    const rows = tx
+      .select({ id: players.id, name: players.name, nameFolded: players.nameFolded })
+      .from(players)
+      .all();
+
+    let repaired = 0;
+    for (const row of rows) {
+      const folded = foldPlayerName(row.name);
+      if (folded === row.nameFolded) continue;
+      tx.update(players).set({ nameFolded: folded }).where(eq(players.id, row.id)).run();
+      repaired += 1;
+    }
+    return repaired;
+  });

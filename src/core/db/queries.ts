@@ -11,7 +11,7 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { alias, type BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import type { PlayerId, RosterSort } from '../model';
+import { foldPlayerName, type PlayerId, type RosterSort } from '../model';
 import { headToHead, players } from './schema';
 import type { HeadToHeadRow, PlayerRow } from './schema';
 
@@ -37,10 +37,15 @@ export type ArenaDatabase = BaseSQLiteDatabase<'sync', any>;
 const escapeLike = (raw: string): string => raw.replace(/[\\%_]/g, (char) => `\\${char}`);
 
 const nameMatches = (query: string) => {
-  const needle = `%${escapeLike(query.trim().toLowerCase())}%`;
-  // `lower()` on both sides rather than relying on LIKE's default ASCII case folding,
-  // which the `case_sensitive_like` pragma can turn off underneath us.
-  return sql`lower(${players.name}) LIKE ${needle} ESCAPE '\\'`;
+  const needle = `%${escapeLike(foldPlayerName(query))}%`;
+  // Against the stored fold, not `lower()` on the name. Both sides are then folded by the
+  // same JavaScript function, which is the only way the two can agree: SQLite's `lower()`
+  // is ASCII-only, so a search for a name with an umlaut in it used to return nothing at
+  // all — including when the query was character-for-character the stored name (ADR-0032).
+  //
+  // `name_folded` is already lower case, so LIKE's own ASCII case folding has nothing left
+  // to do and the `case_sensitive_like` pragma can no longer change the answer either.
+  return sql`${players.nameFolded} LIKE ${needle} ESCAPE '\\'`;
 };
 
 const orderFor = (sort: RosterSort) => {

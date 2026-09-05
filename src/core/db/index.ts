@@ -32,6 +32,7 @@ export {
   insertLocalPlayer,
   isNameTaken,
   recordMatchResult,
+  refoldPlayerNames,
   replaceRoster,
   updateLocalPlayer,
   type RecordMatchOutcome,

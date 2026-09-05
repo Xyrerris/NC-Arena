@@ -37,6 +37,7 @@ export {
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_DRAFT_NUMERIC_FIELDS,
   emptyPlayerDraft,
+  foldPlayerName,
   gameCodeLabel,
   isPlayerDraftValid,
   normaliseGameCode,

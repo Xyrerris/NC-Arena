@@ -461,26 +461,41 @@ Latin, Cyrillic and Greek are ordinary there.
 
 **Deliverables**
 
-- A migration adding `name_folded`, written by `draftColumns` in `core/db/write.ts` as
-  `normalisePlayerName(name).normalize('NFC').toLowerCase()`. Backfilled in the same migration —
-  the fold is a pure function of a column that is already there.
-- `isNameTaken`, `findPlayerByIdentity` and `nameMatches` compare against `name_folded` only.
+- ✅ `foldPlayerName` in `core/model`, and a migration (`0003_folded_player_name.sql`) adding
+  `name_folded`, written by `draftColumns` for a hand-entered row and by `replaceRoster` for a
+  synced one.
+- ✅ `isNameTaken`, `findPlayerByIdentity` and `nameMatches` compare against `name_folded` only.
   **No `lower()` survives in the query layer**; the whole point of the column is that folding
   happens in one language, once, on the way in.
-- ADR-0032 recording why the fold is a stored column rather than a collation or an expression
+- ✅ ADR-0032 recording why the fold is a stored column rather than a collation or an expression
   index: `NOCASE` is ASCII-only too, so it moves the bug rather than fixing it, and ICU is not
   available in `expo-sqlite`.
-- Node tests over the pair — the case-folding assertions belong in the fast project, because
+- ✅ Node tests over the pair — the case-folding assertions belong in the fast project, because
   strings and arithmetic with no renderer is exactly what it is for.
+
+**Two things this plan got wrong, corrected in the doing**
+
+- **The backfill cannot live in the migration.** The plan called the fold "a pure function of a
+  column that is already there", which is true — and irrelevant, because the only tool a migration
+  has for computing it is `lower()`, the very function that cannot. A SQL backfill would have
+  written a wrong fold into precisely the rows the column exists for. `refoldPlayerNames` does it
+  in JavaScript instead, after the migrations, idempotently; the migration writes an empty default
+  and nothing else (ADR-0032, decision 4).
+- **The fold composes last, not first.** The plan wrote `.normalize('NFC').toLowerCase()`. Case
+  folding can itself move a string between normalisation forms, so the order is
+  `.toLowerCase().normalize('NFC')`.
 
 **Exit criteria**
 
-- The four probes above all invert: `isNameTaken('ÄRA')` is true against a stored `ÄRA`, a search
-  for `ära` finds it, and importing its screenshot updates the row instead of adding one.
-- A name that differs only by Unicode normalisation form — `é` as one code point or as two — is one
-  name to all three, which is what `.normalize('NFC')` is for and what a test must assert rather
-  than assume.
-- No occurrence of `lower(` remains under `src/core/db`.
+- ✅ The four probes all invert: `isNameTaken('ÄRA')` is true against a stored `ÄRA`, a search for
+  `ära` finds it, and importing its screenshot updates the row instead of adding one.
+- ✅ A name that differs only by Unicode normalisation form — `é` as one code point or as two — is
+  one name to all three, asserted rather than assumed.
+- ✅ A fold is not a transliteration: `Ara` and `ÄRA` stay two players. Added to the criteria
+  because it is the failure a careless fix produces, and it is the one the user cannot undo.
+- ✅ No executable `lower(` remains under `src/core/db` — only the comments explaining why.
+- ✅ All six behavioural tests fail against the previous implementation, checked by restoring it —
+  the ADR-0006 and ADR-0016 discipline applied to a defect fix rather than to a config rule.
 
 ---
 

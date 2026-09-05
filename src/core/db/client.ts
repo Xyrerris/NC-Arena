@@ -10,21 +10,76 @@
  */
 
 import { drizzle } from 'drizzle-orm/expo-sqlite';
-import { useMigrations } from 'drizzle-orm/expo-sqlite/migrator';
+import { migrate } from 'drizzle-orm/expo-sqlite/migrator';
 import { openDatabaseSync } from 'expo-sqlite';
+import { useEffect, useState } from 'react';
 
 import { DATABASE_NAME } from './constants';
 import migrations from './migrations/migrations';
 import type { ArenaDatabase } from './queries';
+import { refoldPlayerNames } from './write';
 
 export const expoDatabase = openDatabaseSync(DATABASE_NAME, { enableChangeListener: true });
 
-export const arenaDb: ArenaDatabase = drizzle(expoDatabase);
+const expoDrizzle = drizzle(expoDatabase);
+
+export const arenaDb: ArenaDatabase = expoDrizzle;
 
 /**
- * Runs the committed migrations once. The root layout holds the splash screen until this
- * resolves, so no screen ever queries a table that does not exist yet (§7).
+ * Everything that has to happen to the database before a screen may read it: the committed
+ * migrations, and then the `name_folded` repair (ADR-0032).
+ *
+ * Sequenced as one promise at module scope rather than as two hooks, because the order
+ * between them is not React's business — the repair reads a column the migration has to have
+ * added, and expressing that as "an effect that watches another hook's success flag" makes a
+ * hard requirement look like a coincidence of render timing. Drizzle exports `migrate` as a
+ * plain function alongside `useMigrations` precisely so this is available.
+ *
+ * The repair is inside the gate rather than after it because every name lookup in the app
+ * reads that column. A roster rendered mid-repair is a roster whose search cannot find half
+ * of it — the defect this phase exists to remove, not a transient worth tolerating. It is
+ * idempotent and, after the first launch, one scan with no writes.
  */
-export const useArenaMigrations = () => useMigrations(arenaDb, migrations);
+const arenaDbReady: Promise<void> = migrate(expoDrizzle, migrations).then(() => {
+  refoldPlayerNames(arenaDb);
+});
+
+/**
+ * `arenaDbReady` as render state. The root layout holds the splash screen until `success`,
+ * so no screen ever queries a table that does not exist yet (§7), and none queries a fold
+ * that has not been written yet either.
+ *
+ * A failure in either step is reported rather than swallowed: a database whose folds are
+ * wrong is one whose search and duplicate guard are wrong, and carrying on would hide that
+ * behind screens that look like they are working.
+ */
+export const useArenaMigrations = (): { success: boolean; error: Error | undefined } => {
+  const [state, setState] = useState<{ success: boolean; error: Error | undefined }>({
+    success: false,
+    error: undefined,
+  });
+
+  useEffect(() => {
+    let watching = true;
+    void arenaDbReady.then(
+      () => {
+        if (watching) setState({ success: true, error: undefined });
+      },
+      (cause: unknown) => {
+        if (watching) {
+          setState({
+            success: false,
+            error: cause instanceof Error ? cause : new Error(String(cause)),
+          });
+        }
+      },
+    );
+    return () => {
+      watching = false;
+    };
+  }, []);
+
+  return state;
+};
 
 export { useLiveQuery } from 'drizzle-orm/expo-sqlite';
