@@ -13,12 +13,14 @@
  * non-negative integer typed into a box.
  */
 
+import type { ImportMatch } from '@/core/data';
 import type { ScannedField, ScreenshotOutcome, StatSheetScan } from '@/core/ocr';
 import {
   MAX_GAME_CODE_LENGTH,
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_DRAFT_NUMERIC_FIELDS,
   emptyPlayerDraft,
+  gameCodeLabel,
   normaliseGameCode,
   type PlayerDraft,
   type PlayerDraftErrors,
@@ -247,6 +249,39 @@ export const scanNote = (
   return `${loaded} ${SCREENSHOT_NOTES[screenshot]}`;
 };
 
+/**
+ * What Save is about to do, when a screenshot has matched somebody already on the ladder
+ * (ADR-0031).
+ *
+ * It exists because the import's one surprising move — pressing *Add player* and rewriting
+ * a player instead — happens after the screen has already navigated away, so an
+ * after-the-fact confirmation has nowhere to appear. Said **before** the press it is also
+ * the more useful sentence: the user can still change the name or the code, or cancel.
+ *
+ * `writable` is the difference between the two matches a scan can make. A `LOCAL` row is
+ * one Save rewrites; a `REMOTE` one is a row Save refuses (ADR-0020), and a notice that
+ * promised the update in both cases would be wrong in one.
+ */
+export interface ImportNotice {
+  message: string;
+  writable: boolean;
+}
+
+/** `null` when the scanned pair matches nobody — Save adds a player and needs no warning. */
+export const importNotice = (match: ImportMatch | null): ImportNotice | null => {
+  if (match === null) return null;
+  const who = `${match.player.name}${match.player.gameCode === '' ? '' : ` ${gameCodeLabel(match.player.gameCode)}`}`;
+  return match.origin === 'LOCAL'
+    ? {
+        writable: true,
+        message: `${who} is already on the ladder. Saving updates that player rather than adding a second row.`,
+      }
+    : {
+        writable: false,
+        message: `${who} came from the roster sync, so this screenshot cannot be saved over them.`,
+      };
+};
+
 export type PlayerFormUiState =
   /** Edit mode only, while the player is being read out of SQLite. */
   | { kind: 'loading' }
@@ -265,6 +300,8 @@ export type PlayerFormUiState =
       /** True between pressing Save and the write returning. Blocks a double submit. */
       isSaving: boolean;
       scan: StatScanUiState;
+      /** Non-null only when a scan has matched a player already on the ladder (ADR-0031). */
+      importNotice: ImportNotice | null;
     };
 
 export type PlayerFormEvent =
@@ -283,10 +320,19 @@ export const formTitle = (mode: PlayerFormMode, name: string): string =>
  */
 export const VIEWER_EYEBROW = 'YOUR AVATAR';
 
-export const submitLabel = (mode: PlayerFormMode): string => {
+/**
+ * What the button will do, on the button.
+ *
+ * `notice` is the import's doing: a create whose scan matched a player the user owns is
+ * about to *update* somebody, and a control still reading "Add player" would be the one
+ * place on the screen still saying otherwise (ADR-0031). A match the user cannot write —
+ * a synced row — keeps the ordinary label, because Save will be refused rather than
+ * turning into an update.
+ */
+export const submitLabel = (mode: PlayerFormMode, notice: ImportNotice | null = null): string => {
   switch (mode.kind) {
     case 'create':
-      return 'Add player';
+      return notice?.writable === true ? 'Update player' : 'Add player';
     case 'edit':
       return 'Save changes';
     case 'viewer':

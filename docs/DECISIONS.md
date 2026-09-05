@@ -1526,3 +1526,102 @@ of a feature.
 - **The bug is still upstream.** An Activity destroyed for a reason not in the list — a future
   configuration key, a device that recreates for its own reasons — will bring it back with exactly
   the same symptom, and the trace in this ADR is what identifies it on sight.
+
+## ADR-0031 — A screenshot of somebody already on the ladder updates them
+
+**Date:** 2026-09-05 · **Status:** accepted · **Phase:** 4.9
+
+**Context.** ADR-0024 made "fill from screenshot" an input to the _add a player_ form, and the form
+underneath it has always ended in `createPlayer`. So re-importing a player already on the roster —
+the ordinary thing to do after a week of play — hit the duplicate-name rejection from ADR-0020 and
+went nowhere. The user's actual options were to abandon the scan and go find the player's edit
+screen by hand, or to rename one of the two. Both are the app asking the user to resolve something
+the screenshot already answered: the picture says exactly which player this is.
+
+**Decision 1 — identity for an import is the pair `name + game code`, and only the pair.** The name
+alone is not one: it is a display string, and `isNameTaken` guards it as a _uniqueness rule this
+device enforces on creation_, not as a key. The code alone is not one either — it is optional
+(ADR-0023), so an empty string would collect half the ladder. Together they are specific enough to
+act on, and `findPlayerByIdentity` compares both the way they are stored: the name case-insensitively
+like every other name check here, the code after `normaliseGameCode`, so `#A984`, `a984 ` and `#a984`
+are one value.
+
+This deliberately leaves `PlayerId` as the only _identity_ in the system (`core/model/index.ts`).
+The pair decides which existing row an import **writes to**; it is never adopted as a key, and no id
+is derived from it. A mis-scanned code therefore produces a new player — visible, and fixable by
+deleting it — rather than a silent merge into somebody else.
+
+**Decision 2 — the rule belongs to the import, not to `createPlayer`.** `importPlayer` is a third
+repository write beside create and update, rather than create quietly learning to upsert. The two
+answer different questions. "Add this player I am typing" _should_ still collide with a name on the
+ladder: that rejection is how a user discovers they are entering somebody twice, and it is the only
+warning they get. "Import this screenshot" has a picture of which player it is, so a second row is
+the duplicate — not the thing preventing one.
+
+The form picks between them on `scanned.current`, a ref set when a scan lands. A ref rather than a
+read of `scan.kind`, and not for the usual same-tick reason: `scan` describes the **last** scan, and
+it returns to `idle` when the user reopens the picker and dismisses it. The scanned values are still
+in the boxes at that point, so a form consulting `scan.kind` would go back to inserting and add the
+row this rule exists to prevent.
+
+**Decision 3 — the whole draft is written, not merged field by field.** A screenshot shows the
+profile as it is now, and every value in it has passed through the form where the user could read it
+(ADR-0024's "nothing is saved" is untouched — Save is still what writes). A merge would leave
+yesterday's HP beside today's ATK with nothing on screen saying which is which. `score` is the
+honest cost: the profile panel does not show one, so an import of an existing player writes whatever
+the box holds over the score that was there. The field is labelled "Not on the profile screen — type
+this one in", and it is the one value the user must re-enter.
+
+**Decision 4 — a matched `REMOTE` row is refused, not inserted around.** `importPlayer` routes a
+match to `updatePlayer`, which declines a synced row by name (ADR-0020). Falling back to an insert
+would be worse than the refusal: it would add a second row for a player the ladder plainly already
+holds, which is exactly the outcome this ADR removes. There is no sync today (ADR-0021), so nothing
+can reach this in the shipping app — it is a rule written where Phase 5 will find it.
+
+**Rejected — always upsert in create mode, scanned or typed.** Simpler, one code path, no ref. It
+also turns "I typed a name that already exists" from a rejection into a silent overwrite of somebody
+else's stats, and the user's only clue would be the row they landed on. The duplicate-name guard was
+a deliberate call in ADR-0020 and this change had no reason to reverse it.
+
+**Decision 5 — the notice comes before the press, not after it.** An import that quietly rewrote
+somebody would be the one surprising thing this feature does, so the form says it out loud: a line
+beside Save naming the matched player, and the button itself relabelled from `ADD PLAYER` to
+`UPDATE PLAYER`. The control says what it does, which is the same rule `SCAN_HINT` follows about
+deleting the screenshot (ADR-0026).
+
+**After** was the obvious place and it is the impossible one. Save navigates to the player's page,
+so a confirmation would have to survive a navigation that immediately follows it and then live on a
+screen that is about the player rather than about the write. Before is also the more useful moment:
+the user can still change the name or the code, or cancel.
+
+`findImportMatch` is what the notice reads, and it is deliberately **re-read whenever the name or
+the code changes** rather than computed once when the scan lands. Either field can be edited
+afterwards, and a notice naming a player the form no longer describes is worse than no notice —
+it is the same staleness ADR-0024 avoids by clearing a field's error as that field is retyped. It
+is a one-off read like `playerCount`, not an observer: a subscription re-keyed on every keystroke
+would cost more than the query it replaced.
+
+The notice is gated on a scan having happened, because the behaviour it describes is the import's.
+A hand-typed name that collides is still a rejection (Decision 2), and a line promising an update
+there would be a lie. A matched `REMOTE` row gets the negative-tone sentence and **keeps** the
+ordinary label: Save is about to be refused, not to become an update, and `UPDATE PLAYER` over a
+button that cannot would be the worst of the three things this could say.
+
+**Rejected — a modal asking "update Deus, or add a new player?"** The confirmation version, and it
+is a decision put to the user in the middle of a flow whose entire point is that the screenshot
+already knows. If the pair matches there is nothing to choose between; if it does not there is
+nothing to ask about. A line that can be read and ignored costs a glance; a dialog costs a tap on
+every single import.
+
+**Consequences.**
+
+- **The rank is left alone on an import**, because `updateLocalPlayer` writes only the draft columns.
+  A re-import is not a new arrival, so it does not go to the bottom of the ladder and nothing below
+  it moves. That is asserted rather than assumed.
+- **The user is told which of the two is about to happen, beside Save.** See Decision 5.
+- **A partial scan can still collide.** A screenshot that failed to read the game code produces an
+  empty code, which does not pair with a stored `a984` — so the import falls to `createPlayer` and
+  is refused for the duplicate name. That is the correct answer under Decision 1 and it is worth
+  knowing on sight: the fix is to type the code in, not to loosen the match.
+- **`createPlayer` and `updatePlayer` moved above the returned object** in `rosterRepository.ts`, so
+  `importPlayer` can call them. No behaviour changed with them.

@@ -28,6 +28,7 @@ export {
 } from './queries';
 export {
   deleteLocalPlayer,
+  findPlayerByIdentity,
   insertLocalPlayer,
   isNameTaken,
   recordMatchResult,

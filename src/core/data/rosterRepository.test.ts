@@ -518,6 +518,124 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
   });
 });
 
+/**
+ * ADR-0031: a screenshot import of somebody already on the ladder updates them.
+ *
+ * The pair is the whole rule, so every case below moves exactly one half of it — same name
+ * and same code, same name and a different code, a different name and the same code.
+ */
+describe('rosterRepository — importing a player from a screenshot', () => {
+  let handle: TestDatabase;
+  let repo: ReturnType<typeof repositoryOn>;
+  let localId: PlayerId;
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    repo = repositoryOn(handle);
+    await repo.refresh();
+    const created = repo.createPlayer(localDraft('Nyx'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+    localId = created.value.id;
+  });
+
+  afterEach(() => handle.close());
+
+  it('adds the player when name and code match nobody', () => {
+    const imported = repo.importPlayer({ ...localDraft('Deus'), gameCode: 'a984' });
+
+    expect(imported.ok).toBe(true);
+    expect(repo.playerCount()).toBe(6);
+    expect(namesOf(repo, 'RANK')).toContain('Deus');
+  });
+
+  it('rewrites the existing player when name and code both match', () => {
+    const imported = repo.importPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
+
+    expect(isOk(imported) && imported.value.id).toBe(localId);
+    expect(isOk(imported) && imported.value.combatPower).toBe(9_999);
+    // The point of the whole rule: one row, not two.
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('leaves the rank alone, because an import is not a new arrival', () => {
+    const before = repo.observePlayer(localId);
+    expect(before.map(before.query.all())?.player.rank).toBe(5);
+
+    repo.importPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
+
+    const after = repo.observePlayer(localId);
+    expect(after.map(after.query.all())?.player.rank).toBe(5);
+    expect(ranksOf(repo)).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it('matches the name case-insensitively, as every other name check does', () => {
+    const imported = repo.importPlayer({ ...localDraft('nYx'), combatPower: 7 });
+
+    expect(isOk(imported) && imported.value.id).toBe(localId);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('matches a code however it was written, because storage normalises it', () => {
+    const imported = repo.importPlayer({ ...localDraft('Nyx'), gameCode: ' #AB12 ' });
+
+    expect(isOk(imported) && imported.value.id).toBe(localId);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('refuses a same-name import under a different code, rather than overwriting', () => {
+    // A different code is a different player, and the ladder does not hold two of one
+    // name — so this is the ordinary duplicate rejection, said in the ordinary way.
+    const imported = repo.importPlayer({ ...localDraft('Nyx'), gameCode: 'zz99' });
+
+    expect(imported.ok).toBe(false);
+    expect(!imported.ok && imported.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('adds rather than rewrites when the code matches but the name does not', () => {
+    const imported = repo.importPlayer(localDraft('Orrin'));
+
+    expect(imported.ok).toBe(true);
+    expect(repo.playerCount()).toBe(6);
+  });
+
+  it('refuses a synced player, rather than adding a second row for them', () => {
+    // `p-b` is REMOTE, and its code is `a2` (see the fixture). The match is found and the
+    // write is declined — the next sync would undo it (ADR-0020).
+    const imported = repo.importPlayer({ ...localDraft('Brann'), gameCode: 'a2' });
+
+    expect(imported.ok).toBe(false);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('names the player an import would land on, before anything is written', () => {
+    // Written the way a user might, so the lookup and the write agree about the code.
+    const match = repo.findImportMatch('Nyx', ' #AB12 ');
+
+    expect(match?.player.id).toBe(localId);
+    expect(match?.origin).toBe('LOCAL');
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('names a synced match too, and says whose it is not', () => {
+    // The form needs the difference: one is a row Save rewrites, the other a row Save
+    // refuses — and a lookup that hid the second would let the notice promise an update.
+    expect(repo.findImportMatch('Brann', 'a2')?.origin).toBe('REMOTE');
+  });
+
+  it('finds nobody when only half the pair matches', () => {
+    expect(repo.findImportMatch('Nyx', 'zz99')).toBeNull();
+    expect(repo.findImportMatch('Orrin', 'ab12')).toBeNull();
+  });
+
+  it('still validates the draft it is about to write', () => {
+    const imported = repo.importPlayer({ ...localDraft('Nyx'), atk: -1 });
+
+    expect(imported.ok).toBe(false);
+    expect(!imported.ok && imported.error).toBeInstanceOf(PlayerDraftRejected);
+  });
+});
+
 describe('rosterRepository — a sync does not take the user data', () => {
   it('keeps hand-entered players and re-seats them below the new ladder', async () => {
     const handle = createTestDatabase();

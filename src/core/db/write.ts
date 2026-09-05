@@ -300,3 +300,37 @@ export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId
       .all().length > 0
   );
 };
+
+/**
+ * The row a name and a game code point at *together*, if the ladder holds one.
+ *
+ * This is the screenshot import's notion of "the same player" (ADR-0031), and it is
+ * deliberately a **pair**. The name alone is what `isNameTaken` already guards, and it is
+ * not an identity: it is a display string the user is free to reuse if the codes differ.
+ * The code alone is not one either — it is optional, so half the ladder can share the
+ * empty string.
+ *
+ * Both sides are compared the way they are stored: the name case-insensitively, because
+ * the roster's own search is; the code after `normaliseGameCode`, so `#A984` typed by hand,
+ * `a984 ` pasted, and `#a984` read off a screenshot are one value rather than three.
+ *
+ * It matches a `REMOTE` row like any other. Who may be *written* is `updateLocalPlayer`'s
+ * rule and stays there — a lookup that quietly skipped synced rows would answer "no such
+ * player" about a player plainly on screen.
+ */
+export const findPlayerByIdentity = (
+  db: ArenaDatabase,
+  name: string,
+  gameCode: string,
+): PlayerRow | undefined =>
+  db
+    .select()
+    .from(players)
+    .where(
+      and(
+        sql`lower(${players.name}) = ${normalisePlayerName(name).toLowerCase()}`,
+        eq(players.gameCode, normaliseGameCode(gameCode)),
+      ),
+    )
+    .limit(1)
+    .all()[0];
