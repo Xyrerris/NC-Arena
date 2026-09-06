@@ -379,6 +379,12 @@ a sync, and `rank` stays one contiguous 1..N list either way. Only `LOCAL` rows 
 or removed: a synced row would be overwritten by the next refresh, so accepting an edit to
 one would be a promise the app cannot keep.
 
+**The record survives a sync on the same terms as the row.** A `head_to_head` row is written
+back whenever both of its ends still exist after the replace and the snapshot does not name
+that pairing itself. Last-write-wins from server decides a pairing the snapshot _does_ name;
+it does not decide the ones it is silent about, because there is no upload path (open
+decision 1) and a match swiped in on this device exists nowhere else.
+
 `PlayerDraft` carries neither an id nor a rank. Both belong to whoever stores the row — the
 repository today, the server later — and letting a form supply either is how the rank
 inconsistency at the end of this section gets reinvented.

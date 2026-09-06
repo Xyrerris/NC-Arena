@@ -15,7 +15,7 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 
 import { err, isOk, ok, type RosterSnapshot, type RosterSource } from '../common';
-import { players, refoldPlayerNames } from '../db';
+import { headToHead, players, refoldPlayerNames } from '../db';
 import {
   asPlayerId,
   type HeadToHead,
@@ -809,6 +809,195 @@ describe('rosterRepository — a sync does not take the user data', () => {
     expect(detail?.player.combatPower).toBe(4242);
     expect(detail?.origin).toBe('REMOTE');
     handle.close();
+  });
+});
+
+/**
+ * ROADMAP.md 4.10.2. `replaceRoster` honoured "a sync may not take a `LOCAL` row" for the
+ * row and not for the record against it: `tx.delete(headToHead)` cleared the table and only
+ * the snapshot's rows came back, so every match swiped in against a hand-entered player was
+ * gone the first time a sync ran.
+ *
+ * The assertions read the table directly rather than through `observeRoster`, because what
+ * is being proven is what survived the write — and the viewer the roster reads records for
+ * is itself something the sync moves.
+ */
+describe('rosterRepository — a sync does not take the record either', () => {
+  let handle: TestDatabase;
+
+  interface Pairing {
+    viewerId: string;
+    opponentId: string;
+    wins: number;
+    losses: number;
+  }
+
+  const recordsIn = (): Pairing[] =>
+    handle.db
+      .select()
+      .from(headToHead)
+      .all()
+      .map((row) => ({
+        viewerId: row.viewerId,
+        opponentId: row.opponentId,
+        wins: row.wins,
+        losses: row.losses,
+      }))
+      .sort((a, b) => `${a.viewerId}${a.opponentId}`.localeCompare(`${b.viewerId}${b.opponentId}`));
+
+  /** Every end of every record points at a row that is actually there. */
+  const orphanedEnds = (): string[] => {
+    const ids = new Set(
+      handle.db
+        .select({ id: players.id })
+        .from(players)
+        .all()
+        .map((row) => row.id),
+    );
+    return recordsIn()
+      .flatMap((record) => [record.viewerId, record.opponentId])
+      .filter((id) => !ids.has(id));
+  };
+
+  const idOf = (repo: ReturnType<typeof repositoryOn>, name: string): PlayerId => {
+    const created = repo.createPlayer(localDraft(name));
+    if (!isOk(created)) throw new Error(`fixture: ${name} could not be created`);
+    return created.value.id;
+  };
+
+  const snapshotOf = (
+    roster: readonly Player[],
+    records: readonly HeadToHead[] = [],
+  ): RosterSnapshot => ({
+    season: 42,
+    viewerId: roster[0]?.id ?? FIXTURE.viewerId,
+    players: roster,
+    headToHead: records,
+  });
+
+  const sync = async (snapshot: RosterSnapshot): Promise<void> => {
+    const second = repositoryOn(handle, sourceOf(snapshot));
+    expect((await second.refresh()).ok).toBe(true);
+  };
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+  });
+
+  afterEach(() => handle.close());
+
+  it('keeps a record between two hand-entered players the snapshot cannot know about', async () => {
+    // The probe in ROADMAP.md 4.10.2, and the reason this is not a Phase 5 problem: the
+    // snapshot comes from a server that has never heard of either of these two.
+    const repo = repositoryOn(handle);
+    const me = idOf(repo, 'Me');
+    const rival = idOf(repo, 'Rival');
+    expect(repo.setViewerId(me).ok).toBe(true);
+    expect(repo.recordMatch(rival, 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(rival, 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(rival, 'LOSS').ok).toBe(true);
+
+    await sync(snapshotOf([player('p-a', 'Aurel', 1, 100)]));
+
+    expect(recordsIn()).toEqual([{ viewerId: me, opponentId: rival, wins: 2, losses: 1 }]);
+  });
+
+  it('lets the snapshot define a pairing it names, beside one it does not', async () => {
+    // Last-write-wins from server (ARCHITECTURE.md §7). Both ends are remote here, which is
+    // the case the server is unambiguously the authority on — and the assertion is on the
+    // whole table, so a rule that let the preserved row win and a rule that threw the
+    // untouched pairing away both fail it.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-b'), 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-b'), 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-d'), 'WIN').ok).toBe(true);
+
+    // The same ladder arriving again, restating Brann at 5/1 and saying nothing about Dross.
+    await sync(snapshotOf(FIXTURE.players, FIXTURE.headToHead));
+
+    expect(recordsIn()).toEqual([
+      { viewerId: 'p-a', opponentId: 'p-b', wins: 5, losses: 1 },
+      { viewerId: 'p-a', opponentId: 'p-c', wins: 9, losses: 0 },
+      { viewerId: 'p-a', opponentId: 'p-d', wins: 1, losses: 0 },
+    ]);
+  });
+
+  it('keeps a pairing the snapshot says nothing about, because absence is not a zero', async () => {
+    // There is no upload path (open decision 1), so a swipe exists in exactly one place. A
+    // snapshot that omits the pairing is silent about it, not authoritative about it.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-d'), 'WIN').ok).toBe(true);
+
+    await sync(snapshotOf(FIXTURE.players));
+
+    expect(recordsIn()).toContainEqual({
+      viewerId: 'p-a',
+      opponentId: 'p-d',
+      wins: 1,
+      losses: 0,
+    });
+  });
+
+  it('drops a record whose opponent the sync removed, instead of leaving an orphan', async () => {
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+
+    // Cinder is gone from the ladder, so the record against Cinder has nowhere to point.
+    await sync(snapshotOf(FIXTURE.players.slice(0, 2)));
+
+    expect(orphanedEnds()).toEqual([]);
+    expect(recordsIn()).toEqual([{ viewerId: 'p-a', opponentId: 'p-b', wins: 5, losses: 1 }]);
+  });
+
+  it('keeps a record against a local player whose id the snapshot has caught up with', async () => {
+    // The local row is deliberately dropped — two rows sharing one id is worse than losing
+    // the edit — but the id survives as a REMOTE row, so the record is not an orphan and the
+    // counts are still the user's.
+    const repo = repositoryOn(handle);
+    const me = idOf(repo, 'Me');
+    const nyx = idOf(repo, 'Nyx');
+    expect(repo.setViewerId(me).ok).toBe(true);
+    expect(repo.recordMatch(nyx, 'LOSS').ok).toBe(true);
+
+    await sync(snapshotOf([player(nyx, 'Nyx', 1, 4242)]));
+
+    expect(orphanedEnds()).toEqual([]);
+    expect(recordsIn()).toEqual([{ viewerId: me, opponentId: nyx, wins: 0, losses: 1 }]);
+  });
+
+  it('applies all three rules in one sync', async () => {
+    // A sync that drops remote players, claims a local id and restates one pairing. The
+    // three only compose correctly if the records are read out before the delete, which is
+    // the whole shape of the fix.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    const nyx = idOf(repo, 'Nyx');
+    expect(repo.recordMatch(nyx, 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-d'), 'WIN').ok).toBe(true);
+    expect(recordsIn()).toHaveLength(4);
+
+    await sync(
+      snapshotOf(
+        [
+          player('p-a', 'Aurel', 1, 100),
+          player('p-b', 'Brann', 2, 400),
+          player(nyx, 'Nyx', 3, 4242),
+        ],
+        [record(nyx, 3, 3)],
+      ),
+    );
+
+    // Cinder and Dross left the ladder and took their records with them; Brann stayed and
+    // the snapshot said nothing about him, so his 5/1 stands; Nyx's local row became the
+    // snapshot's, and there the snapshot's own count is what stands.
+    expect(orphanedEnds()).toEqual([]);
+    // Sorted by the pairing key, and a generated local id sorts before `p-b`.
+    expect(recordsIn()).toEqual([
+      { viewerId: 'p-a', opponentId: nyx, wins: 3, losses: 3 },
+      { viewerId: 'p-a', opponentId: 'p-b', wins: 5, losses: 1 },
+    ]);
   });
 });
 

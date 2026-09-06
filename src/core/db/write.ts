@@ -12,8 +12,14 @@
  *    "viewer ranked 12 inside a 14-player roster, count reported as 15" shut (§7). Adding
  *    a player appends to the bottom, removing one closes the gap, and a sync re-seats the
  *    local rows below the ladder it just replaced.
- * 2. **A `LOCAL` row is the user's, and a sync may not take it.** Anything else makes
- *    "add a player" a feature the next refresh silently deletes.
+ * 2. **A `LOCAL` row is the user's, and a sync may not take it — and neither is the
+ *    record against it the sync's to delete.** Anything else makes "add a player" a
+ *    feature the next refresh silently deletes. The invariant covers the `head_to_head`
+ *    row as well as the `players` row: a match the user swiped in is the same user data by
+ *    the same argument (ADR-0020), and the server the snapshot came from has never heard
+ *    of the players it was played against. What the snapshot *does* have an opinion about
+ *    it wins, because the policy above is last-write-wins from server (§7); what it says
+ *    nothing about is not an instruction to forget.
  */
 
 import { and, asc, desc, eq, gt, ne, or, sql } from 'drizzle-orm';
@@ -69,6 +75,15 @@ const draftColumns = (draft: PlayerDraft) => ({
 const rowById = (tx: ArenaDatabase, id: PlayerId): PlayerRow | undefined =>
   tx.select().from(players).where(eq(players.id, id)).limit(1).all()[0];
 
+/**
+ * The composite primary key of `head_to_head`, as one comparable string.
+ *
+ * `\u0000` rather than a printable separator: a player id is opaque, and a separator an id
+ * could contain would let two different pairings collide into one key — which in
+ * `replaceRoster` would mean silently dropping a record the snapshot never mentioned.
+ */
+const pairing = (viewerId: string, opponentId: string): string => `${viewerId}\u0000${opponentId}`;
+
 const highestRank = (tx: ArenaDatabase): number =>
   tx.select({ rank: players.rank }).from(players).orderBy(desc(players.rank)).limit(1).all()[0]
     ?.rank ?? 0;
@@ -84,6 +99,29 @@ const highestRank = (tx: ArenaDatabase): number =>
  * the contiguity invariant survives a sync that changed the roster's size. A local row
  * whose id the snapshot now claims is *not* written back: upstream has caught up with that
  * player, and two rows sharing one id is the only outcome worse than losing the edit.
+ *
+ * **Records are read out and written back too**, and for the same reason the rows are.
+ * `tx.delete(headToHead)` clears the table, so before this function preserved them a sync
+ * took every match the user had swiped in against a hand-entered player — the snapshot
+ * cannot give them back, because the server it came from has never heard of a `LOCAL`
+ * player. Invariant 2 was written about half of its subject.
+ *
+ * Three rules decide what comes back, in this order:
+ *
+ * 1. **Both ends have to survive the replace.** Survival is membership of the id set the
+ *    table ends up holding — the snapshot's ids plus the kept local ones — and not "was
+ *    this a local row", because a record against a player the snapshot now claims still
+ *    points at a real row afterwards. A record with a dropped end is discarded rather than
+ *    written back: `head_to_head` references `players`, so re-inserting one would either
+ *    fail the constraint or, with the pragma off, leave a row pointing at nothing.
+ * 2. **The snapshot defines any pairing it mentions.** Last-write-wins from server
+ *    (ARCHITECTURE.md §7), stated here as a filter rather than left to insert order — the
+ *    composite primary key would otherwise make it a question of which INSERT ran second,
+ *    which is not a policy.
+ * 3. **A pairing the snapshot does not mention is kept.** Absence is not a zero. There is
+ *    no upload path (open decision 1), so a local swipe is data that exists in one place;
+ *    a snapshot that omits the pairing is silent about it, not authoritative about it.
+ *    Two remote players are covered by rule 2 the moment the snapshot has an opinion.
  */
 export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void => {
   db.transaction((tx) => {
@@ -95,6 +133,23 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
       .orderBy(asc(players.rank))
       .all()
       .filter((row) => !claimed.has(row.id));
+
+    // The ids the table holds once this transaction ends, which is what a record's two ends
+    // are checked against.
+    const surviving = new Set<string>([...claimed, ...kept.map((row) => row.id)]);
+    const defined = new Set<string>(
+      snapshot.headToHead.map((record) => pairing(record.viewerId, record.opponentId)),
+    );
+    const preserved = tx
+      .select()
+      .from(headToHead)
+      .all()
+      .filter(
+        (row) =>
+          surviving.has(row.viewerId) &&
+          surviving.has(row.opponentId) &&
+          !defined.has(pairing(row.viewerId, row.opponentId)),
+      );
 
     // head_to_head first: the FK cascade would take care of it, but relying on cascade
     // means relying on `PRAGMA foreign_keys` being on, which is per-connection.
@@ -145,6 +200,13 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
           })),
         )
         .run();
+    }
+
+    // After the snapshot's own, so the write order matches the policy even though the
+    // filter above has already made the two sets disjoint. Insert order deciding a conflict
+    // is the kind of rule nobody can find later.
+    if (preserved.length > 0) {
+      tx.insert(headToHead).values(preserved).run();
     }
   });
 };

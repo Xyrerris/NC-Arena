@@ -522,20 +522,34 @@ a test beside it; fixed later it is the same change plus an apology.
 
 **Deliverables**
 
-- `replaceRoster` preserves every `head_to_head` row whose **both** ends survive the replace — read
-  out alongside the `kept` players, written back after the snapshot's own records.
-- A snapshot record and a preserved local record for the same pairing resolves to the snapshot's,
-  under the "last-write-wins from server" policy ARCHITECTURE.md §7 already states. Written down
-  rather than left to insert order.
-- The rule stated in `write.ts`'s header invariant 2, which currently describes only the row.
+- ✅ `replaceRoster` preserves every `head_to_head` row whose **both** ends survive the replace —
+  read out alongside the `kept` players, written back after the snapshot's own records.
+- ✅ A snapshot record and a preserved local record for the same pairing resolves to the
+  snapshot's, under the "last-write-wins from server" policy ARCHITECTURE.md §7 already states.
+  Written down rather than left to insert order: the preserved set is _filtered_ by the pairings
+  the snapshot names, so the answer cannot depend on which INSERT ran second.
+- ✅ The rule stated in `write.ts`'s header invariant 2, which described only the row — and in
+  ARCHITECTURE.md §7, beside the sentence promising the row survives.
+
+**The question the plan left open, answered in the doing**
+
+- **What a snapshot's _silence_ about a pairing means.** "Both ends survive" and "the snapshot
+  defines what it names" leave a third case: a record the snapshot mentions nowhere, between two
+  players it kept. It is preserved. There is no upload path (open decision 1), so a swipe exists
+  on this device and nowhere else — absence upstream is not evidence of a zero, only of a server
+  that was never told. Two remote players are the snapshot's the moment it has an opinion, which
+  is what the third exit criterion asserts.
 
 **Exit criteria**
 
-- The probe above ends with the local record intact and its counts unchanged.
-- A record whose opponent the snapshot _claims_ — the player upstream has caught up with, whose
+- ✅ The probe above ends with the local record intact and its counts unchanged.
+- ✅ A record whose opponent the snapshot _claims_ — the player upstream has caught up with, whose
   local row is deliberately dropped — does not come back as an orphan pointing at a row that no
-  longer exists.
-- A record between two remote players is still the snapshot's to define.
+  longer exists. Asserted as "no end of any record names a missing id", so the same assertion also
+  covers a record against a remote player the snapshot simply dropped.
+- ✅ A record between two remote players is still the snapshot's to define — asserted over the
+  whole table, so a rule that let the preserved row win fails it too.
+- ✅ All six behavioural tests fail against the previous implementation, checked by restoring it.
 
 ---
 
