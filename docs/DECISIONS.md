@@ -1840,3 +1840,74 @@ is the exact complaint ROADMAP.md 4.10.4 makes about `expo-background-task`. The
 - **This does not close open decision 1.** Export is not a backend, and it is not a sync. It is the
   answer to "what happens when this phone dies", which is a question the last five phases created
   and no ADR had answered.
+
+---
+
+## ADR-0034 — What each unreferenced dependency is actually for
+
+**Date:** 2026-09-07 · **Status:** accepted · **Phase:** 4.10
+
+**Context.** Eight packages in `package.json` had no reference anywhere in `src/`. A review can
+delete an unused dependency in one line and find out what it was for at the next native build, which
+is the wrong moment. So the audit's job was to establish, per package, _why_ it is there — and to
+write the answer down, because "nothing imports it" is the same observation for a package that is
+dead and one that is load-bearing.
+
+Three of the eight turned out to be doing something no `grep` could have found.
+
+**Decision 1 — removed: `react-dom` and `expo-localization`.** `react-dom` is named by `expo`,
+`expo-router` and `@expo/metro-runtime`, and **every one of them marks it `optional: true`**. It
+exists for the web target, which ADR-0004 excludes and which `platforms: ['android']` refuses at the
+bundler. `expo-localization` is named by nothing at all — not a dependency, not a peer, not a
+plugin, not an import — and belongs to no phase.
+
+Worth knowing what that removal did and did not do: `react-dom` is **still in the tree**, at the
+same 19.2.3, because npm installs an optional peer when nothing conflicts and three packages ask
+for one. What changed is the declaration, not the install — and the lockfile still pins it with a
+resolved URL, so `npm ci` stays deterministic. `expo-localization` genuinely left.
+
+**Decision 2 — kept, because they are required peers: `expo-linking` and `expo-constants`.** Both
+are **non-optional** peer dependencies of `expo-router`, and `expo-constants` is additionally a hard
+dependency of `expo` itself. Nothing in `src/` imports them because the router does; removing them
+would leave the versions to whatever npm resolves for a peer, rather than to the SDK 57 set
+`expo-doctor` checks. This is the "unless one is a transitive requirement" clause, and it is why the
+audit had to check rather than assume.
+
+**Decision 3 — kept, and the one that would have been deleted: `expo-system-ui`.** Nothing imports
+it and nothing declares it. It is load-bearing anyway, as a **config plugin**:
+`@expo/prebuild-config` registers `expo-system-ui` through `createLegacyPlugin`, whose fallback —
+used when the package is _absent_ — replaces `withAndroidUserInterfaceStyle` with a build warning
+that says "Install expo-system-ui in your project to enable this feature."
+
+So `userInterfaceStyle: 'dark'` in `app.config.ts` is applied to `strings.xml` only because this
+package is installed. Removing it would not have failed anything: it would have downgraded a
+declared product decision — the design is dark-only, and `automatic` would hand the system a choice
+the design system cannot honour — into a warning nobody reads, on a build that still succeeds.
+
+**Decision 4 — kept as Phase 5 deliverables: `zod`, `@tanstack/react-query`,
+`expo-background-task`.** All three are named in ARCHITECTURE.md §3 and in Phase 5's deliverables.
+They stay, and this paragraph is the answer to the next reader who greps for them and finds nothing.
+
+**Decision 5 — `expo-background-task` is removed from `app.config.ts`'s `plugins`, and only from
+there.** The roadmap asked what its config plugin ships today for a feature that does not exist. The
+answer is **nothing**: the plugin is `withInfoPlist` and nothing else — iOS `UIBackgroundModes` and
+`BGTaskSchedulerPermittedIdentifiers` — and the module's own `AndroidManifest.xml` is empty. On an
+Android-only build it contributed no manifest entry at all.
+
+It is removed regardless, because a declaration that does nothing still reads as though the app has
+background work. It goes back beside the code in Phase 5 — which is also when it stops being a no-op,
+if iOS is ever bought (§9.6).
+
+**Rejected — trusting `depcheck` or a "no import found" sweep.** Either would have deleted
+`expo-system-ui` and broken a shipped product decision silently. A dependency in an Expo app can be
+load-bearing through autolinking or through a config plugin, and neither is visible to a tool that
+reads import statements.
+
+**Consequences.**
+
+- **A grep for one of these packages now finds this ADR.** That was the deliverable: not a shorter
+  `package.json`, but a `package.json` whose contents can be explained.
+- **`expo-doctor`'s version check still passes**, which is the only automated thing that would have
+  noticed a wrongly-resolved peer.
+- **The audit is a snapshot.** Nothing re-runs it. The next SDK upgrade can make an optional peer
+  required, and this ADR will not notice.

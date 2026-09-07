@@ -515,6 +515,52 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
     expect(live.map(live.query.all())?.player.rank).toBe(5);
   });
 
+  /**
+   * ROADMAP.md 4.10.4's third exit criterion. The app degraded correctly without this —
+   * `/me` said "Pick another" — but the roster silently lost its hero card with nothing
+   * saying why, which is the silent-empty failure ADR-0021 removed elsewhere.
+   */
+  it('clears the avatar preference when the avatar is the player being removed', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(repo.getViewerId()).toBeNull();
+  });
+
+  it('tells the viewer listeners, so a screen keyed on the old id re-reads', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+    const listener = jest.fn();
+    repo.subscribeViewerId(listener);
+
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves somebody else\u2019s avatar alone when a different player is removed', () => {
+    const other = repo.createPlayer(localDraft('Orrin'));
+    if (!isOk(other)) throw new Error('fixture: the player could not be created');
+    expect(repo.setViewerId(other.value.id).ok).toBe(true);
+    const listener = jest.fn();
+    repo.subscribeViewerId(listener);
+
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(repo.getViewerId()).toBe(other.value.id);
+    // Nothing about the viewer changed, so nothing announced that it had.
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('leaves the preference standing when the removal is refused', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    // A synced row: not this device's to remove (ADR-0020).
+    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(false);
+
+    expect(repo.getViewerId()).toBe(localId);
+  });
+
   it('returns a failure rather than throwing for an id that was already removed', () => {
     expect(repo.deletePlayer(localId).ok).toBe(true);
     expect(repo.deletePlayer(localId).ok).toBe(false);
@@ -1190,13 +1236,31 @@ describe('rosterRepository — recording a match from the roster', () => {
     };
 
     it('names the avatar when the avatar has been deleted', () => {
-      // A local player made the viewer, then removed from the player screen. Nothing clears
-      // the preference, so it points at a row that is gone — the state a swipe can land in
-      // when the delete happens on another screen mid-gesture.
+      // A local player made the viewer, then removed from the player screen. `deletePlayer`
+      // now clears the preference with the row (ROADMAP.md 4.10.4), so this reaches the
+      // refusal through "there is no avatar" rather than through "the avatar is missing".
+      // The sentence the user is shown is the same one either way, which is the point.
       const created = repo.createPlayer(localDraft('Nyx'));
       if (!isOk(created)) throw new Error('fixture: the player could not be created');
       expect(repo.setViewerId(created.value.id).ok).toBe(true);
       expect(repo.deletePlayer(created.value.id).ok).toBe(true);
+      expect(repo.getViewerId()).toBeNull();
+
+      expect(messageOf('p-b')).toBe('Choose which player is your avatar before recording a match.');
+    });
+
+    /**
+     * The state `deletePlayer` no longer produces, reached the only other way it can be: the
+     * row removed underneath a preference that still names it — a restore, or a sync once
+     * Phase 5 exists. `recordMatchResult`'s own `NO_VIEWER` refusal is what answers here, and
+     * it stays covered because the transaction is the only place that can be sure (ADR-0028).
+     */
+    it('still names the avatar when the row goes without the preference going with it', () => {
+      const created = repo.createPlayer(localDraft('Nyx'));
+      if (!isOk(created)) throw new Error('fixture: the player could not be created');
+      expect(repo.setViewerId(created.value.id).ok).toBe(true);
+
+      handle.db.delete(players).where(eq(players.id, created.value.id)).run();
       expect(repo.getViewerId()).toBe(created.value.id);
 
       expect(messageOf('p-b')).toBe('Choose which player is your avatar before recording a match.');

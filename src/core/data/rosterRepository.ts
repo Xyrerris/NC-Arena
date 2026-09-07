@@ -518,7 +518,26 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     /** Removes a player this device added, closing the gap in the ranking behind them. */
     deletePlayer: (id: PlayerId): Result<void> => {
       try {
-        return deleteLocalPlayer(db, id) ? ok(undefined) : err(new Error(NOT_YOURS));
+        if (!deleteLocalPlayer(db, id)) return err(new Error(NOT_YOURS));
+
+        // Removing the row the preference names leaves the preference behind, pointing at
+        // nothing. The app degrades correctly — `/me` says "Pick another" — but the roster
+        // loses its hero card with nothing on screen saying why, which is the silent-empty
+        // failure ADR-0021 removed elsewhere.
+        //
+        // Cleared here rather than in `deleteLocalPlayer`, because `core/db` does not know
+        // preferences exist (ARCHITECTURE.md §4) and this repository is the one place that
+        // knows this id is also a subscription key.
+        // `preferences.getViewerId()` rather than `viewerId()`: the question is whether the
+        // *stored* preference names this row, and `viewerId()`'s fallback to NO_VIEWER is
+        // about keeping a query key valid, which is a different question.
+        if (preferences.getViewerId() === id) {
+          preferences.clearViewerId();
+          // The same announcement every other viewer change makes. Without it the screens
+          // holding the old id as their subscription key keep reading a row that is gone.
+          notifyViewerChanged();
+        }
+        return ok(undefined);
       } catch (cause) {
         return err(toError(cause));
       }

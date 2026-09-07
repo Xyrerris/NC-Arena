@@ -17,13 +17,15 @@ ADR-0017's screenshot gate is.
 The Maestro screenshot gate still needs an emulator (ADR-0017), and four phases of visual
 promises are now stacked behind it: Phase 1's component baselines, Phase 3's rendered roster
 order, Phase 4's unclipped-at-200 % criterion, and the form screens of 4.5, 4.6 and 4.7.
-**Phase 4.10 is in progress, and Phase 5 is gated on it** — it carries no new features, only two
+**Phase 4.10 is done, and Phase 5's gate on it is lifted** — it carried no new features, only two
 confirmed defects in shipped behaviour, the durability hole ADR-0021 opened, and the housekeeping a
 review of those five out-of-sequence phases turned up. 4.10.1 (ADR-0032) folds a name in one
 language so a name outside ASCII is findable; 4.10.2 keeps the user's match records across a sync,
 not only their players; 4.10.3 (ADR-0033) lets the roster leave the device as a readable,
-schema-versioned file and come back — so an uninstall is no longer silent, total loss. **4.10.4, the
-housekeeping, is what remains.** Phase 5 remains gated on open decision 1 as well.
+schema-versioned file and come back — so an uninstall is no longer silent, total loss; 4.10.4
+(ADR-0034) clears the housekeeping, and turned up a coverage gate that would have been configured
+where Jest ignores it. **Phase 4.10 is complete**, so Phase 5's gate on it is lifted — it remains
+gated on open decision 1.
 Exit criteria that are _not_ met are marked ⚠️ in each phase below rather than
 quietly ticked. Open decision 5 (AA contrast) is implemented per ARCHITECTURE.md §2.4 and
 still wants design sign-off (ADR-0013); open decision 8 (season) is half-answered by
@@ -640,38 +642,61 @@ a way a reader would believe.
 
 **Deliverables**
 
-- **`README.md` says "Current state: planning. No application code exists yet."** It is the first
-  file anyone opens and it has been false since Phase 1. Rewrite it to what is actually shipped,
-  and keep it a _state_ line rather than a changelog so it can stay true.
-- **`deletePlayer` leaves `pref.viewerId` pointing at a deleted row.** The app degrades correctly —
-  `/me` says "Pick another" — but the roster silently loses its hero card with nothing saying why.
-  Clear the preference where the row is removed, and notify the viewer listeners, which is what
-  every other viewer change already does.
-- **Dependency audit, with the parked ones named.** `zod`, `@tanstack/react-query` and
-  `expo-background-task` are unreferenced but are explicit Phase 5 deliverables — they stay, and the
-  audit's job is to say so in writing so that the next reader does not remove them. `react-dom`,
-  `expo-linking`, `expo-localization`, `expo-constants` and `expo-system-ui` have no reference and
-  no phase; remove them unless one is a transitive requirement, which the audit checks rather than
-  assumes. Separately: `expo-background-task` is declared as a **config plugin** in
-  `app.config.ts`, so whatever it contributes to the manifest ships today for a feature that does
-  not exist — establish what that is, and move the declaration to Phase 5 beside its code if it is
-  anything at all.
-- **A `coverageThreshold` on the `node` project**, set at the level the suite currently holds. There
-  is no gate today, so the next phase can lower coverage in the layer that carries the rules and
-  nothing objects.
-- **The native project's `testMatch` lists only design-system `.test.tsx` files.** One written
-  anywhere else under `core/` — `core/data`, `core/ocr` — would never run, and nothing would report
-  that it had not. Widen it to the whole of `core/`; the extension already encodes the split the two
-  projects care about.
-- **One comment block in `app.config.ts` is in Italian** in an otherwise English codebase. Translate
-  it — the reason it gives is a good one and deserves the same audience as the rest.
+- ✅ **`README.md` says "Current state: planning. No application code exists yet."** It is the first
+  file anyone opens and it has been false since Phase 1. Rewritten to what is actually shipped —
+  and to what is not: there is still no backend, and the visual gate is still unrun. Kept as a
+  _state_ paragraph, with a line in it saying to rewrite rather than append.
+- ✅ **`deletePlayer` leaves `pref.viewerId` pointing at a deleted row.** Cleared where the row is
+  removed, and the viewer listeners notified — but only when the row removed is actually the
+  viewer's, so an unrelated delete announces nothing.
+- ✅ **Dependency audit, with the parked ones named** — ADR-0034. Three of the eight turned out to
+  be doing something no grep could find; see below.
+- ✅ **A `coverageThreshold`**, set at the level the suite holds (93 / 89 / 88 / 94, each rounded
+  down from what was measured). `npm run test:coverage` runs the **node project alone**, so the
+  number is what the fast suite proves by itself rather than what a screen test happens to render.
+- ✅ **The native project's `testMatch` lists only design-system `.test.tsx` files.** Widened to the
+  whole of `core/`.
+- ✅ **One comment block in `app.config.ts` is in Italian.** Translated.
+
+**Three things the audit found that a grep could not**
+
+- **`expo-system-ui` was on the removal list and is load-bearing.** Nothing imports it and nothing
+  declares it — but `@expo/prebuild-config` registers it through `createLegacyPlugin`, whose
+  fallback for an _absent_ package turns `withAndroidUserInterfaceStyle` into a build warning. So
+  `userInterfaceStyle: 'dark'` reaches `strings.xml` only because the package is installed.
+  Removing it would not have failed anything; it would have downgraded a declared product decision
+  into a warning nobody reads (ADR-0034, decision 3).
+- **`expo-linking` and `expo-constants` are non-optional peers of `expo-router`.** That is the
+  "unless one is a transitive requirement" clause, and it is why the plan said the audit checks
+  rather than assumes. `react-dom` is named by three packages and marked **optional** by all three,
+  so it went; `expo-localization` is named by nothing, so it went too.
+- **`expo-background-task`'s config plugin ships nothing on Android.** It is `withInfoPlist` and
+  nothing else, and the module's own AndroidManifest is empty — so the answer to "what does it
+  contribute to the manifest" is: no entry at all. Removed from `plugins` anyway, because a
+  declaration that does nothing still reads as though the app has background work.
+
+**And one the plan did not anticipate**
+
+- **`coverageThreshold` inside a project config is silently ignored by Jest.** Set there, a
+  deliberately impossible 99 % passed the run. The plan asked for the gate "on the `node` project",
+  which is exactly where it does not work: it has to be at the root, with `--selectProjects node`
+  supplying the scope. This is the ADR-0006 failure with a new hat on — a gate that reports nothing
+  looks identical to one nothing violates — so `scripts/check-test-projects.mjs` now probes it
+  instead of trusting it, and `check:rules` runs that probe.
 
 **Exit criteria**
 
-- `npm run verify` green, with the coverage gate now part of it.
-- A deliberately failing `.test.tsx` placed in `core/data` fails the run — the probe-the-rule
-  discipline of ADR-0006 and ADR-0016, applied to the test configuration itself.
-- Deleting the player who is the viewer leaves no preference pointing at a missing row.
+- ✅ `npm run verify` green, with the coverage gate now part of it.
+- ✅ A deliberately failing `.test.tsx` placed in `core/data` fails the run — and the probe is
+  permanent rather than a one-off, alongside the same check for `.test.ts` and two that hold the
+  coverage gate where Jest actually reads it. Each was confirmed to **fail** against the previous
+  configuration, by restoring it.
+- ✅ Deleting the player who is the viewer leaves no preference pointing at a missing row, and the
+  listeners hear about it. The state where the row goes _without_ the preference — a restore, or
+  Phase 5's sync — keeps its own test, because `recordMatchResult`'s refusal is still the only
+  thing that can answer it (ADR-0028).
+- ⚠️ **The audit is a snapshot and nothing re-runs it.** The next SDK upgrade can make an optional
+  peer required, or move what a config plugin contributes, and nothing here will notice.
 
 ---
 
@@ -692,10 +717,15 @@ a way a reader would believe.
 
 ## Phase 5 — Backend integration & offline-first (5 days)
 
-Gated on open decision 1, and now on Phase 4.10 as well: this is the phase that makes
-`replaceRoster` run in anger, so the record-preservation fix in 4.10.2 has to be in before it, not
-alongside it. If open decision 1 is unanswered by the start of Phase 5, this phase stalls while 6
-and 7 continue — sequence accordingly.
+Gated on open decision 1. **Phase 4.10 is no longer a gate — it is done**: this is the phase that
+makes `replaceRoster` run in anger, and the record-preservation fix it needed (4.10.2) is in. If
+open decision 1 is unanswered by the start of Phase 5, this phase stalls while 6 and 7 continue —
+sequence accordingly.
+
+Two things 4.10 leaves on this phase's desk: `expo-background-task`'s config plugin declaration,
+removed from `app.config.ts` because it contributed nothing on Android and belongs beside the code
+that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, which have been in
+`package.json` unreferenced since Phase 0 waiting for exactly this phase to use them.
 
 **Deliverables**
 
