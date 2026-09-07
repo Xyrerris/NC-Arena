@@ -17,9 +17,13 @@ ADR-0017's screenshot gate is.
 The Maestro screenshot gate still needs an emulator (ADR-0017), and four phases of visual
 promises are now stacked behind it: Phase 1's component baselines, Phase 3's rendered roster
 order, Phase 4's unclipped-at-200 % criterion, and the form screens of 4.5, 4.6 and 4.7.
-**Phase 4.10 is next, and Phase 5 is gated on it** — it carries no new features, only two confirmed
-defects in shipped behaviour, the durability hole ADR-0021 opened, and the housekeeping a review of
-those five out-of-sequence phases turned up. Phase 5 remains gated on open decision 1 as well.
+**Phase 4.10 is in progress, and Phase 5 is gated on it** — it carries no new features, only two
+confirmed defects in shipped behaviour, the durability hole ADR-0021 opened, and the housekeeping a
+review of those five out-of-sequence phases turned up. 4.10.1 (ADR-0032) folds a name in one
+language so a name outside ASCII is findable; 4.10.2 keeps the user's match records across a sync,
+not only their players; 4.10.3 (ADR-0033) lets the roster leave the device as a readable,
+schema-versioned file and come back — so an uninstall is no longer silent, total loss. **4.10.4, the
+housekeeping, is what remains.** Phase 5 remains gated on open decision 1 as well.
 Exit criteria that are _not_ met are marked ⚠️ in each phase below rather than
 quietly ticked. Open decision 5 (AA contrast) is implemented per ARCHITECTURE.md §2.4 and
 still wants design sign-off (ADR-0013); open decision 8 (season) is half-answered by
@@ -572,28 +576,60 @@ applies one. Export is that type reaching a file; import is it coming back.
 
 **Deliverables**
 
-- ADR-0033 fixing the format, answering three things: that it is JSON rather than a copied `.db` (a
+- ✅ ADR-0033 fixing the format, answering three things: that it is JSON rather than a copied `.db` (a
   schema-versioned document survives a migration, a binary written under an older schema does not),
   that it carries the schema version it was written at, and what an import does to what is already
   there — **replace, not merge**, for the same reason `replaceRoster` replaces.
-- `core/data`: `exportSnapshot(): RosterSnapshot` and `importSnapshot(snapshot): Result<void>`, the
-  second validating before it writes and refusing a version it does not understand with a sentence
-  that names the version.
-- A file written through `expo-file-system` and handed to the system share sheet; an import through
-  the document picker. No new screen — a pair of controls where the app already has a settings-free
-  home for them, which is `/me`.
-- Round-trip tests in the Node project: export, wipe, import, and the ladder comes back identical,
-  including every head-to-head and the viewer.
+- ✅ `core/data`: `exportSnapshot()` and `importSnapshot(text)`, the second validating before it
+  writes and refusing a version it does not understand with a sentence that names the version.
+  `parseRosterBackup` is the whole reader, and it is a pure string-to-`Result` function — which is
+  what makes "refuses before touching the database" a property of the call order rather than a
+  promise.
+- ✅ A file written through `expo-file-system` and handed to the system share sheet; an import
+  through the system file picker. No new screen — a pair of controls in a slot both faces of `/me`
+  render, passed in by the route so that neither feature imports the other.
+- ✅ Round-trip tests in the Node project: export, wipe, import, and the ladder comes back identical,
+  including every head-to-head and the viewer. A wipe is a **second database with a second
+  preference store**, which is what an uninstall actually leaves behind; restoring into the database
+  that still remembers everything would prove nothing about the case the feature exists for.
+
+**Three things this plan got wrong, corrected in the doing**
+
+- **The document cannot be a `RosterSnapshot`.** The plan called that type "the serialised form",
+  which it is — of a _sync_. A snapshot comes from a server, so it carries no `origin`, and
+  `replaceRoster` writes everything it is given as `REMOTE`. Exporting through it would have
+  restored every hand-entered player as a synced one: a roster nobody may edit and nobody may
+  delete, handed to somebody who has just lost their phone. The document carries `StoredPlayer` —
+  `Player` plus the row's own `origin` (ADR-0033, decision 2).
+- **An import cannot reuse `replaceRoster` either.** That function keeps the `LOCAL` rows on
+  purpose, which is right for a sync and wrong for a restore: it would merge the roster being
+  replaced into the one being restored, and the survivors would be exactly what a wipe was meant to
+  undo. `restoreRoster` is its own writer, and it renumbers ranks 1..N — the file is human-readable
+  by design, which makes it hand-editable, which makes its ranks capable of arriving with a gap.
+- **`importSnapshot` takes the file's text, not a parsed document.** A truncated file is the
+  commonest bad import there is, and a caller that had to `JSON.parse` first would meet it as a
+  thrown exception rather than as one of the sentences the exit criteria ask for.
 
 **Exit criteria**
 
-- A roster exported, the app's data cleared, and the file imported produces the same ladder in the
-  same order with the same records and the same viewer.
-- An import refuses a truncated file, a file from a future schema version, and a file that is not
-  ours, each with its own sentence — and refuses them **before** touching the database, so a bad
-  file cannot leave a half-replaced roster.
-- The exported file is readable by a human. It is the user's only copy of their own data, and an
-  opaque one would be a worse answer than none.
+- ✅ A roster exported, the app's data cleared, and the file imported produces the same ladder in
+  the same order with the same records and the same viewer — asserted over a second database, and
+  including `origin`, so a restore that froze the roster fails it.
+- ✅ An import refuses a truncated file, a file from a future schema version, and a file that is not
+  ours, each with its own sentence — and refuses them **before** touching the database. Every
+  refusal test asserts the ladder is byte-for-byte what it was, so "before" is checked rather than
+  reasoned about. A missing stat, a repeated id, a record against a player the file does not carry
+  and an avatar it does not carry each get their own sentence too.
+- ✅ The exported file is readable by a human: two-space indentation, one field per line, names
+  spelled as they were typed. Asserted, because "readable" is otherwise an intention.
+- ✅ A file from an **older** schema is read rather than refused, using the same defaults the
+  migration that added each column used. Added to the criteria in the doing: refusing one would mean
+  telling somebody their only copy is unreadable because the app moved on, which is the failure this
+  section exists to prevent.
+- ⚠️ **The export is not a backup schedule.** Nothing reminds the user to take one, and a roster
+  that has grown since the last export is exposed exactly as before. The screen says what is at
+  stake — how many players and records live only here — and that is all it does.
+- ⚠️ No Maestro flow, for the reason every phase since 4.5 gives.
 
 ---
 

@@ -33,6 +33,9 @@ export const createMemoryPreferences = (
     setViewerId: (id) => {
       viewerId = id;
     },
+    clearViewerId: () => {
+      viewerId = null;
+    },
     getSeason: () => season,
     setSeason: (next) => {
       season = next;

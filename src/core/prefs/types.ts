@@ -24,6 +24,16 @@ export interface ArenaPreferences {
    */
   getViewerId(): PlayerId | null;
   setViewerId(id: PlayerId): void;
+  /**
+   * Forgets who you are, without answering the question differently.
+   *
+   * `setViewerId` selects an existing row, so it has no way to express "nobody" — and a
+   * stored id pointing at a row that is no longer there is not the same state as never
+   * having chosen: the roster loses its hero card with nothing on screen saying why. A
+   * restore that carries no avatar is the first caller (ADR-0033); the delete path is the
+   * second one it is owed (ROADMAP.md 4.10.4).
+   */
+  clearViewerId(): void;
 
   /**
    * The season the last sync described. Null before the first one. It is a preference

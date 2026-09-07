@@ -30,10 +30,12 @@ import {
   foldPlayerName,
   normaliseGameCode,
   normalisePlayerName,
+  type HeadToHead,
   type MatchDelta,
   type MatchOutcome,
   type PlayerDraft,
   type PlayerId,
+  type StoredPlayer,
 } from '../model';
 import { headToHead, players } from './schema';
 import type { HeadToHeadRow, PlayerRow } from './schema';
@@ -207,6 +209,96 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
     // is the kind of rule nobody can find later.
     if (preserved.length > 0) {
       tx.insert(headToHead).values(preserved).run();
+    }
+  });
+};
+
+/**
+ * One ladder, as a backup file describes it (ADR-0033). Everything `restoreRoster` writes.
+ *
+ * It is `StoredPlayer` rather than `Player` because a restore has an opinion about `origin`
+ * and a sync does not: the file was written by a device that knew which rows were the
+ * user's, and a restore that forgot would hand back a roster nobody may edit.
+ */
+export interface RosterRestore {
+  players: readonly StoredPlayer[];
+  headToHead: readonly HeadToHead[];
+}
+
+/**
+ * Replaces **everything** with the contents of a backup — the counterpart to
+ * `replaceRoster`, and deliberately not the same function (ADR-0033).
+ *
+ * `replaceRoster` keeps the `LOCAL` rows, because a sync is a partial view: the server has
+ * never heard of them. A restore is not a partial view. The file is a whole ladder written
+ * by this app, `origin` and all, so a keep-the-local-rows rule would merge the roster the
+ * user is trying to *replace* into the one they are restoring — and the surviving rows
+ * would be exactly the ones a wipe was meant to undo.
+ *
+ * **Ranks are renumbered 1..N in the file's own order.** The document is human-readable by
+ * design, which means it is hand-editable, which means its ranks can arrive with a gap or a
+ * duplicate in them. Sorting by the stored rank preserves the ladder the user exported;
+ * renumbering is what keeps invariant 1 a property of the table rather than a property of
+ * whatever was in the file.
+ *
+ * Nothing here validates. A record naming a player the file does not carry, or two rows
+ * sharing an id, is refused by `parseRosterBackup` **before** this is called — a refusal
+ * that arrived halfway through the transaction would be correct and would still have shown
+ * the user a wiped roster while it rolled back.
+ */
+export const restoreRoster = (db: ArenaDatabase, restore: RosterRestore): void => {
+  db.transaction((tx) => {
+    // Same order as `replaceRoster`, for the same per-connection-pragma reason.
+    tx.delete(headToHead).run();
+    tx.delete(players).run();
+
+    const ordered = [...restore.players].sort((left, right) => left.rank - right.rank);
+
+    if (ordered.length > 0) {
+      tx.insert(players)
+        .values(
+          ordered.map((player, index) => ({
+            id: player.id,
+            // Normalised on the way in, exactly as `draftColumns` normalises what a form
+            // typed — not passed through as `replaceRoster` passes a synced row through. A
+            // server is authoritative about its own spelling; a backup file is this app's
+            // own document, and it is hand-editable by design (see the rank note above), so
+            // a padded name or a `#A984` written back in by hand must land in the table in
+            // the one shape every lookup expects.
+            name: normalisePlayerName(player.name),
+            // Derived here rather than carried in the file, exactly as it is for a synced
+            // row: the fold is a consequence of `foldPlayerName`, and storing it in a
+            // document would let a backup written under an older rule restore a name that
+            // no lookup can find (ADR-0032).
+            nameFolded: foldPlayerName(player.name),
+            level: player.level,
+            gameCode: normaliseGameCode(player.gameCode),
+            rank: index + 1,
+            combatPower: player.combatPower,
+            score: player.score,
+            hp: player.hp,
+            atk: player.atk,
+            def: player.def,
+            critBp: player.critBp,
+            hit: player.hit,
+            spd: player.spd,
+            origin: player.origin,
+          })),
+        )
+        .run();
+    }
+
+    if (restore.headToHead.length > 0) {
+      tx.insert(headToHead)
+        .values(
+          restore.headToHead.map((record) => ({
+            viewerId: record.viewerId,
+            opponentId: record.opponentId,
+            wins: record.wins,
+            losses: record.losses,
+          })),
+        )
+        .run();
     }
   });
 };

@@ -1708,3 +1708,135 @@ does not happen.
 - **The game code needed no equivalent.** `normaliseGameCode` already lower-cases in JavaScript and
   the column stores the result, so that half of `findPlayerByIdentity` was always comparing like
   with like. Only the name was broken.
+
+---
+
+## ADR-0033 — The roster leaves the device as readable JSON, and an import replaces
+
+**Date:** 2026-09-07 · **Status:** accepted · **Phase:** 4.10
+
+**Context.** ADR-0021 removed the seed and ADR-0020 confirmed manual entry as the data source. Both
+were right, and together they left something neither says out loud: the roster now exists in exactly
+one place, and that place is an app-private SQLite file on one phone. There is no backend (open
+decision 1), no Android Auto Backup configuration, and until now no export. An uninstall, a factory
+reset, a "clear data" tap or a new phone was total, silent, unrecoverable loss of everything the
+user had typed — and everything the user had typed is the entire product.
+
+**Decision 1 — a schema-versioned JSON document, not a copy of `arena.db`.** Copying the database
+file is fewer lines and is the wrong artefact. A binary written under schema 3 restores into a build
+whose migrations have moved on, and nothing in the file says which schema it was; the failure mode
+is a corrupt-looking database rather than a sentence. A document carries `schemaVersion`
+(`SCHEMA_VERSION`, the committed migration count), so a build that cannot read a file can say so
+and name the number. It is also the only format that can honour decision 5.
+
+**Decision 2 — the document is not a `RosterSnapshot`, because a snapshot cannot say `origin`.**
+The plan called for `exportSnapshot(): RosterSnapshot`, on the grounds that `RosterSnapshot` is
+already the serialised form and `replaceRoster` already applies one. Both true, and both beside the
+point: a snapshot is what a **server** hands over, and a server has no opinion about which rows this
+device typed in — `replaceRoster` therefore writes every row it is given as `REMOTE`. Round-tripping
+a backup through it would restore a roster in which nothing may be edited and nothing may be
+deleted, which is a strange thing to hand somebody who has just lost their phone. `StoredPlayer` is
+`Player` plus the row's own `origin`, and it is flattened rather than nested so the file stays
+readable.
+
+**Decision 3 — an import replaces, and it is a different function from a sync.** `replaceRoster`
+keeps `LOCAL` rows because a sync is a partial view (ADR-0020, and the record half of the same
+invariant in the phase before this one). A restore is not a partial view: the file is a whole ladder
+written by this app. Keeping the rows already on the device would merge the roster the user is
+replacing into the one they are restoring, and the survivors would be exactly what a wipe was meant
+to undo. `restoreRoster` is therefore its own writer, and the confirmation before it says the word
+"replace" rather than "continue".
+
+**Decision 4 — everything is refused before the database is touched.** `parseRosterBackup` reads a
+string and returns a `Result`; `importSnapshot` calls it first and calls `restoreRoster` only on
+success. The first statement of the restore deletes the roster, so a refusal discovered inside the
+transaction would roll back correctly and would still be the wrong shape of answer — "that file is
+not ours" is a fact about a file and should never be reached by way of the database. Each refusal
+has its own sentence: a damaged file, a file that is not ours, a future schema version (naming both
+numbers), a missing or unreadable stat (naming the player and the field), a repeated id, a record
+against a player the file does not carry, and an avatar the file does not carry.
+
+**Decision 5 — the file is written to be read.** Two-space indentation, one field per line, names
+spelled exactly as they were typed. It is the user's only copy of their own data, and an opaque one
+would be a worse answer than none: somebody who can open the file in a text editor can recover a
+name from it even if every version of this app has gone. `name_folded` is deliberately absent — it
+is derived by `foldPlayerName` on the way in (ADR-0032), and a stored fold in a document could only
+ever disagree with the code that reads it.
+
+**Decision 6 — ranks are renumbered 1..N in the file's own order.** Decision 5 makes the document
+hand-editable, which makes its ranks capable of arriving with a gap or a duplicate. Sorting by the
+stored rank preserves the ladder the user exported; renumbering is what keeps `write.ts`'s
+contiguity invariant a property of the table rather than of whatever was in the file.
+
+**Decision 7 — an older document is read; only a newer one is refused.** The optional fields are
+exactly the columns the schema defaults — `level`, `game_code`, `hp`, `origin` — and each is
+defaulted for the same reason it is optional here: a migration added it to rows written before it
+existed, and a backup written before that migration is the same case. Refusing an old file would
+mean telling somebody their only copy is unreadable because the app moved on, which is the failure
+this whole feature exists to prevent. A **future** version is refused, because a build cannot guess
+what a field it has never heard of means.
+
+**Decision 8 — the file leaves through the share sheet, and arrives through the file picker.** The
+app does not choose where the backup lives. The whole point is that the data leaves this device, and
+a file written to app-private storage would be taken by the same uninstall. `expo-sharing` is the
+one new dependency; the picker is `File.pickFileAsync` from `expo-file-system`, which is already
+here — so the import side costs nothing. Both sit behind a `BackupFile` port, the shape ADR-0024
+established, which is what lets a whole export and a whole import be driven in a test with no
+emulator and no file.
+
+**Decision 9 — the controls live on `/me`, in a slot both of its faces render.** No new screen. `/me`
+is the only settings-free page the app has, and the backup is about this device's copy of the ladder
+— the same subject as "which player on it is you". It is passed as a `footer` node by the route
+rather than imported, because ARCHITECTURE.md §4 forbids one feature importing another and getting
+the roster off the device is not part of editing a player. It reaches **both** faces of `/me`
+deliberately: the state that needs it most is the empty one, because a phone with nobody to pick
+from is a phone that has just been wiped, and an import reachable only from the viewer's form would
+be unreachable exactly when somebody needs it.
+
+**Rejected — Android Auto Backup.** It is free, it is invisible, and it is not an answer. It does
+not survive a user who taps "clear data", it cannot be inspected, it cannot be moved to a phone on
+another account, and it silently does nothing when the device has it turned off. It may be worth
+turning on as well; it is not worth turning on _instead_.
+
+**Rejected — validating with `zod`.** The dependency is already in `package.json` for Phase 5, so
+this would have cost nothing to import. It would have cost something to read: the exit criteria ask
+for a **named sentence per refusal**, and an issue list from a schema library is a description of a
+shape, not advice to somebody holding their only copy of their own roster. The validator is
+hand-written and each refusal names what is wrong and where.
+
+**Rejected — declaring `expo-sharing` in `app.config.ts`'s `plugins`.** It has an `app.plugin.js`,
+and it is for the share extension — receiving files _into_ the app, which this feature does not do.
+Declaring it would ship intent filters and a share target for a feature that does not exist, which
+is the exact complaint ROADMAP.md 4.10.4 makes about `expo-background-task`. The `SharingFileProvider`
+`shareAsync` actually needs is in the module's own manifest and is merged by autolinking.
+
+**Consequences.**
+
+- **`SCHEMA_VERSION` is a hand-written constant with a probe.** It has to exist on device, where
+  `migrations/meta/_journal.json` is not bundled — only the generated `migrations.js` is.
+  `schemaVersion.test.ts` asserts it equals the journal's entry count, so it cannot drift behind a
+  migration somebody added and forgot; a stale one would label a backup with a schema it was not
+  written at.
+- **`ArenaPreferences` gained `clearViewerId`.** `setViewerId` selects an existing row, so it cannot
+  express "nobody" — and a restore from a file with no avatar has to say exactly that, or the stored
+  id would point at a row the replace has just removed. ROADMAP.md 4.10.4's `deletePlayer` fix is
+  the second caller it is owed.
+- **The picker cannot distinguish a failure from a cancel.** `File.pickFileAsync` turns every error
+  into `canceled: true`. The port reports a cancel, which is the honest reading of what is known —
+  the alternative is an error message naming a cause nobody established.
+- **The picker's MIME filter is three types wide, not one.** `ACTION_OPEN_DOCUMENT` greys out
+  everything the filter excludes, and which type a `.json` file is reported as depends on the
+  provider it came back from — Drive, Downloads and a mail attachment do not agree. Greying out the
+  user's only copy is a far worse failure than offering them too many files, and a wrong pick
+  already has its own sentence.
+- **A restore normalises the name and the game code, where `replaceRoster` passes a synced row
+  through.** A server is authoritative about its own spelling; a backup file is this app's own
+  document and is hand-editable by decision 5, so a padded name or a `#`-prefixed code written back
+  in by hand has to land in the table in the one shape every lookup expects — the same
+  `normalisePlayerName` and `normaliseGameCode` a form goes through.
+- **The import shares ADR-0030's Activity hazard.** The picker is an `ActivityResultLauncher` like
+  `expo-image-picker`'s, so it depends on the same `android:configChanges` fix. Nothing new was
+  needed; it is worth knowing that the two now stand on it.
+- **This does not close open decision 1.** Export is not a backend, and it is not a sync. It is the
+  answer to "what happens when this phone dies", which is a question the last five phases created
+  and no ADR had answered.

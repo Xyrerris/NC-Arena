@@ -17,8 +17,12 @@ import {
   type ShortUnit,
 } from '../common';
 import {
+  SCHEMA_VERSION,
+  allHeadToHeadQuery,
+  allPlayersQuery,
   deleteLocalPlayer,
   findPlayerByIdentity,
+  headToHeadCountQuery,
   insertLocalPlayer,
   isNameTaken,
   playerCountQuery,
@@ -26,6 +30,7 @@ import {
   playerQuery,
   recordMatchResult,
   replaceRoster,
+  restoreRoster,
   sortedRosterQuery,
   toHeadToHead,
   toPlayer,
@@ -52,8 +57,16 @@ import {
   type PlayerOrigin,
   type RosterEntry,
   type RosterSort,
+  type StoredPlayer,
 } from '../model';
 import type { ArenaPreferences } from '../prefs';
+import {
+  BACKUP_FORMAT,
+  parseRosterBackup,
+  summarise,
+  type RosterBackup,
+  type RosterBackupSummary,
+} from './rosterBackup';
 
 /**
  * A query plus the mapping from its rows to domain objects.
@@ -288,6 +301,67 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
   };
 
   /**
+   * The whole ladder, in the shape a file carries it (ADR-0033).
+   *
+   * A one-off read rather than an observer: a backup is a photograph, and one that kept
+   * updating itself while the share sheet was open would describe a roster the user did not
+   * press the button on.
+   *
+   * `origin` travels with every row, which is the one thing `RosterSnapshot` cannot say. A
+   * snapshot is what a *server* hands over and a server has no opinion about which rows this
+   * device typed in; a backup was written by a device that knew. Exporting through
+   * `RosterSnapshot` would have restored every hand-entered player as `REMOTE` — an
+   * uneditable, undeletable roster, which is a strange thing for a restore to hand back.
+   */
+  const exportSnapshot = (): RosterBackup => ({
+    format: BACKUP_FORMAT,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    season: preferences.getSeason(),
+    viewerId: preferences.getViewerId(),
+    players: allPlayersQuery(db)
+      .all()
+      .map((row): StoredPlayer => ({ ...toPlayer(row), origin: row.origin })),
+    headToHead: allHeadToHeadQuery(db).all().map(toHeadToHead),
+  });
+
+  /**
+   * Replaces the ladder with the one in a backup file (ADR-0033).
+   *
+   * It takes the file's **text**, not a parsed document, so that parsing is inside the
+   * guarded path: a truncated file is the commonest bad import there is, and a caller that
+   * had to `JSON.parse` first would meet it as a thrown exception rather than as one of the
+   * sentences below.
+   *
+   * Nothing is written until the whole document has been read and checked. The first
+   * statement of the restore deletes the roster, so a refusal discovered inside it would
+   * roll back correctly and would still be the wrong shape of answer — "that file is not
+   * ours" is a fact about a file, and it should never be reached by way of the database.
+   *
+   * The viewer preference follows the file, including when the file has none: a restore
+   * that left the old id standing would point it at a row the replace has just removed.
+   */
+  const importSnapshot = (text: string): Result<RosterBackupSummary> => {
+    const parsed = parseRosterBackup(text);
+    if (!parsed.ok) return parsed;
+
+    const backup = parsed.value;
+    try {
+      restoreRoster(db, { players: backup.players, headToHead: backup.headToHead });
+    } catch (cause) {
+      return err(toError(cause));
+    }
+
+    if (backup.viewerId === null) preferences.clearViewerId();
+    else preferences.setViewerId(asPlayerId(backup.viewerId));
+    if (backup.season !== null) preferences.setSeason(backup.season);
+    // A restore moves the same id a sync moves, so it announces it the same way.
+    notifyViewerChanged();
+
+    return ok(summarise(backup));
+  };
+
+  /**
    * Everything that can be wrong with a draft before it is written, as one nullable
    * rejection. `exceptId` is the row being edited, so saving a player without renaming
    * them is not a collision with themselves.
@@ -370,11 +444,25 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     observeRosterSize: () =>
       live(playerCountQuery(db), (rows: { count: number }[]): number => rows[0]?.count ?? 0),
 
+    /**
+     * How many head-to-head rows the ladder holds. Live, alongside `observeRosterSize`, and
+     * for the same reason: it is read beside a control that says what would be lost, and a
+     * swipe on the roster underneath changes it (ADR-0033).
+     */
+    observeRecordCount: () =>
+      live(headToHeadCountQuery(db), (rows: { count: number }[]): number => rows[0]?.count ?? 0),
+
     refresh,
 
     createPlayer,
 
     updatePlayer,
+
+    /** The ladder as a document, ready to be written to a file (ADR-0033). */
+    exportSnapshot,
+
+    /** A document back into the ladder, or a sentence saying why not (ADR-0033). */
+    importSnapshot,
 
     /**
      * Which player an import would write to, if any — the same `name + game code` pair

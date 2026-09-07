@@ -37,6 +37,12 @@ export const mmkvPreferences: ArenaPreferences = {
     return stored === undefined || stored === '' ? null : asPlayerId(stored);
   },
   setViewerId: (id) => storage.set(PREF_KEYS.viewerId, id),
+  // Removed rather than set to `''`. `getViewerId` reads both as "nobody", but a key that
+  // is gone cannot be read back by a later version that stops treating the empty string
+  // as absent.
+  clearViewerId: () => {
+    storage.remove(PREF_KEYS.viewerId);
+  },
 
   getSeason: () => {
     const stored = storage.getNumber(PREF_KEYS.season);

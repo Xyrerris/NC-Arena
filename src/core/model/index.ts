@@ -173,6 +173,23 @@ export interface RosterEntry {
 }
 
 /**
+ * A player exactly as the store holds them: the domain fields plus the row's own `origin`.
+ *
+ * The third shape origin travels out on, alongside `RosterEntry` and `PlayerDetail`, and
+ * the only one that **flattens** it rather than nesting a `player`. That is the export's
+ * doing (ADR-0033): this type is written to a file a person is expected to be able to read,
+ * and `{ "player": { … }, "origin": "LOCAL" }` puts a wrapper around every row for the sake
+ * of one field.
+ *
+ * It is what a backup restores and what `replaceRoster` cannot express: a sync produces
+ * `Player`, because a server has no opinion about which rows this device typed in — a
+ * restore does, because the file was written by a device that knew.
+ */
+export interface StoredPlayer extends Player {
+  origin: PlayerOrigin;
+}
+
+/**
  * Everything the detail screen needs, resolved in one query (ARCHITECTURE.md §7).
  *
  * `viewer` is null before the first sync has said who "you" are — open decision 3, the

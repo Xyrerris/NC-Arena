@@ -104,6 +104,35 @@ export const headToHeadQuery = (db: ArenaDatabase, viewerId: PlayerId, opponentI
 export const playerCountQuery = (db: ArenaDatabase) =>
   db.select({ count: sql<number>`count(*)` }).from(players);
 
+/**
+ * How many head-to-head rows there are, whoever they are between.
+ *
+ * The record's half of the count the backup screen shows. It is a separate query rather than
+ * a join onto `playerCountQuery` because the two answer different questions — a roster of
+ * fourteen with no matches recorded is a real state, and one number cannot say it.
+ */
+export const headToHeadCountQuery = (db: ArenaDatabase) =>
+  db.select({ count: sql<number>`count(*)` }).from(headToHead);
+
+/**
+ * Every row in the ladder, in ranking order. The export's half of ADR-0033.
+ *
+ * Ordered rather than left to SQLite, because the file it ends up in is meant to be read
+ * by a person: a backup whose rows arrive in storage order would still restore correctly
+ * and would be useless to look at, and two exports of an unchanged roster would not be the
+ * same file.
+ */
+export const allPlayersQuery = (db: ArenaDatabase) =>
+  db.select().from(players).orderBy(asc(players.rank));
+
+/**
+ * Every head-to-head row, ordered by the pair that identifies it — the same reason
+ * `allPlayersQuery` orders, and it is also the composite primary key, so the sort is the
+ * table's own idea of its order rather than one invented here.
+ */
+export const allHeadToHeadQuery = (db: ArenaDatabase) =>
+  db.select().from(headToHead).orderBy(asc(headToHead.viewerId), asc(headToHead.opponentId));
+
 /** The viewer, joined in as a second copy of `players` so one query answers the detail screen. */
 const viewerPlayers = alias(players, 'viewer');
 

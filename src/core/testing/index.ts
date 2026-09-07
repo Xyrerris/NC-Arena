@@ -98,9 +98,14 @@ export interface TestRepository {
   restart(source?: RosterSource): RosterRepository;
 }
 
-export const createTestRepository = (db: ArenaDatabase, source: RosterSource): TestRepository => {
+/**
+ * `source` is optional because there is no source (ADR-0021): a test that never calls
+ * `refresh` should not have to invent one to say so, and one that does still passes the
+ * fixture it wants. Omitted, the repository is wired exactly as the app's own is.
+ */
+export const createTestRepository = (db: ArenaDatabase, source?: RosterSource): TestRepository => {
   const preferences = createMemoryPreferences();
-  const build = (from: RosterSource = source) =>
+  const build = (from: RosterSource | undefined = source) =>
     createRosterRepository({ db, source: from, preferences });
   return { repository: build(), preferences, restart: build };
 };

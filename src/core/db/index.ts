@@ -10,12 +10,15 @@
  * Import `@/core/db/client` explicitly from the places that run on a device.
  */
 
-export { DATABASE_NAME } from './constants';
+export { DATABASE_NAME, SCHEMA_VERSION } from './constants';
 
 export { headToHead, players } from './schema';
 export type { HeadToHeadInsert, HeadToHeadRow, PlayerInsert, PlayerRow } from './schema';
 export { toHeadToHead, toPlayer } from './mappers';
 export {
+  allHeadToHeadQuery,
+  allPlayersQuery,
+  headToHeadCountQuery,
   headToHeadQuery,
   playerCountQuery,
   playerDetailQuery,
@@ -34,7 +37,9 @@ export {
   recordMatchResult,
   refoldPlayerNames,
   replaceRoster,
+  restoreRoster,
   updateLocalPlayer,
   type RecordMatchOutcome,
   type RecordMatchRefusal,
+  type RosterRestore,
 } from './write';

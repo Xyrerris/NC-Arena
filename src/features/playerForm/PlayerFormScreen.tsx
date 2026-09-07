@@ -12,7 +12,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useCallback } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import {
@@ -53,9 +53,15 @@ export interface PlayerFormScreenProps {
    * a scan be exercised without an emulator or a photo library (ADR-0024).
    */
   scanner?: StatScanner;
+  /**
+   * A block rendered at the end of every state this screen has. Supplied only in `viewer`
+   * mode, by `/me`, and it carries the roster backup controls (ADR-0033) — the form itself
+   * holds no opinion about files, exactly as it holds none about identity.
+   */
+  footer?: ReactNode;
 }
 
-export function PlayerFormScreen({ mode, onChangeViewer, scanner }: PlayerFormScreenProps) {
+export function PlayerFormScreen({ mode, onChangeViewer, scanner, footer }: PlayerFormScreenProps) {
   const router = useRouter();
 
   const leave = useCallback(() => {
@@ -140,6 +146,7 @@ export function PlayerFormScreen({ mode, onChangeViewer, scanner }: PlayerFormSc
           onSubmit={submit}
           onDelete={confirmDelete}
           onLeave={leave}
+          footer={footer}
         />
       </KeyboardAvoidingView>
     </ScreenScaffold>
@@ -153,9 +160,10 @@ interface FormBodyProps {
   onSubmit: () => void;
   onDelete: () => void;
   onLeave: () => void;
+  footer?: ReactNode;
 }
 
-function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave }: FormBodyProps) {
+function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave, footer }: FormBodyProps) {
   switch (state.kind) {
     case 'loading':
       return (
@@ -163,6 +171,7 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave }: Form
           <ArenaText variant="bodySmall" tone="subtle">
             {'One moment…'}
           </ArenaText>
+          {footer}
         </View>
       );
 
@@ -176,6 +185,7 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave }: Form
             {state.message}
           </ArenaText>
           <ArenaButton label="Back to the roster" variant="secondary" onPress={onLeave} />
+          {footer}
         </View>
       );
 
@@ -271,6 +281,8 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave }: Form
               testID="form-delete"
             />
           ) : null}
+
+          {footer}
         </ScrollView>
       );
   }
