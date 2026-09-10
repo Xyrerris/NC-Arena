@@ -171,6 +171,26 @@ export const isPlayerDraftValid = (errors: PlayerDraftErrors): boolean =>
 export const normalisePlayerName = (name: string): string => name.trim();
 
 /**
+ * The name as it is *matched*: normalised, then case-folded, then composed.
+ *
+ * This is the only definition of "the same name" in the app, and it is a function rather
+ * than SQL because **SQLite cannot express it**. `lower()` folds ASCII and nothing else, so
+ * `lower('ÄRA')` is `'Ära'` while JavaScript's `toLowerCase()` gives `'ära'`. Comparing a
+ * JS-folded needle against a SQL-folded column meant the two never met: a player whose name
+ * left ASCII was invisible to the roster's own search, never tripped the duplicate guard,
+ * and was re-imported as a second row (ADR-0032).
+ *
+ * `normalize('NFC')` runs *after* the fold, not before. Case folding can move a string
+ * between normalisation forms, so composing last is what makes `é` typed as one code point
+ * and `é` typed as `e` + U+0301 one name rather than two that merely look alike.
+ *
+ * The result is stored in `players.name_folded` and is the only thing a lookup compares. It
+ * is never displayed: `name` stays exactly what the user typed.
+ */
+export const foldPlayerName = (name: string): string =>
+  normalisePlayerName(name).toLowerCase().normalize('NFC');
+
+/**
  * The game code as it is stored: no `#`, no surrounding space, lower case.
  *
  * The sigil is stripped here rather than in the form or the scanner, so that a code typed

@@ -12,7 +12,7 @@
  */
 
 import { FlashList } from '@shopify/flash-list';
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -39,9 +39,20 @@ export interface ViewerChoiceScreenProps {
   /** Leaves without choosing. Absent when there is no viewer to fall back to. */
   onCancel?: () => void;
   onAddPlayer: () => void;
+  /**
+   * Rendered at the end of every state this screen has. It carries the roster backup
+   * controls (ADR-0033), and the state that needs them most is `empty`: a phone with nothing
+   * to pick from is a phone that has just been wiped.
+   */
+  footer?: ReactNode;
 }
 
-export function ViewerChoiceScreen({ onChosen, onCancel, onAddPlayer }: ViewerChoiceScreenProps) {
+export function ViewerChoiceScreen({
+  onChosen,
+  onCancel,
+  onAddPlayer,
+  footer,
+}: ViewerChoiceScreenProps) {
   const { state, onChoose } = useViewerChoice({ onChosen });
 
   return (
@@ -68,7 +79,7 @@ export function ViewerChoiceScreen({ onChosen, onCancel, onAddPlayer }: ViewerCh
         </ArenaText>
       </View>
 
-      <ChoiceBody state={state} onChoose={onChoose} onAddPlayer={onAddPlayer} />
+      <ChoiceBody state={state} onChoose={onChoose} onAddPlayer={onAddPlayer} footer={footer} />
     </ScreenScaffold>
   );
 }
@@ -77,9 +88,10 @@ interface ChoiceBodyProps {
   state: ViewerChoiceUiState;
   onChoose: (id: PlayerId) => void;
   onAddPlayer: () => void;
+  footer?: ReactNode;
 }
 
-function ChoiceBody({ state, onChoose, onAddPlayer }: ChoiceBodyProps) {
+function ChoiceBody({ state, onChoose, onAddPlayer, footer }: ChoiceBodyProps) {
   switch (state.kind) {
     case 'loading':
       return (
@@ -88,6 +100,7 @@ function ChoiceBody({ state, onChoose, onAddPlayer }: ChoiceBodyProps) {
           <ArenaText variant="bodySmall" tone="subtle">
             {'Reading the ladder…'}
           </ArenaText>
+          {footer}
         </View>
       );
 
@@ -100,6 +113,7 @@ function ChoiceBody({ state, onChoose, onAddPlayer }: ChoiceBodyProps) {
           <ArenaText variant="bodySmall" tone="negative" align="center">
             {state.message}
           </ArenaText>
+          {footer}
         </View>
       );
 
@@ -118,6 +132,7 @@ function ChoiceBody({ state, onChoose, onAddPlayer }: ChoiceBodyProps) {
             accessibilityLabel="Add a player to the roster"
             testID="viewer-choice-add-player"
           />
+          {footer}
         </View>
       );
 
@@ -136,6 +151,9 @@ function ChoiceBody({ state, onChoose, onAddPlayer }: ChoiceBodyProps) {
             keyExtractor={(candidate) => candidate.id}
             renderItem={({ item }) => <CandidateRow candidate={item} onPress={onChoose} />}
             contentContainerStyle={styles.list}
+            // The list owns the remaining height, so the block goes inside it rather than
+            // under it — under it, the two would compete for the same space at 200 % scale.
+            ListFooterComponent={footer === undefined ? undefined : <>{footer}</>}
             testID="viewer-choice-list"
           />
         </>

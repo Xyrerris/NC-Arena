@@ -15,6 +15,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ok, type RosterSnapshot, type RosterSource } from '@/core/common';
 import { ArenaDataProvider, type RosterRepository } from '@/core/data';
+import { ArenaText } from '@/core/design-system';
 import { asPlayerId, type PlayerDraft, type PlayerId } from '@/core/model';
 import {
   createStubLiveData,
@@ -265,5 +266,60 @@ describe('ViewerScreen — updating your own stats', () => {
     // Back to the stats, not out to the roster: cancelling undoes the detour, not the visit.
     await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Nyx'));
     expect(mockBack).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ADR-0033's placement rule, asserted rather than assumed: the backup controls are on `/me`,
+ * and `/me` has two faces. The one that matters is the empty one — a phone with nothing to
+ * pick from is a phone that has just been wiped, and an import reachable only from the form
+ * would be unreachable exactly when somebody needs it.
+ *
+ * The footer is a plain node here rather than the real component, because what is under test
+ * is that both faces render the slot. What the controls do is `RosterBackupControls.test.tsx`.
+ */
+describe('ViewerScreen — the footer slot reaches both faces', () => {
+  let handle: TestDatabase;
+  let repository: RosterRepository;
+
+  const footer = <ArenaText testID="footer-probe">backup</ArenaText>;
+
+  beforeEach(() => {
+    startAct();
+    handle = createTestDatabase();
+    repository = createTestRepository(handle.db, sourceOf(EMPTY)).repository;
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    handle.close();
+  });
+
+  it('renders it over an empty roster, which is what a wiped device shows', async () => {
+    await render(<ViewerScreen footer={footer} />, { wrapper: wrapWith(repository) });
+
+    expect(screen.getByTestId('viewer-choice-empty')).toBeTruthy();
+    expect(screen.getByTestId('footer-probe')).toBeTruthy();
+  });
+
+  it('renders it under the list of players to pick from', async () => {
+    const nyx = repository.createPlayer(draft('Nyx', 2500));
+    expect(nyx.ok).toBe(true);
+
+    await render(<ViewerScreen footer={footer} />, { wrapper: wrapWith(repository) });
+
+    expect(screen.getByTestId('viewer-choice-list')).toBeTruthy();
+    expect(screen.getByTestId('footer-probe')).toBeTruthy();
+  });
+
+  it('renders it under your own stats, once there is a viewer', async () => {
+    const nyx = repository.createPlayer(draft('Nyx', 2500));
+    if (!nyx.ok) throw new Error('fixture: the player could not be created');
+    expect(repository.setViewerId(nyx.value.id).ok).toBe(true);
+
+    await render(<ViewerScreen footer={footer} />, { wrapper: wrapWith(repository) });
+
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Nyx'));
+    expect(screen.getByTestId('footer-probe')).toBeTruthy();
   });
 });

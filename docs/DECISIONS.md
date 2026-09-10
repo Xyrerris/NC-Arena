@@ -1625,3 +1625,289 @@ every single import.
   knowing on sight: the fix is to type the code in, not to loosen the match.
 - **`createPlayer` and `updatePlayer` moved above the returned object** in `rosterRepository.ts`, so
   `importPlayer` can call them. No behaviour changed with them.
+
+---
+
+## ADR-0032 — A name is folded in JavaScript, once, and the fold is stored
+
+**Date:** 2026-09-05 · **Status:** accepted · **Phase:** 4.10
+
+**Context.** Three shipped behaviours compared names case-insensitively, and all three did it the
+same wrong way: the needle was folded in JavaScript with `toLowerCase()`, and the column was folded
+in SQL with `lower()`. SQLite's `lower()` folds ASCII and nothing else. For any name outside ASCII
+the two never met.
+
+```
+insertLocalPlayer(db, p1, { name: 'ÄRA' })
+isNameTaken(db, 'ÄRA')                -> false   // the identical string
+findPlayerByIdentity(db, 'ära', 'a1') -> null
+roster search for 'ÄRA'               -> 0 rows
+```
+
+Each failure was silent and each looked like ordinary product behaviour. The player was invisible
+to the roster's own search; the duplicate guard of ADR-0020 never fired, so the same person could
+be entered twice; and the screenshot import of ADR-0031 matched nothing, so it added a second row
+for a player plainly already on the ladder — the exact outcome that ADR exists to prevent. The
+ladder is a game's roster, where accented Latin, Cyrillic and Greek are ordinary.
+
+**Decision 1 — the fold is a function in `core/model`, not an expression in SQL.** `foldPlayerName`
+is now the single definition of "the same name" in the app. It lives beside `normalisePlayerName`
+because it is a domain rule about identity, and it is a function rather than SQL because **SQLite
+cannot express it**: there is no Unicode-aware `lower()` in `expo-sqlite`, and there is no way to
+add one that both drivers behind `ArenaDatabase` would share.
+
+**Decision 2 — the fold is stored in `players.name_folded`, and every lookup compares that column.**
+If the fold can only be computed in JavaScript, it has to be computed on the way _in_. `draftColumns`
+derives it for every hand-entered write, and `replaceRoster` derives it for every synced row, for
+the same reason it is derived at all: a second write path that skipped it would put a name in the
+table that no lookup can find. No `lower()` remains in the query layer.
+
+**Decision 3 — normalise to NFC _after_ folding, not before.** Case folding can move a string
+between normalisation forms, so composing last is what makes `é` as one code point and `é` as
+`e` + U+0301 one name. They render identically, so two rows would look like the same player listed
+twice with nothing on screen to tell them apart.
+
+**Decision 4 — the migration writes an empty default, and a JavaScript pass backfills.**
+`0003_folded_player_name.sql` adds the column with `DEFAULT ''` and does **not** attempt
+`UPDATE players SET name_folded = lower(name)`. A SQL backfill would have written a wrong fold into
+exactly the rows the column exists for, and a wrong fold is indistinguishable from a right one
+until a search quietly fails. `refoldPlayerNames` does the backfill in JavaScript, runs after the
+migrations on device and in the test database alike, and is idempotent — so it also repairs a fold
+written by an older rule, which makes changing `foldPlayerName` a code change rather than a
+migration.
+
+**Rejected — `COLLATE NOCASE` on the column.** SQLite's built-in `NOCASE` collation is ASCII-only,
+by the same documented limitation as `lower()`. It would have moved the bug rather than fixed it,
+and moved it somewhere harder to see: a collation is invisible at the call site, so the next reader
+would have had no reason to doubt the comparison.
+
+**Rejected — an ICU build of SQLite.** ICU has a Unicode-aware `lower()`, and it is not available
+in `expo-sqlite` without shipping a custom native build. That is a native-dependency decision the
+size of a phase, taken to avoid storing one derived text column.
+
+**Rejected — a custom `lower` function registered on the connection.** `better-sqlite3` can do this;
+`expo-sqlite` through Drizzle is not the same seam, and the entire test strategy rests on the same
+statements running on both (ARCHITECTURE.md §10). A rule that only holds in Node is not a rule.
+
+**Rejected — folding accents away entirely, so `Ara` and `ÄRA` are one name.** That is a
+transliteration, not a case fold. It would merge two genuinely different players, which is a worse
+failure than the one being fixed and is not recoverable by the user. There is a test asserting it
+does not happen.
+
+**Consequences.**
+
+- **The repair is part of the boot gate.** `useArenaMigrations` holds the splash screen until
+  `refoldPlayerNames` has run, because every name lookup reads that column — a roster rendered
+  mid-repair is a roster whose search cannot find half of it. After the first launch it is one
+  scan with no writes.
+- **`name` is still exactly what the user typed.** The fold is never displayed and never round-trips
+  into a form; `toPlayer` does not map it, so it does not reach the domain at all.
+- **`players_name_folded_idx` covers the two equality lookups.** The roster's `LIKE '%…%'` search
+  cannot use it — that is a performance question for the first season-sized ladder, and it is
+  unchanged by this ADR.
+- **The game code needed no equivalent.** `normaliseGameCode` already lower-cases in JavaScript and
+  the column stores the result, so that half of `findPlayerByIdentity` was always comparing like
+  with like. Only the name was broken.
+
+---
+
+## ADR-0033 — The roster leaves the device as readable JSON, and an import replaces
+
+**Date:** 2026-09-07 · **Status:** accepted · **Phase:** 4.10
+
+**Context.** ADR-0021 removed the seed and ADR-0020 confirmed manual entry as the data source. Both
+were right, and together they left something neither says out loud: the roster now exists in exactly
+one place, and that place is an app-private SQLite file on one phone. There is no backend (open
+decision 1), no Android Auto Backup configuration, and until now no export. An uninstall, a factory
+reset, a "clear data" tap or a new phone was total, silent, unrecoverable loss of everything the
+user had typed — and everything the user had typed is the entire product.
+
+**Decision 1 — a schema-versioned JSON document, not a copy of `arena.db`.** Copying the database
+file is fewer lines and is the wrong artefact. A binary written under schema 3 restores into a build
+whose migrations have moved on, and nothing in the file says which schema it was; the failure mode
+is a corrupt-looking database rather than a sentence. A document carries `schemaVersion`
+(`SCHEMA_VERSION`, the committed migration count), so a build that cannot read a file can say so
+and name the number. It is also the only format that can honour decision 5.
+
+**Decision 2 — the document is not a `RosterSnapshot`, because a snapshot cannot say `origin`.**
+The plan called for `exportSnapshot(): RosterSnapshot`, on the grounds that `RosterSnapshot` is
+already the serialised form and `replaceRoster` already applies one. Both true, and both beside the
+point: a snapshot is what a **server** hands over, and a server has no opinion about which rows this
+device typed in — `replaceRoster` therefore writes every row it is given as `REMOTE`. Round-tripping
+a backup through it would restore a roster in which nothing may be edited and nothing may be
+deleted, which is a strange thing to hand somebody who has just lost their phone. `StoredPlayer` is
+`Player` plus the row's own `origin`, and it is flattened rather than nested so the file stays
+readable.
+
+**Decision 3 — an import replaces, and it is a different function from a sync.** `replaceRoster`
+keeps `LOCAL` rows because a sync is a partial view (ADR-0020, and the record half of the same
+invariant in the phase before this one). A restore is not a partial view: the file is a whole ladder
+written by this app. Keeping the rows already on the device would merge the roster the user is
+replacing into the one they are restoring, and the survivors would be exactly what a wipe was meant
+to undo. `restoreRoster` is therefore its own writer, and the confirmation before it says the word
+"replace" rather than "continue".
+
+**Decision 4 — everything is refused before the database is touched.** `parseRosterBackup` reads a
+string and returns a `Result`; `importSnapshot` calls it first and calls `restoreRoster` only on
+success. The first statement of the restore deletes the roster, so a refusal discovered inside the
+transaction would roll back correctly and would still be the wrong shape of answer — "that file is
+not ours" is a fact about a file and should never be reached by way of the database. Each refusal
+has its own sentence: a damaged file, a file that is not ours, a future schema version (naming both
+numbers), a missing or unreadable stat (naming the player and the field), a repeated id, a record
+against a player the file does not carry, and an avatar the file does not carry.
+
+**Decision 5 — the file is written to be read.** Two-space indentation, one field per line, names
+spelled exactly as they were typed. It is the user's only copy of their own data, and an opaque one
+would be a worse answer than none: somebody who can open the file in a text editor can recover a
+name from it even if every version of this app has gone. `name_folded` is deliberately absent — it
+is derived by `foldPlayerName` on the way in (ADR-0032), and a stored fold in a document could only
+ever disagree with the code that reads it.
+
+**Decision 6 — ranks are renumbered 1..N in the file's own order.** Decision 5 makes the document
+hand-editable, which makes its ranks capable of arriving with a gap or a duplicate. Sorting by the
+stored rank preserves the ladder the user exported; renumbering is what keeps `write.ts`'s
+contiguity invariant a property of the table rather than of whatever was in the file.
+
+**Decision 7 — an older document is read; only a newer one is refused.** The optional fields are
+exactly the columns the schema defaults — `level`, `game_code`, `hp`, `origin` — and each is
+defaulted for the same reason it is optional here: a migration added it to rows written before it
+existed, and a backup written before that migration is the same case. Refusing an old file would
+mean telling somebody their only copy is unreadable because the app moved on, which is the failure
+this whole feature exists to prevent. A **future** version is refused, because a build cannot guess
+what a field it has never heard of means.
+
+**Decision 8 — the file leaves through the share sheet, and arrives through the file picker.** The
+app does not choose where the backup lives. The whole point is that the data leaves this device, and
+a file written to app-private storage would be taken by the same uninstall. `expo-sharing` is the
+one new dependency; the picker is `File.pickFileAsync` from `expo-file-system`, which is already
+here — so the import side costs nothing. Both sit behind a `BackupFile` port, the shape ADR-0024
+established, which is what lets a whole export and a whole import be driven in a test with no
+emulator and no file.
+
+**Decision 9 — the controls live on `/me`, in a slot both of its faces render.** No new screen. `/me`
+is the only settings-free page the app has, and the backup is about this device's copy of the ladder
+— the same subject as "which player on it is you". It is passed as a `footer` node by the route
+rather than imported, because ARCHITECTURE.md §4 forbids one feature importing another and getting
+the roster off the device is not part of editing a player. It reaches **both** faces of `/me`
+deliberately: the state that needs it most is the empty one, because a phone with nobody to pick
+from is a phone that has just been wiped, and an import reachable only from the viewer's form would
+be unreachable exactly when somebody needs it.
+
+**Rejected — Android Auto Backup.** It is free, it is invisible, and it is not an answer. It does
+not survive a user who taps "clear data", it cannot be inspected, it cannot be moved to a phone on
+another account, and it silently does nothing when the device has it turned off. It may be worth
+turning on as well; it is not worth turning on _instead_.
+
+**Rejected — validating with `zod`.** The dependency is already in `package.json` for Phase 5, so
+this would have cost nothing to import. It would have cost something to read: the exit criteria ask
+for a **named sentence per refusal**, and an issue list from a schema library is a description of a
+shape, not advice to somebody holding their only copy of their own roster. The validator is
+hand-written and each refusal names what is wrong and where.
+
+**Rejected — declaring `expo-sharing` in `app.config.ts`'s `plugins`.** It has an `app.plugin.js`,
+and it is for the share extension — receiving files _into_ the app, which this feature does not do.
+Declaring it would ship intent filters and a share target for a feature that does not exist, which
+is the exact complaint ROADMAP.md 4.10.4 makes about `expo-background-task`. The `SharingFileProvider`
+`shareAsync` actually needs is in the module's own manifest and is merged by autolinking.
+
+**Consequences.**
+
+- **`SCHEMA_VERSION` is a hand-written constant with a probe.** It has to exist on device, where
+  `migrations/meta/_journal.json` is not bundled — only the generated `migrations.js` is.
+  `schemaVersion.test.ts` asserts it equals the journal's entry count, so it cannot drift behind a
+  migration somebody added and forgot; a stale one would label a backup with a schema it was not
+  written at.
+- **`ArenaPreferences` gained `clearViewerId`.** `setViewerId` selects an existing row, so it cannot
+  express "nobody" — and a restore from a file with no avatar has to say exactly that, or the stored
+  id would point at a row the replace has just removed. ROADMAP.md 4.10.4's `deletePlayer` fix is
+  the second caller it is owed.
+- **The picker cannot distinguish a failure from a cancel.** `File.pickFileAsync` turns every error
+  into `canceled: true`. The port reports a cancel, which is the honest reading of what is known —
+  the alternative is an error message naming a cause nobody established.
+- **The picker's MIME filter is three types wide, not one.** `ACTION_OPEN_DOCUMENT` greys out
+  everything the filter excludes, and which type a `.json` file is reported as depends on the
+  provider it came back from — Drive, Downloads and a mail attachment do not agree. Greying out the
+  user's only copy is a far worse failure than offering them too many files, and a wrong pick
+  already has its own sentence.
+- **A restore normalises the name and the game code, where `replaceRoster` passes a synced row
+  through.** A server is authoritative about its own spelling; a backup file is this app's own
+  document and is hand-editable by decision 5, so a padded name or a `#`-prefixed code written back
+  in by hand has to land in the table in the one shape every lookup expects — the same
+  `normalisePlayerName` and `normaliseGameCode` a form goes through.
+- **The import shares ADR-0030's Activity hazard.** The picker is an `ActivityResultLauncher` like
+  `expo-image-picker`'s, so it depends on the same `android:configChanges` fix. Nothing new was
+  needed; it is worth knowing that the two now stand on it.
+- **This does not close open decision 1.** Export is not a backend, and it is not a sync. It is the
+  answer to "what happens when this phone dies", which is a question the last five phases created
+  and no ADR had answered.
+
+---
+
+## ADR-0034 — What each unreferenced dependency is actually for
+
+**Date:** 2026-09-07 · **Status:** accepted · **Phase:** 4.10
+
+**Context.** Eight packages in `package.json` had no reference anywhere in `src/`. A review can
+delete an unused dependency in one line and find out what it was for at the next native build, which
+is the wrong moment. So the audit's job was to establish, per package, _why_ it is there — and to
+write the answer down, because "nothing imports it" is the same observation for a package that is
+dead and one that is load-bearing.
+
+Three of the eight turned out to be doing something no `grep` could have found.
+
+**Decision 1 — removed: `react-dom` and `expo-localization`.** `react-dom` is named by `expo`,
+`expo-router` and `@expo/metro-runtime`, and **every one of them marks it `optional: true`**. It
+exists for the web target, which ADR-0004 excludes and which `platforms: ['android']` refuses at the
+bundler. `expo-localization` is named by nothing at all — not a dependency, not a peer, not a
+plugin, not an import — and belongs to no phase.
+
+Worth knowing what that removal did and did not do: `react-dom` is **still in the tree**, at the
+same 19.2.3, because npm installs an optional peer when nothing conflicts and three packages ask
+for one. What changed is the declaration, not the install — and the lockfile still pins it with a
+resolved URL, so `npm ci` stays deterministic. `expo-localization` genuinely left.
+
+**Decision 2 — kept, because they are required peers: `expo-linking` and `expo-constants`.** Both
+are **non-optional** peer dependencies of `expo-router`, and `expo-constants` is additionally a hard
+dependency of `expo` itself. Nothing in `src/` imports them because the router does; removing them
+would leave the versions to whatever npm resolves for a peer, rather than to the SDK 57 set
+`expo-doctor` checks. This is the "unless one is a transitive requirement" clause, and it is why the
+audit had to check rather than assume.
+
+**Decision 3 — kept, and the one that would have been deleted: `expo-system-ui`.** Nothing imports
+it and nothing declares it. It is load-bearing anyway, as a **config plugin**:
+`@expo/prebuild-config` registers `expo-system-ui` through `createLegacyPlugin`, whose fallback —
+used when the package is _absent_ — replaces `withAndroidUserInterfaceStyle` with a build warning
+that says "Install expo-system-ui in your project to enable this feature."
+
+So `userInterfaceStyle: 'dark'` in `app.config.ts` is applied to `strings.xml` only because this
+package is installed. Removing it would not have failed anything: it would have downgraded a
+declared product decision — the design is dark-only, and `automatic` would hand the system a choice
+the design system cannot honour — into a warning nobody reads, on a build that still succeeds.
+
+**Decision 4 — kept as Phase 5 deliverables: `zod`, `@tanstack/react-query`,
+`expo-background-task`.** All three are named in ARCHITECTURE.md §3 and in Phase 5's deliverables.
+They stay, and this paragraph is the answer to the next reader who greps for them and finds nothing.
+
+**Decision 5 — `expo-background-task` is removed from `app.config.ts`'s `plugins`, and only from
+there.** The roadmap asked what its config plugin ships today for a feature that does not exist. The
+answer is **nothing**: the plugin is `withInfoPlist` and nothing else — iOS `UIBackgroundModes` and
+`BGTaskSchedulerPermittedIdentifiers` — and the module's own `AndroidManifest.xml` is empty. On an
+Android-only build it contributed no manifest entry at all.
+
+It is removed regardless, because a declaration that does nothing still reads as though the app has
+background work. It goes back beside the code in Phase 5 — which is also when it stops being a no-op,
+if iOS is ever bought (§9.6).
+
+**Rejected — trusting `depcheck` or a "no import found" sweep.** Either would have deleted
+`expo-system-ui` and broken a shipped product decision silently. A dependency in an Expo app can be
+load-bearing through autolinking or through a config plugin, and neither is visible to a tool that
+reads import statements.
+
+**Consequences.**
+
+- **A grep for one of these packages now finds this ADR.** That was the deliverable: not a shorter
+  `package.json`, but a `package.json` whose contents can be explained.
+- **`expo-doctor`'s version check still passes**, which is the only automated thing that would have
+  noticed a wrongly-resolved peer.
+- **The audit is a snapshot.** Nothing re-runs it. The next SDK upgrade can make an optional peer
+  required, and this ADR will not notice.

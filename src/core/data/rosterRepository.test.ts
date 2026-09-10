@@ -12,7 +12,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { eq } from 'drizzle-orm';
+
 import { err, isOk, ok, type RosterSnapshot, type RosterSource } from '../common';
+import { headToHead, players, refoldPlayerNames } from '../db';
 import {
   asPlayerId,
   type HeadToHead,
@@ -512,6 +515,52 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
     expect(live.map(live.query.all())?.player.rank).toBe(5);
   });
 
+  /**
+   * ROADMAP.md 4.10.4's third exit criterion. The app degraded correctly without this —
+   * `/me` said "Pick another" — but the roster silently lost its hero card with nothing
+   * saying why, which is the silent-empty failure ADR-0021 removed elsewhere.
+   */
+  it('clears the avatar preference when the avatar is the player being removed', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(repo.getViewerId()).toBeNull();
+  });
+
+  it('tells the viewer listeners, so a screen keyed on the old id re-reads', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+    const listener = jest.fn();
+    repo.subscribeViewerId(listener);
+
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves somebody else\u2019s avatar alone when a different player is removed', () => {
+    const other = repo.createPlayer(localDraft('Orrin'));
+    if (!isOk(other)) throw new Error('fixture: the player could not be created');
+    expect(repo.setViewerId(other.value.id).ok).toBe(true);
+    const listener = jest.fn();
+    repo.subscribeViewerId(listener);
+
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(repo.getViewerId()).toBe(other.value.id);
+    // Nothing about the viewer changed, so nothing announced that it had.
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('leaves the preference standing when the removal is refused', () => {
+    expect(repo.setViewerId(localId).ok).toBe(true);
+
+    // A synced row: not this device's to remove (ADR-0020).
+    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(false);
+
+    expect(repo.getViewerId()).toBe(localId);
+  });
+
   it('returns a failure rather than throwing for an id that was already removed', () => {
     expect(repo.deletePlayer(localId).ok).toBe(true);
     expect(repo.deletePlayer(localId).ok).toBe(false);
@@ -636,6 +685,126 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   });
 });
 
+/**
+ * ADR-0032. Every assertion below failed before `name_folded` existed, and each one failed
+ * *silently* — a name outside ASCII was simply not there as far as the search and the
+ * duplicate guard were concerned.
+ *
+ * `ÄRA` is the fixture because it is the shortest name that separates the two folds:
+ * SQLite's `lower()` leaves it as `Ära`, JavaScript's gives `ära`, and the old code
+ * compared one against the other.
+ */
+describe('rosterRepository — names outside ASCII', () => {
+  let handle: TestDatabase;
+  let repo: ReturnType<typeof repositoryOn>;
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    repo = repositoryOn(handle);
+    await repo.refresh();
+    const created = repo.createPlayer(localDraft('ÄRA'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+  });
+
+  afterEach(() => handle.close());
+
+  it('finds a name searched for exactly as it is stored', () => {
+    // The one that made the defect impossible to argue with: the query was
+    // character-for-character the stored name, and the roster returned nothing.
+    expect(namesOf(repo, 'RANK', 'ÄRA')).toEqual(['ÄRA']);
+  });
+
+  it('finds it whatever case the search is typed in', () => {
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+    expect(namesOf(repo, 'RANK', 'Ära')).toEqual(['ÄRA']);
+    expect(namesOf(repo, 'RANK', 'är')).toEqual(['ÄRA']);
+  });
+
+  it('refuses a second player whose name differs only by case', () => {
+    const duplicate = repo.createPlayer(localDraft('ära'));
+
+    expect(duplicate.ok).toBe(false);
+    expect(!duplicate.ok && duplicate.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('updates the player a screenshot matches instead of adding a second row', () => {
+    // ADR-0031's whole promise, which non-ASCII names were quietly exempt from.
+    const imported = repo.importPlayer({ ...localDraft('ära'), combatPower: 9_999 });
+
+    expect(isOk(imported) && imported.value.combatPower).toBe(9_999);
+    expect(repo.playerCount()).toBe(5);
+  });
+
+  it('treats the two Unicode spellings of one accent as one name', () => {
+    // 'é' as a single code point, and as 'e' followed by U+0301. They render identically,
+    // so two rows would look like the same player listed twice with no way to tell them
+    // apart on screen.
+    const composed = 'Ré';
+    const decomposed = `Re${String.fromCharCode(0x0301)}`;
+    expect(composed).not.toBe(decomposed);
+
+    const created = repo.createPlayer(localDraft(composed));
+    expect(created.ok).toBe(true);
+
+    expect(repo.createPlayer(localDraft(decomposed)).ok).toBe(false);
+    expect(namesOf(repo, 'RANK', decomposed)).toEqual([composed]);
+  });
+
+  it('still tells two genuinely different names apart', () => {
+    // The fold is not a fuzzy match. Guarding against a "fix" that folds accents away
+    // entirely, which would make Ara and ÄRA one player.
+    const created = repo.createPlayer(localDraft('ARA'));
+
+    expect(created.ok).toBe(true);
+    expect(namesOf(repo, 'RANK', 'ara')).toEqual(['ARA']);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+  });
+});
+
+describe('refoldPlayerNames — the backfill the migration could not do', () => {
+  let handle: TestDatabase;
+  let repo: ReturnType<typeof repositoryOn>;
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    repo = repositoryOn(handle);
+    await repo.refresh();
+    const created = repo.createPlayer(localDraft('ÄRA'));
+    if (!isOk(created)) throw new Error('fixture: the player could not be created');
+  });
+
+  afterEach(() => handle.close());
+
+  /** The state a database upgraded by `0003` is in before the repair runs. */
+  const clearFolds = (): void => {
+    handle.db.update(players).set({ nameFolded: '' }).run();
+  };
+
+  it('repairs a row whose fold the migration left empty', () => {
+    clearFolds();
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual([]);
+
+    expect(refoldPlayerNames(handle.db)).toBe(5);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+  });
+
+  it('repairs a fold written by an older rule', () => {
+    // What a SQL backfill would have produced. It is why `0003` writes an empty default
+    // instead: a wrong fold is indistinguishable from a right one until a search fails.
+    handle.db.update(players).set({ nameFolded: 'Ära' }).where(eq(players.name, 'ÄRA')).run();
+
+    expect(refoldPlayerNames(handle.db)).toBe(1);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+  });
+
+  it('writes nothing on a database that is already correct', () => {
+    expect(refoldPlayerNames(handle.db)).toBe(0);
+    expect(refoldPlayerNames(handle.db)).toBe(0);
+    expect(namesOf(repo, 'RANK', 'ära')).toEqual(['ÄRA']);
+  });
+});
+
 describe('rosterRepository — a sync does not take the user data', () => {
   it('keeps hand-entered players and re-seats them below the new ladder', async () => {
     const handle = createTestDatabase();
@@ -686,6 +855,195 @@ describe('rosterRepository — a sync does not take the user data', () => {
     expect(detail?.player.combatPower).toBe(4242);
     expect(detail?.origin).toBe('REMOTE');
     handle.close();
+  });
+});
+
+/**
+ * ROADMAP.md 4.10.2. `replaceRoster` honoured "a sync may not take a `LOCAL` row" for the
+ * row and not for the record against it: `tx.delete(headToHead)` cleared the table and only
+ * the snapshot's rows came back, so every match swiped in against a hand-entered player was
+ * gone the first time a sync ran.
+ *
+ * The assertions read the table directly rather than through `observeRoster`, because what
+ * is being proven is what survived the write — and the viewer the roster reads records for
+ * is itself something the sync moves.
+ */
+describe('rosterRepository — a sync does not take the record either', () => {
+  let handle: TestDatabase;
+
+  interface Pairing {
+    viewerId: string;
+    opponentId: string;
+    wins: number;
+    losses: number;
+  }
+
+  const recordsIn = (): Pairing[] =>
+    handle.db
+      .select()
+      .from(headToHead)
+      .all()
+      .map((row) => ({
+        viewerId: row.viewerId,
+        opponentId: row.opponentId,
+        wins: row.wins,
+        losses: row.losses,
+      }))
+      .sort((a, b) => `${a.viewerId}${a.opponentId}`.localeCompare(`${b.viewerId}${b.opponentId}`));
+
+  /** Every end of every record points at a row that is actually there. */
+  const orphanedEnds = (): string[] => {
+    const ids = new Set(
+      handle.db
+        .select({ id: players.id })
+        .from(players)
+        .all()
+        .map((row) => row.id),
+    );
+    return recordsIn()
+      .flatMap((record) => [record.viewerId, record.opponentId])
+      .filter((id) => !ids.has(id));
+  };
+
+  const idOf = (repo: ReturnType<typeof repositoryOn>, name: string): PlayerId => {
+    const created = repo.createPlayer(localDraft(name));
+    if (!isOk(created)) throw new Error(`fixture: ${name} could not be created`);
+    return created.value.id;
+  };
+
+  const snapshotOf = (
+    roster: readonly Player[],
+    records: readonly HeadToHead[] = [],
+  ): RosterSnapshot => ({
+    season: 42,
+    viewerId: roster[0]?.id ?? FIXTURE.viewerId,
+    players: roster,
+    headToHead: records,
+  });
+
+  const sync = async (snapshot: RosterSnapshot): Promise<void> => {
+    const second = repositoryOn(handle, sourceOf(snapshot));
+    expect((await second.refresh()).ok).toBe(true);
+  };
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+  });
+
+  afterEach(() => handle.close());
+
+  it('keeps a record between two hand-entered players the snapshot cannot know about', async () => {
+    // The probe in ROADMAP.md 4.10.2, and the reason this is not a Phase 5 problem: the
+    // snapshot comes from a server that has never heard of either of these two.
+    const repo = repositoryOn(handle);
+    const me = idOf(repo, 'Me');
+    const rival = idOf(repo, 'Rival');
+    expect(repo.setViewerId(me).ok).toBe(true);
+    expect(repo.recordMatch(rival, 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(rival, 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(rival, 'LOSS').ok).toBe(true);
+
+    await sync(snapshotOf([player('p-a', 'Aurel', 1, 100)]));
+
+    expect(recordsIn()).toEqual([{ viewerId: me, opponentId: rival, wins: 2, losses: 1 }]);
+  });
+
+  it('lets the snapshot define a pairing it names, beside one it does not', async () => {
+    // Last-write-wins from server (ARCHITECTURE.md §7). Both ends are remote here, which is
+    // the case the server is unambiguously the authority on — and the assertion is on the
+    // whole table, so a rule that let the preserved row win and a rule that threw the
+    // untouched pairing away both fail it.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-b'), 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-b'), 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-d'), 'WIN').ok).toBe(true);
+
+    // The same ladder arriving again, restating Brann at 5/1 and saying nothing about Dross.
+    await sync(snapshotOf(FIXTURE.players, FIXTURE.headToHead));
+
+    expect(recordsIn()).toEqual([
+      { viewerId: 'p-a', opponentId: 'p-b', wins: 5, losses: 1 },
+      { viewerId: 'p-a', opponentId: 'p-c', wins: 9, losses: 0 },
+      { viewerId: 'p-a', opponentId: 'p-d', wins: 1, losses: 0 },
+    ]);
+  });
+
+  it('keeps a pairing the snapshot says nothing about, because absence is not a zero', async () => {
+    // There is no upload path (open decision 1), so a swipe exists in exactly one place. A
+    // snapshot that omits the pairing is silent about it, not authoritative about it.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-d'), 'WIN').ok).toBe(true);
+
+    await sync(snapshotOf(FIXTURE.players));
+
+    expect(recordsIn()).toContainEqual({
+      viewerId: 'p-a',
+      opponentId: 'p-d',
+      wins: 1,
+      losses: 0,
+    });
+  });
+
+  it('drops a record whose opponent the sync removed, instead of leaving an orphan', async () => {
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+
+    // Cinder is gone from the ladder, so the record against Cinder has nowhere to point.
+    await sync(snapshotOf(FIXTURE.players.slice(0, 2)));
+
+    expect(orphanedEnds()).toEqual([]);
+    expect(recordsIn()).toEqual([{ viewerId: 'p-a', opponentId: 'p-b', wins: 5, losses: 1 }]);
+  });
+
+  it('keeps a record against a local player whose id the snapshot has caught up with', async () => {
+    // The local row is deliberately dropped — two rows sharing one id is worse than losing
+    // the edit — but the id survives as a REMOTE row, so the record is not an orphan and the
+    // counts are still the user's.
+    const repo = repositoryOn(handle);
+    const me = idOf(repo, 'Me');
+    const nyx = idOf(repo, 'Nyx');
+    expect(repo.setViewerId(me).ok).toBe(true);
+    expect(repo.recordMatch(nyx, 'LOSS').ok).toBe(true);
+
+    await sync(snapshotOf([player(nyx, 'Nyx', 1, 4242)]));
+
+    expect(orphanedEnds()).toEqual([]);
+    expect(recordsIn()).toEqual([{ viewerId: me, opponentId: nyx, wins: 0, losses: 1 }]);
+  });
+
+  it('applies all three rules in one sync', async () => {
+    // A sync that drops remote players, claims a local id and restates one pairing. The
+    // three only compose correctly if the records are read out before the delete, which is
+    // the whole shape of the fix.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    const nyx = idOf(repo, 'Nyx');
+    expect(repo.recordMatch(nyx, 'WIN').ok).toBe(true);
+    expect(repo.recordMatch(asPlayerId('p-d'), 'WIN').ok).toBe(true);
+    expect(recordsIn()).toHaveLength(4);
+
+    await sync(
+      snapshotOf(
+        [
+          player('p-a', 'Aurel', 1, 100),
+          player('p-b', 'Brann', 2, 400),
+          player(nyx, 'Nyx', 3, 4242),
+        ],
+        [record(nyx, 3, 3)],
+      ),
+    );
+
+    // Cinder and Dross left the ladder and took their records with them; Brann stayed and
+    // the snapshot said nothing about him, so his 5/1 stands; Nyx's local row became the
+    // snapshot's, and there the snapshot's own count is what stands.
+    expect(orphanedEnds()).toEqual([]);
+    // Sorted by the pairing key, and a generated local id sorts before `p-b`.
+    expect(recordsIn()).toEqual([
+      { viewerId: 'p-a', opponentId: nyx, wins: 3, losses: 3 },
+      { viewerId: 'p-a', opponentId: 'p-b', wins: 5, losses: 1 },
+    ]);
   });
 });
 
@@ -878,13 +1236,31 @@ describe('rosterRepository — recording a match from the roster', () => {
     };
 
     it('names the avatar when the avatar has been deleted', () => {
-      // A local player made the viewer, then removed from the player screen. Nothing clears
-      // the preference, so it points at a row that is gone — the state a swipe can land in
-      // when the delete happens on another screen mid-gesture.
+      // A local player made the viewer, then removed from the player screen. `deletePlayer`
+      // now clears the preference with the row (ROADMAP.md 4.10.4), so this reaches the
+      // refusal through "there is no avatar" rather than through "the avatar is missing".
+      // The sentence the user is shown is the same one either way, which is the point.
       const created = repo.createPlayer(localDraft('Nyx'));
       if (!isOk(created)) throw new Error('fixture: the player could not be created');
       expect(repo.setViewerId(created.value.id).ok).toBe(true);
       expect(repo.deletePlayer(created.value.id).ok).toBe(true);
+      expect(repo.getViewerId()).toBeNull();
+
+      expect(messageOf('p-b')).toBe('Choose which player is your avatar before recording a match.');
+    });
+
+    /**
+     * The state `deletePlayer` no longer produces, reached the only other way it can be: the
+     * row removed underneath a preference that still names it — a restore, or a sync once
+     * Phase 5 exists. `recordMatchResult`'s own `NO_VIEWER` refusal is what answers here, and
+     * it stays covered because the transaction is the only place that can be sure (ADR-0028).
+     */
+    it('still names the avatar when the row goes without the preference going with it', () => {
+      const created = repo.createPlayer(localDraft('Nyx'));
+      if (!isOk(created)) throw new Error('fixture: the player could not be created');
+      expect(repo.setViewerId(created.value.id).ok).toBe(true);
+
+      handle.db.delete(players).where(eq(players.id, created.value.id)).run();
       expect(repo.getViewerId()).toBe(created.value.id);
 
       expect(messageOf('p-b')).toBe('Choose which player is your avatar before recording a match.');

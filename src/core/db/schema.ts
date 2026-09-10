@@ -16,6 +16,17 @@ export const players = sqliteTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     /**
+     * `name` case-folded by `foldPlayerName`, and the only column a name lookup compares
+     * (ADR-0032). Never displayed.
+     *
+     * It exists because SQLite's `lower()` folds ASCII only, so the fold has to happen in
+     * JavaScript — which means it has to happen on the way *in*, and be stored. The default
+     * is empty rather than `lower(name)` for the same reason: the migration cannot compute
+     * this value, and a SQL-folded one would be wrong in exactly the cases the column was
+     * added for. `refoldPlayerNames` fills it once the migration has run.
+     */
+    nameFolded: text('name_folded').notNull().default(''),
+    /**
      * Account level as the game prints it. Defaults to 0 so the migration can add the
      * column to a database written before it existed without inventing a level for rows
      * whose level nobody ever recorded — the same reasoning `origin` uses below.
@@ -46,6 +57,10 @@ export const players = sqliteTable(
   },
   (table) => [
     index('players_rank_idx').on(table.rank),
+    // Both name lookups — the duplicate guard and the screenshot import's identity match —
+    // are equalities on this column. The roster's search is a `LIKE '%…%'` and cannot use
+    // it; that is a performance question for the first real ladder, not this one.
+    index('players_name_folded_idx').on(table.nameFolded),
     index('players_combat_power_idx').on(table.combatPower),
     // The write path filters on it twice per sync — once to clear the remote ladder, once
     // to re-rank the local rows that outlived it.

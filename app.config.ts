@@ -14,9 +14,9 @@ const config: ExpoConfig = {
   version: '0.1.0',
   orientation: 'portrait',
   scheme: 'arenascout',
-  // Senza questo, `expo start` offre comunque il target web (tasto `w`, o l'apertura di
-  // localhost:8081 nel browser) e il bundle fallisce su `react-native-web`, che ADR-0004
-  // esclude di proposito. Dichiarare le piattaforme rende il rifiuto esplicito e leggibile.
+  // Without this, `expo start` still offers the web target (the `w` key, or opening
+  // localhost:8081 in a browser) and the bundle fails on `react-native-web`, which ADR-0004
+  // excludes on purpose. Declaring the platforms makes the refusal explicit and readable.
   platforms: ['android'],
   // The design is dark-only (Phase 6 either confirms that or adds a light theme).
   // 'automatic' would hand the system a choice the design system cannot honour yet.
@@ -37,7 +37,12 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router',
-    'expo-background-task',
+    // No `expo-background-task` here. Its config plugin is `withInfoPlist` and nothing else —
+    // it writes iOS `UIBackgroundModes` and `BGTaskSchedulerPermittedIdentifiers`, and the
+    // module's own AndroidManifest.xml is empty — so on an Android-only build it contributed
+    // exactly nothing while reading as though the app had background work. The package stays
+    // (it is a Phase 5 deliverable); the declaration belongs beside the code that uses it,
+    // which is also when it stops being a no-op if iOS lands (ARCHITECTURE.md §9.6).
     [
       // ADR-0024. The permission string is written here rather than left to the plugin's
       // default, because Android shows it verbatim and the default says "the app" — which

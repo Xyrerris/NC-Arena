@@ -37,6 +37,7 @@ export {
   MAX_PLAYER_NAME_LENGTH,
   PLAYER_DRAFT_NUMERIC_FIELDS,
   emptyPlayerDraft,
+  foldPlayerName,
   gameCodeLabel,
   isPlayerDraftValid,
   normaliseGameCode,
@@ -168,6 +169,23 @@ export interface RosterEntry {
   record: HeadToHead | null;
   isViewer: boolean;
   /** `LOCAL` for a player this device added by hand — the roster marks those rows. */
+  origin: PlayerOrigin;
+}
+
+/**
+ * A player exactly as the store holds them: the domain fields plus the row's own `origin`.
+ *
+ * The third shape origin travels out on, alongside `RosterEntry` and `PlayerDetail`, and
+ * the only one that **flattens** it rather than nesting a `player`. That is the export's
+ * doing (ADR-0033): this type is written to a file a person is expected to be able to read,
+ * and `{ "player": { … }, "origin": "LOCAL" }` puts a wrapper around every row for the sake
+ * of one field.
+ *
+ * It is what a backup restores and what `replaceRoster` cannot express: a sync produces
+ * `Player`, because a server has no opinion about which rows this device typed in — a
+ * restore does, because the file was written by a device that knew.
+ */
+export interface StoredPlayer extends Player {
   origin: PlayerOrigin;
 }
 

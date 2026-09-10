@@ -14,14 +14,27 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 
 import { useViewerId } from '@/core/data';
 
 import { PlayerFormScreen } from './PlayerFormScreen';
 import { ViewerChoiceScreen } from './ViewerChoiceScreen';
 
-export function ViewerScreen() {
+export interface ViewerScreenProps {
+  /**
+   * A block both faces of this screen render at the end of themselves — the roster backup
+   * controls, supplied by the `/me` route (ADR-0033).
+   *
+   * A slot rather than an import, because ARCHITECTURE.md §4 forbids one feature reaching
+   * into another and a backup is not part of editing a player. It is passed to *both* faces
+   * deliberately: the state where it matters most is the one with no avatar to edit, which
+   * is exactly what a wiped phone shows.
+   */
+  footer?: ReactNode;
+}
+
+export function ViewerScreen({ footer }: ViewerScreenProps) {
   const router = useRouter();
   const viewerId = useViewerId();
 
@@ -53,11 +66,16 @@ export function ViewerScreen() {
         // for. The roster keeps a control that reopens this, so neither is a dead end.
         onCancel={viewerId === null ? leave : stopChoosing}
         onAddPlayer={addPlayer}
+        footer={footer}
       />
     );
   }
 
   return (
-    <PlayerFormScreen mode={{ kind: 'viewer', id: viewerId }} onChangeViewer={startChoosing} />
+    <PlayerFormScreen
+      mode={{ kind: 'viewer', id: viewerId }}
+      onChangeViewer={startChoosing}
+      footer={footer}
+    />
   );
 }

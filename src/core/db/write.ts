@@ -12,8 +12,14 @@
  *    "viewer ranked 12 inside a 14-player roster, count reported as 15" shut (§7). Adding
  *    a player appends to the bottom, removing one closes the gap, and a sync re-seats the
  *    local rows below the ladder it just replaced.
- * 2. **A `LOCAL` row is the user's, and a sync may not take it.** Anything else makes
- *    "add a player" a feature the next refresh silently deletes.
+ * 2. **A `LOCAL` row is the user's, and a sync may not take it — and neither is the
+ *    record against it the sync's to delete.** Anything else makes "add a player" a
+ *    feature the next refresh silently deletes. The invariant covers the `head_to_head`
+ *    row as well as the `players` row: a match the user swiped in is the same user data by
+ *    the same argument (ADR-0020), and the server the snapshot came from has never heard
+ *    of the players it was played against. What the snapshot *does* have an opinion about
+ *    it wins, because the policy above is last-write-wins from server (§7); what it says
+ *    nothing about is not an instruction to forget.
  */
 
 import { and, asc, desc, eq, gt, ne, or, sql } from 'drizzle-orm';
@@ -21,12 +27,15 @@ import { and, asc, desc, eq, gt, ne, or, sql } from 'drizzle-orm';
 import type { RosterSnapshot } from '../common';
 import {
   CRIT_BP_PER_PERCENT,
+  foldPlayerName,
   normaliseGameCode,
   normalisePlayerName,
+  type HeadToHead,
   type MatchDelta,
   type MatchOutcome,
   type PlayerDraft,
   type PlayerId,
+  type StoredPlayer,
 } from '../model';
 import { headToHead, players } from './schema';
 import type { HeadToHeadRow, PlayerRow } from './schema';
@@ -40,9 +49,14 @@ import type { ArenaDatabase } from './queries';
  * basis points because that is what §2.2's formatting contract reads. Multiplying an
  * already-validated integer is exact, so the conversion cannot lose anything — which is
  * precisely why it happens after validation rather than inside the form.
+ *
+ * `nameFolded` is derived here for the same reason crit is scaled here: it is a stored
+ * consequence of a field the form owns, and deriving it anywhere else would let a second
+ * write path put a name in the table that no lookup can find (ADR-0032).
  */
 const draftColumns = (draft: PlayerDraft) => ({
   name: normalisePlayerName(draft.name),
+  nameFolded: foldPlayerName(draft.name),
   level: draft.level,
   gameCode: normaliseGameCode(draft.gameCode),
   combatPower: draft.combatPower,
@@ -63,6 +77,15 @@ const draftColumns = (draft: PlayerDraft) => ({
 const rowById = (tx: ArenaDatabase, id: PlayerId): PlayerRow | undefined =>
   tx.select().from(players).where(eq(players.id, id)).limit(1).all()[0];
 
+/**
+ * The composite primary key of `head_to_head`, as one comparable string.
+ *
+ * `\u0000` rather than a printable separator: a player id is opaque, and a separator an id
+ * could contain would let two different pairings collide into one key — which in
+ * `replaceRoster` would mean silently dropping a record the snapshot never mentioned.
+ */
+const pairing = (viewerId: string, opponentId: string): string => `${viewerId}\u0000${opponentId}`;
+
 const highestRank = (tx: ArenaDatabase): number =>
   tx.select({ rank: players.rank }).from(players).orderBy(desc(players.rank)).limit(1).all()[0]
     ?.rank ?? 0;
@@ -78,6 +101,29 @@ const highestRank = (tx: ArenaDatabase): number =>
  * the contiguity invariant survives a sync that changed the roster's size. A local row
  * whose id the snapshot now claims is *not* written back: upstream has caught up with that
  * player, and two rows sharing one id is the only outcome worse than losing the edit.
+ *
+ * **Records are read out and written back too**, and for the same reason the rows are.
+ * `tx.delete(headToHead)` clears the table, so before this function preserved them a sync
+ * took every match the user had swiped in against a hand-entered player — the snapshot
+ * cannot give them back, because the server it came from has never heard of a `LOCAL`
+ * player. Invariant 2 was written about half of its subject.
+ *
+ * Three rules decide what comes back, in this order:
+ *
+ * 1. **Both ends have to survive the replace.** Survival is membership of the id set the
+ *    table ends up holding — the snapshot's ids plus the kept local ones — and not "was
+ *    this a local row", because a record against a player the snapshot now claims still
+ *    points at a real row afterwards. A record with a dropped end is discarded rather than
+ *    written back: `head_to_head` references `players`, so re-inserting one would either
+ *    fail the constraint or, with the pragma off, leave a row pointing at nothing.
+ * 2. **The snapshot defines any pairing it mentions.** Last-write-wins from server
+ *    (ARCHITECTURE.md §7), stated here as a filter rather than left to insert order — the
+ *    composite primary key would otherwise make it a question of which INSERT ran second,
+ *    which is not a policy.
+ * 3. **A pairing the snapshot does not mention is kept.** Absence is not a zero. There is
+ *    no upload path (open decision 1), so a local swipe is data that exists in one place;
+ *    a snapshot that omits the pairing is silent about it, not authoritative about it.
+ *    Two remote players are covered by rule 2 the moment the snapshot has an opinion.
  */
 export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void => {
   db.transaction((tx) => {
@@ -90,6 +136,23 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
       .all()
       .filter((row) => !claimed.has(row.id));
 
+    // The ids the table holds once this transaction ends, which is what a record's two ends
+    // are checked against.
+    const surviving = new Set<string>([...claimed, ...kept.map((row) => row.id)]);
+    const defined = new Set<string>(
+      snapshot.headToHead.map((record) => pairing(record.viewerId, record.opponentId)),
+    );
+    const preserved = tx
+      .select()
+      .from(headToHead)
+      .all()
+      .filter(
+        (row) =>
+          surviving.has(row.viewerId) &&
+          surviving.has(row.opponentId) &&
+          !defined.has(pairing(row.viewerId, row.opponentId)),
+      );
+
     // head_to_head first: the FK cascade would take care of it, but relying on cascade
     // means relying on `PRAGMA foreign_keys` being on, which is per-connection.
     tx.delete(headToHead).run();
@@ -101,6 +164,10 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
           snapshot.players.map((player) => ({
             id: player.id,
             name: player.name,
+            // A synced row is folded on arrival, exactly like a typed one. The server has
+            // no idea this column exists, and a remote player the search cannot find would
+            // be the same defect wearing a different hat.
+            nameFolded: foldPlayerName(player.name),
             level: player.level,
             gameCode: player.gameCode,
             rank: player.rank,
@@ -128,6 +195,103 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
       tx.insert(headToHead)
         .values(
           snapshot.headToHead.map((record) => ({
+            viewerId: record.viewerId,
+            opponentId: record.opponentId,
+            wins: record.wins,
+            losses: record.losses,
+          })),
+        )
+        .run();
+    }
+
+    // After the snapshot's own, so the write order matches the policy even though the
+    // filter above has already made the two sets disjoint. Insert order deciding a conflict
+    // is the kind of rule nobody can find later.
+    if (preserved.length > 0) {
+      tx.insert(headToHead).values(preserved).run();
+    }
+  });
+};
+
+/**
+ * One ladder, as a backup file describes it (ADR-0033). Everything `restoreRoster` writes.
+ *
+ * It is `StoredPlayer` rather than `Player` because a restore has an opinion about `origin`
+ * and a sync does not: the file was written by a device that knew which rows were the
+ * user's, and a restore that forgot would hand back a roster nobody may edit.
+ */
+export interface RosterRestore {
+  players: readonly StoredPlayer[];
+  headToHead: readonly HeadToHead[];
+}
+
+/**
+ * Replaces **everything** with the contents of a backup — the counterpart to
+ * `replaceRoster`, and deliberately not the same function (ADR-0033).
+ *
+ * `replaceRoster` keeps the `LOCAL` rows, because a sync is a partial view: the server has
+ * never heard of them. A restore is not a partial view. The file is a whole ladder written
+ * by this app, `origin` and all, so a keep-the-local-rows rule would merge the roster the
+ * user is trying to *replace* into the one they are restoring — and the surviving rows
+ * would be exactly the ones a wipe was meant to undo.
+ *
+ * **Ranks are renumbered 1..N in the file's own order.** The document is human-readable by
+ * design, which means it is hand-editable, which means its ranks can arrive with a gap or a
+ * duplicate in them. Sorting by the stored rank preserves the ladder the user exported;
+ * renumbering is what keeps invariant 1 a property of the table rather than a property of
+ * whatever was in the file.
+ *
+ * Nothing here validates. A record naming a player the file does not carry, or two rows
+ * sharing an id, is refused by `parseRosterBackup` **before** this is called — a refusal
+ * that arrived halfway through the transaction would be correct and would still have shown
+ * the user a wiped roster while it rolled back.
+ */
+export const restoreRoster = (db: ArenaDatabase, restore: RosterRestore): void => {
+  db.transaction((tx) => {
+    // Same order as `replaceRoster`, for the same per-connection-pragma reason.
+    tx.delete(headToHead).run();
+    tx.delete(players).run();
+
+    const ordered = [...restore.players].sort((left, right) => left.rank - right.rank);
+
+    if (ordered.length > 0) {
+      tx.insert(players)
+        .values(
+          ordered.map((player, index) => ({
+            id: player.id,
+            // Normalised on the way in, exactly as `draftColumns` normalises what a form
+            // typed — not passed through as `replaceRoster` passes a synced row through. A
+            // server is authoritative about its own spelling; a backup file is this app's
+            // own document, and it is hand-editable by design (see the rank note above), so
+            // a padded name or a `#A984` written back in by hand must land in the table in
+            // the one shape every lookup expects.
+            name: normalisePlayerName(player.name),
+            // Derived here rather than carried in the file, exactly as it is for a synced
+            // row: the fold is a consequence of `foldPlayerName`, and storing it in a
+            // document would let a backup written under an older rule restore a name that
+            // no lookup can find (ADR-0032).
+            nameFolded: foldPlayerName(player.name),
+            level: player.level,
+            gameCode: normaliseGameCode(player.gameCode),
+            rank: index + 1,
+            combatPower: player.combatPower,
+            score: player.score,
+            hp: player.hp,
+            atk: player.atk,
+            def: player.def,
+            critBp: player.critBp,
+            hit: player.hit,
+            spd: player.spd,
+            origin: player.origin,
+          })),
+        )
+        .run();
+    }
+
+    if (restore.headToHead.length > 0) {
+      tx.insert(headToHead)
+        .values(
+          restore.headToHead.map((record) => ({
             viewerId: record.viewerId,
             opponentId: record.opponentId,
             wins: record.wins,
@@ -285,12 +449,16 @@ export const recordMatchResult = (
  * Is this name already on the ladder? Case-insensitively, because the roster's own search
  * is: two players the search cannot tell apart are two the user cannot either.
  *
+ * The comparison is an equality on `name_folded`, not `lower()` on `name`. Folding the
+ * needle in JavaScript and the column in SQL is what made this guard silently useless for
+ * any name outside ASCII — it answered "no" to a name identical to one already stored
+ * (ADR-0032).
+ *
  * `exceptId` is what keeps "save a player without renaming them" from colliding with
  * itself.
  */
 export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId): boolean => {
-  const needle = normalisePlayerName(name).toLowerCase();
-  const sameName = sql`lower(${players.name}) = ${needle}`;
+  const sameName = eq(players.nameFolded, foldPlayerName(name));
   return (
     db
       .select({ id: players.id })
@@ -310,9 +478,12 @@ export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId
  * The code alone is not one either — it is optional, so half the ladder can share the
  * empty string.
  *
- * Both sides are compared the way they are stored: the name case-insensitively, because
- * the roster's own search is; the code after `normaliseGameCode`, so `#A984` typed by hand,
- * `a984 ` pasted, and `#a984` read off a screenshot are one value rather than three.
+ * Both sides are compared the way they are stored, and both are folded in JavaScript on the
+ * way in: the name through `foldPlayerName` into `name_folded`, the code through
+ * `normaliseGameCode`, so `#A984` typed by hand, `a984 ` pasted, and `#a984` read off a
+ * screenshot are one value rather than three. Neither side asks SQLite to fold anything —
+ * this lookup decides whether a screenshot updates a player or adds a second one, and
+ * `lower()` got that wrong for every non-ASCII name (ADR-0032).
  *
  * It matches a `REMOTE` row like any other. Who may be *written* is `updateLocalPlayer`'s
  * rule and stays there — a lookup that quietly skipped synced rows would answer "no such
@@ -328,9 +499,41 @@ export const findPlayerByIdentity = (
     .from(players)
     .where(
       and(
-        sql`lower(${players.name}) = ${normalisePlayerName(name).toLowerCase()}`,
+        eq(players.nameFolded, foldPlayerName(name)),
         eq(players.gameCode, normaliseGameCode(gameCode)),
       ),
     )
     .limit(1)
     .all()[0];
+
+/**
+ * Rewrites `name_folded` for every row whose stored fold disagrees with `foldPlayerName`,
+ * and reports how many it repaired.
+ *
+ * This is the backfill the migration could not do. `0003_folded_player_name.sql` adds the
+ * column with an empty default rather than `lower(name)`, because SQLite's `lower()` is the
+ * very thing that cannot fold these names — a SQL backfill would have written a wrong value
+ * into exactly the rows the column exists for, and a wrong value is worse than an obviously
+ * empty one (ADR-0032).
+ *
+ * It runs after the migrations, on device and in the test database alike, and it is
+ * idempotent: once every row agrees it is a single scan and no writes. It also repairs a
+ * row folded by an older rule, which is what makes changing `foldPlayerName` a code change
+ * rather than a migration.
+ */
+export const refoldPlayerNames = (db: ArenaDatabase): number =>
+  db.transaction((tx) => {
+    const rows = tx
+      .select({ id: players.id, name: players.name, nameFolded: players.nameFolded })
+      .from(players)
+      .all();
+
+    let repaired = 0;
+    for (const row of rows) {
+      const folded = foldPlayerName(row.name);
+      if (folded === row.nameFolded) continue;
+      tx.update(players).set({ nameFolded: folded }).where(eq(players.id, row.id)).run();
+      repaired += 1;
+    }
+    return repaired;
+  });

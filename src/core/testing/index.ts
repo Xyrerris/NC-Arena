@@ -14,7 +14,7 @@ import path from 'node:path';
 
 import { createRosterRepository, type RosterRepository, type UseLiveData } from '../data';
 import type { RosterSource } from '../common';
-import type { ArenaDatabase } from '../db';
+import { refoldPlayerNames, type ArenaDatabase } from '../db';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 
 const MIGRATIONS_FOLDER = path.resolve(__dirname, '..', 'db', 'migrations');
@@ -36,6 +36,10 @@ export const createTestDatabase = (file = ':memory:'): TestDatabase => {
 
   const db = drizzle(connection);
   migrate(db, { migrationsFolder: MIGRATIONS_FOLDER });
+  // The repair `useArenaMigrations` runs after migrating on device (ADR-0032), here for the
+  // same reason: the fold is the half of the schema SQL cannot write, so a database that
+  // has only had the migrations applied is not yet in the state a real one is in.
+  refoldPlayerNames(db);
 
   return {
     db,
@@ -94,9 +98,14 @@ export interface TestRepository {
   restart(source?: RosterSource): RosterRepository;
 }
 
-export const createTestRepository = (db: ArenaDatabase, source: RosterSource): TestRepository => {
+/**
+ * `source` is optional because there is no source (ADR-0021): a test that never calls
+ * `refresh` should not have to invent one to say so, and one that does still passes the
+ * fixture it wants. Omitted, the repository is wired exactly as the app's own is.
+ */
+export const createTestRepository = (db: ArenaDatabase, source?: RosterSource): TestRepository => {
   const preferences = createMemoryPreferences();
-  const build = (from: RosterSource = source) =>
+  const build = (from: RosterSource | undefined = source) =>
     createRosterRepository({ db, source: from, preferences });
   return { repository: build(), preferences, restart: build };
 };
