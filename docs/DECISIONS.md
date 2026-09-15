@@ -1947,12 +1947,16 @@ database — but it is a **second, independent Drizzle schema** against Postgres
 client's `sqlite-core` tables and the server's `pg-core` tables describe the same domain from two
 different storage engines and have no business being one module.
 
-Docker Compose ties `app` (the Fastify service), `db` (Postgres 16, a named volume for the data
-directory), and `caddy` (reverse proxy, automatic Let's Encrypt TLS from a domain the owner points at
-the VPS) together as one deployable unit on the VPS. Compose over a bare `systemd` unit because the
-three processes have a real dependency order (`caddy` waits on `app`, `app` waits on `db`'s
-healthcheck) and because "the whole stack" needs to be one `docker compose up -d` after a `git pull`,
-not a runbook.
+Docker Compose ties `app` (the Fastify service) and `db` (Postgres 16, a named volume for the data
+directory) together as one deployable unit, built and redeployed by **Coolify** — the tool the owner
+already runs every application on that VPS through. Compose over a bare `systemd` unit because `app`
+has a real dependency order on `db`'s healthcheck, and because Coolify deploys a Docker Compose
+resource as one unit driven by a git push, which is what turns "the whole stack" into something a
+`git push` redeploys rather than a runbook. There is no reverse proxy or TLS termination in this
+compose file: Coolify runs one Traefik instance for the whole VPS and attaches every app's containers
+to it by their published port, so a second proxy inside this stack would either fight it for ports 80
+and 443 or sit there doing nothing. See "Addendum" below and `backend/README.md` for what that means
+concretely.
 
 **Decision 2 — an account is a roster owner, not a login.** Open decision 3 (ARCHITECTURE.md §9) is
 explicit that no auth story is budgeted, and ADR-0022 answered "who are you" as a **local** choice —
@@ -2061,3 +2065,16 @@ side — decision 3 above is the same choice, not a new one.
   recoverable later, that is a new decision (support tooling on the VPS, most likely a signed admin
   route), not a gap in this one — today, losing it before pairing a second device is final for that
   pairing, by design.
+
+**Addendum, 2026-09-15 — the reverse proxy is Coolify's, not a `caddy` service.** Decision 1 as first
+written put `caddy` in the compose file as the third container, reasoning from a bare VPS with nothing
+else on it. The owner runs Coolify for every application on that VPS already, and Coolify supplies its
+own Traefik instance and its own Let's Encrypt automation for the whole server — a second reverse
+proxy inside this stack would compete with it for ports 80 and 443 rather than complement it. `caddy`
+and `Caddyfile` are removed; `app` exposes its port for Coolify's proxy to reach instead, and Coolify's
+own dashboard (or its "magic" `SERVICE_FQDN_*` environment variable) is what assigns the domain and
+certificate, not a file in this repo. `backend/README.md`'s deployment section is Coolify-specific for
+the same reason: the generic "any VPS with Docker" instructions this ADR first described are not how
+this service is actually going to be run, and a doc that describes a path nobody takes drifts from the
+one that matters. The design questions decision 1 actually answers — self-hosted vs. managed, the
+account/API-key shape, the sync contract — are unaffected; only which process terminates TLS changed.

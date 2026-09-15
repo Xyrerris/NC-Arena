@@ -1,7 +1,15 @@
-# Deploys the three containers ADR-0035 describes on the OVH VPS: `db` (Postgres, the roster's
-# storage), `app` (this Fastify service) and `caddy` (reverse proxy + automatic TLS). Run from
-# this directory: `docker compose up -d`. `.env` next to this file supplies DATABASE_URL, the
-# Postgres credentials and the domain Caddy requests a certificate for — copy `.env.example`.
+# Deployed by Coolify (ADR-0035 addendum, 2026-09-15) as a "Docker Compose" resource, with this
+# directory (`backend/`) set as its base directory — the repo root is the Expo app, not this
+# service. Coolify runs `docker compose build` / `up -d` on every push to the tracked branch, once
+# "Automatic Deployment" is on for that branch and the repo's webhook reaches this server; see
+# backend/README.md's "Deploying with Coolify" section for the click-by-click setup.
+#
+# There is deliberately no reverse-proxy service here. Coolify runs one Traefik instance for the
+# whole VPS and attaches to `app` over the internal Docker network using the port `expose`s below —
+# a second proxy in this stack would fight Coolify's for ports 80/443 rather than help it. Coolify
+# is also what supplies `POSTGRES_PASSWORD` and the rest of `environment:` below at deploy time (its
+# per-resource "Environment Variables" tab) — nothing here reads a `.env` file in production, that
+# is a local-dev-only convenience (`.env.example`).
 
 services:
   db:
@@ -9,7 +17,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-arena}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in Coolify's Environment Variables tab}
       POSTGRES_DB: ${POSTGRES_DB:-arena_scout}
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -25,26 +33,25 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-arena}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-arena_scout}
       PORT: 3000
+      # Coolify's own env var, read only by Coolify (not by this app) — set to your own domain
+      # in the Environment Variables tab and Coolify wires Traefik + the certificate to `app`'s
+      # port 3000 automatically on the next deploy. Leaving it unset just means assigning the
+      # domain by hand in the service's "Domains" field instead; either works. See README.
+      SERVICE_FQDN_APP: ${SERVICE_FQDN_APP:-}
     depends_on:
       db:
         condition: service_healthy
+    # No `ports:` host-binding on purpose — Coolify's proxy reaches `app` over the compose
+    # network by this exposed port, so nothing here needs to claim a host port Coolify (or
+    # another app it runs) might also want.
     expose:
       - '3000'
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - '80:80'
-      - '443:443'
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - app
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/health']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   db-data:
-  caddy-data:
-  caddy-config:

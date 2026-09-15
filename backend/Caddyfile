@@ -1,5 +1,0 @@
-# Replace with the domain pointed at the VPS's IP. Caddy requests and renews the Let's
-# Encrypt certificate for it automatically — no manual certbot step.
-api.example.com {
-	reverse_proxy app:3000
-}
