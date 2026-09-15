@@ -1,0 +1,226 @@
+openapi: 3.1.0
+info:
+  title: Arena Scout backend
+  version: '1'
+  description: >
+    Written down first, per Phase 5's own deliverable list (ROADMAP.md) and ADR-0035, decision 6.
+    `RemoteRosterSource` (src/core/network) and this repo's route handlers (backend/src/routes)
+    are both read against this document; a contract test asserts they agree.
+servers:
+  - url: https://api.example.com/v1
+security:
+  - bearerAuth: []
+paths:
+  /accounts:
+    post:
+      summary: Create an account — an anonymous roster owner, not a login (ADR-0035, decision 2).
+      security: []
+      responses:
+        '201':
+          description: The account was created. Both secrets are returned exactly once.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAccountResponse'
+  /accounts/link:
+    post:
+      summary: Pair a second device to an existing account using its recovery code.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recoveryCode]
+              properties:
+                recoveryCode: { type: string }
+      responses:
+        '201':
+          description: A new API key for this device, scoped to the same account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinkAccountResponse'
+        '404':
+          $ref: '#/components/responses/Error'
+  /roster:
+    get:
+      summary: Pull the account's whole roster — the wire shape of RosterSnapshot (ARCHITECTURE.md §7).
+      responses:
+        '200':
+          description: The full snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RosterSnapshot'
+        '401':
+          $ref: '#/components/responses/Error'
+  /roster/sync:
+    post:
+      summary: >
+        Push rows this device has that the server has not seen (new, keyed by clientId) or has
+        edited (existing, keyed by server id), plus head-to-head records. Returns the fresh
+        snapshot and the clientId -> server id map (ADR-0035, decision 3).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RosterSyncRequest'
+      responses:
+        '200':
+          description: The merge applied; the account's fresh snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RosterSyncResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+  /me/viewer:
+    put:
+      summary: Set which player on the account's roster is the viewer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [playerId]
+              properties:
+                playerId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The viewer was set.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [viewerId]
+                properties:
+                  viewerId: { type: string, format: uuid }
+        '404':
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The device's API key, minted by /accounts or /accounts/link.
+  responses:
+    Error:
+      description: >
+        The closed error taxonomy (ADR-0035, decision 4). The client reads `error.code`, never
+        the HTTP status alone.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [VALIDATION_ERROR, UNAUTHORIZED, NOT_FOUND, CONFLICT, RATE_LIMITED, INTERNAL]
+            message:
+              type: string
+    CreateAccountResponse:
+      type: object
+      required: [accountId, apiKey, recoveryCode]
+      properties:
+        accountId: { type: string, format: uuid }
+        apiKey: { type: string }
+        recoveryCode: { type: string }
+    LinkAccountResponse:
+      type: object
+      required: [accountId, apiKey]
+      properties:
+        accountId: { type: string, format: uuid }
+        apiKey: { type: string }
+    # Every stat below is a safe integer — an int, and within +/-2^53 (§2.1 / ADR-0035, decision 5).
+    Player:
+      type: object
+      required:
+        [id, name, level, gameCode, rank, combatPower, score, hp, atk, def, critBp, hit, spd]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 64 }
+        level: { type: integer, minimum: 0 }
+        gameCode: { type: string, maxLength: 16 }
+        rank: { type: integer, minimum: 1 }
+        combatPower: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        score: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        hp: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        atk: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        def: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        critBp:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Percent x 10 000 — 58.4127% -> 584127 (§2.2).
+        hit: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        spd: { type: integer, minimum: 0, maximum: 9007199254740991 }
+    NewPlayer:
+      allOf:
+        - $ref: '#/components/schemas/Player'
+        - type: object
+          required: [clientId]
+          properties:
+            id: { readOnly: true }
+            rank: { readOnly: true }
+            clientId:
+              type: string
+              description: This device's own id for the row, until the response assigns a server one.
+    HeadToHead:
+      type: object
+      required: [viewerId, opponentId, wins, losses]
+      properties:
+        viewerId: { type: string, format: uuid }
+        opponentId: { type: string, format: uuid }
+        wins: { type: integer, minimum: 0 }
+        losses: { type: integer, minimum: 0 }
+    RosterSnapshot:
+      type: object
+      required: [season, viewerId, players, headToHead]
+      properties:
+        season: { type: integer, minimum: 1 }
+        viewerId: { type: [string, 'null'], format: uuid }
+        players:
+          type: array
+          items: { $ref: '#/components/schemas/Player' }
+        headToHead:
+          type: array
+          items: { $ref: '#/components/schemas/HeadToHead' }
+    RosterSyncRequest:
+      type: object
+      required: [newPlayers, editedPlayers, headToHead]
+      properties:
+        newPlayers:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/NewPlayer' }
+        editedPlayers:
+          type: array
+          maxItems: 500
+          items: { $ref: '#/components/schemas/Player' }
+        headToHead:
+          type: array
+          maxItems: 2000
+          items: { $ref: '#/components/schemas/HeadToHead' }
+    RosterSyncResponse:
+      type: object
+      required: [snapshot, assignedIds]
+      properties:
+        snapshot: { $ref: '#/components/schemas/RosterSnapshot' }
+        assignedIds:
+          type: object
+          description: clientId -> the server id it was assigned.
+          additionalProperties: { type: string, format: uuid }

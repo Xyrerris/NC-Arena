@@ -13,5 +13,7 @@
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"],
-  "exclude": ["node_modules", ".expo", "design"]
+  // backend/ is a second, independent package (ADR-0035) — its own tsconfig, its own
+  // dependency tree, targeting Node rather than the Expo/RN toolchain this config extends.
+  "exclude": ["node_modules", ".expo", "design", "backend"]
 }

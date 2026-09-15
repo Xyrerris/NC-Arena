@@ -57,7 +57,10 @@ module.exports = defineConfig([
   expoConfig,
   prettier,
   {
-    ignores: ['dist/*', '.expo/*', 'node_modules/*', 'design/*', 'android/*', 'ios/*'],
+    // backend/ is a second, independent package (ADR-0035), with its own lint config if it
+    // ever wants one — the boundary rules below describe src/, and a Fastify route handler
+    // is not a `feature` or `core/*` module by any definition they use.
+    ignores: ['dist/*', '.expo/*', 'node_modules/*', 'design/*', 'android/*', 'ios/*', 'backend/*'],
   },
 
   // ---------------------------------------------------------------------------

@@ -717,10 +717,16 @@ a way a reader would believe.
 
 ## Phase 5 — Backend integration & offline-first (5 days)
 
-Gated on open decision 1. **Phase 4.10 is no longer a gate — it is done**: this is the phase that
-makes `replaceRoster` run in anger, and the record-preservation fix it needed (4.10.2) is in. If
-open decision 1 is unanswered by the start of Phase 5, this phase stalls while 6 and 7 continue —
-sequence accordingly.
+**Open decision 1 is answered (ADR-0035, 2026-09-15):** a self-hosted Fastify + PostgreSQL service,
+deployed on the owner's own VPS, contract-first in `backend/openapi.yaml`. **Phase 4.10 is no longer
+a gate either — it is done**: this is the phase that makes `replaceRoster` run in anger, and the
+record-preservation fix it needed (4.10.2) is in.
+
+The backend service itself and the client's pull-side scaffolding (`core/network`'s DTOs, mappers,
+error taxonomy, `RemoteRosterSource`) exist ahead of this phase's start — see ADR-0035. What is left
+of this phase's deliverables below is the push direction's wiring (`POST /v1/roster/sync`, the
+`origin` transition) into `arenaRepository` and `useRoster` through TanStack Query, and the product
+decisions ADR-0035 deliberately left open: when a push fires, and what the roster shows meanwhile.
 
 Two things 4.10 leaves on this phase's desk: `expo-background-task`'s config plugin declaration,
 removed from `app.config.ts` because it contributed nothing on Android and belongs beside the code

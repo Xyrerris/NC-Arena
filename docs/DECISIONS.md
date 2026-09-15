@@ -1911,3 +1911,153 @@ reads import statements.
   noticed a wrongly-resolved peer.
 - **The audit is a snapshot.** Nothing re-runs it. The next SDK upgrade can make an optional peer
   required, and this ADR will not notice.
+
+---
+
+## ADR-0035 — The backend: a self-hosted REST service, one account per roster owner
+
+**Date:** 2026-09-15 · **Status:** accepted · **Phase:** 5
+
+**Context.** Open decision 1 in ARCHITECTURE.md §9 has stood since Phase 0: "is there a backend, and
+what is it?" Everything in §7 was written against the _shape_ of an answer — a `RosterSource` port,
+a `RosterSnapshot` the sync hands to `replaceRoster`, a "last-write-wins from server" policy — without
+anything to implement it. ADR-0020 answered half of the surrounding question (manual entry is the
+data source, for now) and ADR-0033 answered what happens with no backend at all (export to a file).
+Neither answers what Phase 5 actually builds against.
+
+The owner has a self-managed OVH VPS and is willing to run the database on it. That rules out a
+managed BaaS (Supabase, Firebase) as the default answer — there is somewhere to put a database
+already — and it rules out treating "is there a backend" as still open. There is: it is a service this
+project builds and this owner operates.
+
+**Decision 1 — a small REST service in TypeScript, deployed as three containers on the VPS.**
+Fastify, not a framework the rest of the codebase has no reason to know: it is a thin layer over Node's
+`http`, its request/response validation is Zod-shaped (`@fastify/type-provider-zod`), and that is the
+same validation library ARCHITECTURE.md §3 already commits the client to for exactly the reason §2.1
+needs — `.int().refine(Number.isSafeInteger)` reads the same on both sides of the wire, and a
+contributor who has read `core/network`'s client schema has already read the server's.
+
+PostgreSQL, not SQLite, and not a managed database. SQLite is the right choice for one phone with one
+writer (§7); a backend has to survive concurrent writers, wants transactional migrations, and the OVH
+box has the disk and the CPU for it. It is self-hosted for the same reason the owner raised it: no
+third party holds this roster, and the export format ADR-0033 shipped stops being the _only_ copy
+without becoming the _authoritative_ one. Drizzle is kept as the ORM on this side of the wire too —
+schema-as-code, migrations committed as SQL, the same discipline §7 already applies to the client
+database — but it is a **second, independent Drizzle schema** against Postgres, not a shared one: the
+client's `sqlite-core` tables and the server's `pg-core` tables describe the same domain from two
+different storage engines and have no business being one module.
+
+Docker Compose ties `app` (the Fastify service), `db` (Postgres 16, a named volume for the data
+directory), and `caddy` (reverse proxy, automatic Let's Encrypt TLS from a domain the owner points at
+the VPS) together as one deployable unit on the VPS. Compose over a bare `systemd` unit because the
+three processes have a real dependency order (`caddy` waits on `app`, `app` waits on `db`'s
+healthcheck) and because "the whole stack" needs to be one `docker compose up -d` after a `git pull`,
+not a runbook.
+
+**Decision 2 — an account is a roster owner, not a login.** Open decision 3 (ARCHITECTURE.md §9) is
+explicit that no auth story is budgeted, and ADR-0022 answered "who are you" as a **local** choice —
+which player on the roster is you, not who you are to a server. A backend still needs to know _whose_
+roster a request is about, which is a narrower question than authentication: it needs one durable
+identity per person who owns a ladder, not an identity system.
+
+So: `POST /v1/accounts` mints one with no email and no password, and returns two secrets once —
+an **API key** (a bearer token this device stores and sends on every request) and a **recovery code**
+(a second, human-typable secret, shown once, that a second device exchanges for its own API key via
+`POST /v1/accounts/link`). The server stores salted hashes of both, never the plaintext, so a leaked
+database does not hand out live credentials — the same reasoning a password table would get, applied
+to a product with no password. Losing the recovery code before pairing a second device means that
+account's roster cannot be joined from anywhere else; it does not mean the first device stops working,
+because the API key it already holds is independent of it.
+
+This is deliberately not what open decision 3 is asking. `viewerId` — which _player_ is you — stays a
+local preference exactly as ADR-0022 shipped it; nothing here changes what the app does when nobody
+has been chosen. The account identifies a _device's owner_ to the server, so the server knows which
+roster to hand back; it says nothing about which row on that roster is the viewer.
+
+**Decision 3 — pull is a whole `RosterSnapshot`; push is additive and returns the snapshot it
+produced.** `GET /v1/roster` returns exactly the shape `RosterSource.fetchRoster()` already promises
+in ARCHITECTURE.md §7 — `season`, `viewerId`, `players`, `headToHead` — so `RemoteRosterSource` is a
+translation of one DTO, not a redesign of the port. `POST /v1/roster/sync` is the "push direction for
+`LOCAL` rows" Phase 5's deliverables call "now required, not optional": it takes the rows this device
+has that the server has never seen, keyed by a client-generated `clientId` rather than a server id
+(because they do not have one yet), applies them, and answers with the map from `clientId` to the
+server id it assigned — which is what lets `origin` flip `LOCAL` → `REMOTE` in one round trip, exactly
+as §7 describes, rather than in a second request that could fail after the first succeeded.
+
+A pushed row that already carries a server id (an edit to something the account has synced before)
+overwrites the server's copy. Two devices editing the same row between syncs is decided by whichever
+`POST /v1/roster/sync` lands second — no merge, no per-field diff. This is a deliberately small answer
+for a deliberately small case: one person, at most a small handful of their own devices, editing a
+personal roster. It is the same "last-write-wins from server" policy ARCHITECTURE.md §7 already
+states for the _pull_ direction, extended to cover concurrent _pushes_ the same way rather than
+invented fresh.
+
+**Decision 4 — the client sees an error taxonomy, not an HTTP status code.** Every failure response
+is `{ "error": { "code", "message" } }` with a fixed, closed set of codes
+(`VALIDATION_ERROR`, `UNAUTHORIZED`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `INTERNAL`) rather than
+a contributor having to remember that 409 means one particular thing in this API and 422 was never
+used. `core/network`'s mapper turns each code into the `Result` failure shape the rest of the app
+already speaks (§7's `Result<T>`), so a screen that already renders "a field was refused" for a local
+validation failure renders the same sentence for a remote one — the network boundary produces the
+same vocabulary the database boundary does, deliberately.
+
+**Decision 5 — stats are validated as safe integers on both sides of the wire, not just one.**
+§2.1's ceiling is enforced today by Zod on the client and by nothing on a server that does not exist
+yet. The contract states it explicitly — every stat field is `z.number().int().max(Number.MAX_SAFE_INTEGER)`
+— and Postgres stores each as `bigint`, which holds every value the contract allows and plenty it
+does not; the `pg` driver's int8 parser is configured to return a JS `number` rather than a string,
+which is safe _because_ the Zod boundary already rejected anything above 2^53 before a row reaches the
+column. A value the contract accepted and the database still returned imprecisely would be the same
+class of bug §2.1 exists to prevent, moved one layer over.
+
+**Decision 6 — the contract is written down before the service is, in `backend/openapi.yaml`.**
+Phase 5's own deliverables ask for this ("API contract agreed and written down first"); the OpenAPI
+document is what both `RemoteRosterSource` and the Fastify route handlers are read against, and it is
+what a contract test (Phase 5's exit criteria) has something to assert against without booting either
+side.
+
+**Rejected — a managed BaaS (Supabase / Firebase / a hosted Postgres).** The owner already has a VPS
+and wants the database on it; paying for a second place to hold the same data answers a question that
+was not open. A managed service would also have made "self-hosted" a later migration rather than the
+starting design, which is backwards for a decision this load-bearing.
+
+**Rejected — GraphQL.** One resource (the roster) with two operations (pull the whole thing, push the
+new rows) has no query-shape problem for GraphQL to solve, and it would have meant a second schema
+language next to the Zod one `core/network` and the backend already share.
+
+**Rejected — real user accounts (email + password, or OAuth).** Open decision 3 is unambiguous that no
+auth story is budgeted, and building one to answer a narrower question (whose roster is this) would
+settle a product decision — whether this app ever has logins — as a side effect of the backend's
+plumbing. The account/API-key/recovery-code shape answers exactly what Phase 5 needs and nothing open
+decision 3 has not already declined to ask for.
+
+**Rejected — CRDTs or a per-field merge for concurrent syncs.** Correct for a product with many
+concurrent editors on one document; this roster has one owner and at most a few of their own devices,
+syncing occasionally rather than concurrently in practice. The complexity of a real merge algorithm
+buys correctness for a case (two devices editing the same player between two syncs) that last-write-
+wins already answers adequately, and ARCHITECTURE.md §7 already chose last-write-wins for the pull
+side — decision 3 above is the same choice, not a new one.
+
+**Consequences.**
+
+- **This closes open decision 1.** ARCHITECTURE.md §9 and ROADMAP.md's Phase 5 header are updated to
+  point here instead of describing the shape of an answer.
+- **`backend/` is a second, independent package**, with its own `package.json`, `tsconfig.json` and
+  dependency tree. It is excluded from the root `tsconfig.json` and `eslint.config.js` — the mobile
+  app's boundary rules (§4) describe `src/`, and a Fastify route handler is not a `feature` or a
+  `core/*` module by any definition those rules use. `npm run verify` at the root does not build,
+  lint or test `backend/`; it has its own scripts, documented in `backend/README.md`.
+- **`core/network` stops being an empty module.** It now holds the DTO schemas, the fetch client, the
+  domain mappers, the error taxonomy, and a `RemoteRosterSource` implementing the `RosterSource` port
+  from `core/common` — the pull half of §7's diagram. The push half (`POST /v1/roster/sync`, the
+  `origin` transition, and wiring either into `arenaRepository`/`useRoster` through TanStack Query) is
+  **not** part of this change; it is the remainder of Phase 5's deliverables and depends on product
+  decisions this ADR does not make (when a push fires — on every write, on an interval, on demand from
+  `/me` — and what the roster screen shows while one is in flight).
+- **A device's API key has to live somewhere `core/prefs` already trusts** — MMKV, alongside
+  `shortUnit`, the last sort and `viewerId` — rather than in a new store. That wiring is part of the
+  remaining Phase 5 work above, not of this ADR.
+- **The recovery code is shown exactly once.** If the owner wants "forgot my recovery code" to be
+  recoverable later, that is a new decision (support tooling on the VPS, most likely a signed admin
+  route), not a gap in this one — today, losing it before pairing a second device is final for that
+  pairing, by design.
