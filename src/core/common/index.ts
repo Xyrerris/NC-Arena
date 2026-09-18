@@ -7,7 +7,13 @@
  */
 
 export { err, isOk, ok, type Result } from './result';
-export type { RosterSnapshot, RosterSource } from './rosterSource';
+export type {
+  RosterPush,
+  RosterPushResult,
+  RosterSink,
+  RosterSnapshot,
+  RosterSource,
+} from './rosterSource';
 export { assertSafeInteger, divideHalfUp, pow10, rescaleHalfUp } from './rounding';
 export {
   DOT_SEPARATORS,

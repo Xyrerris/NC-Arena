@@ -1,31 +1,55 @@
 /**
- * Network boundary (ADR-0035). The pull half of Phase 5's backend integration: DTO schemas
+ * Network boundary (ADR-0035). Both halves of Phase 5's backend integration: DTO schemas
  * validated against `backend/openapi.yaml`'s contract, an error taxonomy shared with the
- * server, domain mappers, and `RemoteRosterSource` implementing the `RosterSource` port from
- * `core/common`.
+ * server, domain mappers in both directions, and `RemoteRosterSource` implementing the
+ * `RosterSource` and `RosterSink` ports from `core/common`.
  *
  * Every stat field's schema carries `.int().safe()` (`Number.isSafeInteger`). That check is
  * the whole §2.1 defence on this platform: TypeScript's `number` cannot express "integral and
  * below 2^53", so the check has to be executable. Above that ceiling a server's JSON response
- * would lose precision silently if this module trusted it unchecked.
+ * would lose precision silently if this module trusted it unchecked — and the same schema
+ * guards the request body, so a value that could not survive the wire never reaches it.
  *
- * The push direction (`POST /v1/roster/sync`, the `LOCAL` -> `REMOTE` origin transition) and
- * wiring `RemoteRosterSource` into `arenaRepository`/`useRoster` are not here yet — see
- * ADR-0035's "Consequences" for what remains of Phase 5.
+ * What is still open is the *wiring*: `arenaRepository`/`useRoster` do not call either port
+ * yet, and the `LOCAL` -> `REMOTE` origin transition has nowhere to be applied until they do.
+ * That, and the product decisions about when a push fires, is what remains of Phase 5 — see
+ * ADR-0035's "Consequences".
  */
 
 export {
   apiErrorSchema,
   headToHeadDtoSchema,
+  newPlayerDtoSchema,
   playerDtoSchema,
+  playerEditDtoSchema,
   rosterSnapshotDtoSchema,
+  rosterSyncRequestSchema,
+  rosterSyncResponseSchema,
 } from './dto';
-export type { ApiErrorDto, HeadToHeadDto, PlayerDto, RosterSnapshotDto } from './dto';
+export type {
+  ApiErrorDto,
+  HeadToHeadDto,
+  NewPlayerDto,
+  PlayerDto,
+  PlayerEditDto,
+  RosterSnapshotDto,
+  RosterSyncRequest,
+  RosterSyncResponse,
+} from './dto';
 
 export { offlineError, parseApiError } from './errors';
 export type { NetworkError, NetworkErrorCode } from './errors';
 
-export { headToHeadFromDto, playerFromDto, rosterSnapshotFromDto } from './mappers';
+export {
+  assignedIdsFromDto,
+  headToHeadFromDto,
+  headToHeadToDto,
+  newPlayerToDto,
+  playerEditToDto,
+  playerFromDto,
+  rosterPushToDto,
+  rosterSnapshotFromDto,
+} from './mappers';
 
 export { HttpClient } from './httpClient';
 

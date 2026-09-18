@@ -1,14 +1,25 @@
 /**
- * DTO -> domain, the translation `core/data` and the rest of the app never has to know exists
- * (ARCHITECTURE.md §4: nothing above `core/network` sees a DTO). One direction only — nothing
- * here maps a domain `Player` back to a `PlayerDto`, because nothing on the pull side writes
- * one; the push direction's request DTOs (`backend/openapi.yaml`'s `NewPlayer`) are the
- * remaining Phase 5 work ADR-0035 leaves open.
+ * The translation `core/data` and the rest of the app never has to know exists
+ * (ARCHITECTURE.md §4: nothing above `core/network` sees a DTO).
+ *
+ * Both directions now. `*FromDto` is the pull side — what `GET /v1/roster` and the snapshot
+ * inside a sync response become. `*ToDto` is the push side, and it is deliberately not the
+ * inverse of the first: a `Player` going out loses its `rank` (the server owns the ladder's
+ * order) and, when the row is new, trades its local `id` for a `clientId`. A symmetric pair of
+ * mappers would have had to invent a rank to send, which is the exact inconsistency
+ * `PlayerDraft` exists to prevent (core/model).
  */
 
-import { asPlayerId, type HeadToHead, type Player } from '../model';
-import type { HeadToHeadDto, PlayerDto, RosterSnapshotDto } from './dto';
-import type { RosterSnapshot } from '../common';
+import { asPlayerId, type HeadToHead, type Player, type PlayerId } from '../model';
+import type {
+  HeadToHeadDto,
+  NewPlayerDto,
+  PlayerDto,
+  PlayerEditDto,
+  RosterSnapshotDto,
+  RosterSyncRequest,
+} from './dto';
+import type { RosterPush, RosterSnapshot } from '../common';
 
 export const playerFromDto = (dto: PlayerDto): Player => ({
   id: asPlayerId(dto.id),
@@ -47,3 +58,73 @@ export const rosterSnapshotFromDto = (
   players: dto.players.map(playerFromDto),
   headToHead: dto.headToHead.map(headToHeadFromDto),
 });
+
+/**
+ * A locally created row on its way out. The local `PlayerId` leaves as `clientId` — the device
+ * already has a key for the row and a second one would only have to be reconciled later — and
+ * `rank` does not leave at all.
+ *
+ * Every field is written out rather than spread from the player, so a field added to `Player`
+ * has to be added here deliberately. A spread would carry it to the server the moment it
+ * existed, and the server would refuse the request for an unknown field it never agreed to.
+ */
+export const newPlayerToDto = (player: Player): NewPlayerDto => ({
+  clientId: player.id,
+  name: player.name,
+  level: player.level,
+  gameCode: player.gameCode,
+  combatPower: player.combatPower,
+  score: player.score,
+  hp: player.hp,
+  atk: player.atk,
+  def: player.def,
+  critBp: player.critBp,
+  hit: player.hit,
+  spd: player.spd,
+});
+
+/** An edit to a row the server already owns: `id` stays, and it is a server id. */
+export const playerEditToDto = (player: Player): PlayerEditDto => ({
+  id: player.id,
+  name: player.name,
+  level: player.level,
+  gameCode: player.gameCode,
+  combatPower: player.combatPower,
+  score: player.score,
+  hp: player.hp,
+  atk: player.atk,
+  def: player.def,
+  critBp: player.critBp,
+  hit: player.hit,
+  spd: player.spd,
+});
+
+export const headToHeadToDto = (record: HeadToHead): HeadToHeadDto => ({
+  viewerId: record.viewerId,
+  opponentId: record.opponentId,
+  wins: record.wins,
+  losses: record.losses,
+});
+
+export const rosterPushToDto = (push: RosterPush): RosterSyncRequest => ({
+  newPlayers: push.newPlayers.map(newPlayerToDto),
+  editedPlayers: push.editedPlayers.map(playerEditToDto),
+  headToHead: push.headToHead.map(headToHeadToDto),
+});
+
+/**
+ * The response's `clientId` -> server id object, as a map of branded ids.
+ *
+ * A `Map` rather than the plain object the wire uses, because the caller looks rows up by a
+ * `PlayerId` it is holding, and an object index signature cannot be keyed by a branded type
+ * without widening it back to `string` at every call site.
+ */
+export const assignedIdsFromDto = (
+  assigned: Readonly<Record<string, string>>,
+): ReadonlyMap<PlayerId, PlayerId> =>
+  new Map(
+    Object.entries(assigned).map(([clientId, serverId]) => [
+      asPlayerId(clientId),
+      asPlayerId(serverId),
+    ]),
+  );

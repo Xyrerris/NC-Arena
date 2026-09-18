@@ -48,6 +48,49 @@ export const rosterSnapshotDtoSchema = z.object({
 });
 export type RosterSnapshotDto = z.infer<typeof rosterSnapshotDtoSchema>;
 
+/**
+ * A player this device created and has never pushed. No `id` and no `rank`: the server assigns
+ * both, which is the same rule `PlayerDraft` states locally (core/model) — whoever stores the
+ * row owns its identity and its place in the ladder.
+ *
+ * `clientId` is this device's own key for the row. `RosterPush` (core/common) sends the local
+ * `PlayerId` as that key, and the sync response maps it back to the server id in the same round
+ * trip, which is what lets `origin` flip LOCAL -> REMOTE without a second request.
+ */
+export const newPlayerDtoSchema = playerDtoSchema.omit({ id: true, rank: true }).extend({
+  clientId: z.string().min(1).max(64),
+});
+export type NewPlayerDto = z.infer<typeof newPlayerDtoSchema>;
+
+/** An edit to a row the server already owns. `id` is a server id, never a `clientId`. */
+export const playerEditDtoSchema = playerDtoSchema.omit({ rank: true });
+export type PlayerEditDto = z.infer<typeof playerEditDtoSchema>;
+
+/**
+ * `POST /v1/roster/sync`'s request body.
+ *
+ * The caps mirror the server's (`backend/src/schemas/roster.ts`), and the request is parsed
+ * against this schema **before** it is sent. That is not belt-and-braces: a body the server
+ * would refuse comes back as `VALIDATION_ERROR` with whatever message Fastify composed, after
+ * a round trip, while the same refusal here names the field and costs nothing. It is also
+ * where §2.1 is enforced on the way *out* — `safeStat` is the same schema either direction, so
+ * a stat that could not survive the wire is caught before it is written to it.
+ */
+export const rosterSyncRequestSchema = z.object({
+  newPlayers: z.array(newPlayerDtoSchema).max(500),
+  editedPlayers: z.array(playerEditDtoSchema).max(500),
+  headToHead: z.array(headToHeadDtoSchema).max(2000),
+});
+export type RosterSyncRequest = z.infer<typeof rosterSyncRequestSchema>;
+
+/** `POST /v1/roster/sync`'s response: the fresh snapshot, plus the id map `newPlayers` needed. */
+export const rosterSyncResponseSchema = z.object({
+  snapshot: rosterSnapshotDtoSchema,
+  /** `clientId` -> the server id it was assigned. */
+  assignedIds: z.record(z.string(), z.uuid()),
+});
+export type RosterSyncResponse = z.infer<typeof rosterSyncResponseSchema>;
+
 /** The closed error taxonomy every failed response carries (ADR-0035, decision 4). */
 export const apiErrorSchema = z.object({
   error: z.object({

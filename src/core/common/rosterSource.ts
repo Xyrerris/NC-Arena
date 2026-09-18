@@ -34,3 +34,59 @@ export interface RosterSource {
   readonly name: string;
   fetchRoster(): Promise<Result<RosterSnapshot>>;
 }
+
+/**
+ * What this device has that the server has not seen yet — the input to `POST /v1/roster/sync`
+ * (ADR-0035, decision 3).
+ *
+ * `newPlayers` are rows created here. Each one already carries a local `PlayerId`, and that id
+ * is what travels as the wire's `clientId`: the device has to key the rows somehow, it already
+ * has a key, and inventing a second one would mean holding two ids for one row until the
+ * response arrives. `rank` is dropped on the way out — the server owns the ladder's order, the
+ * same reason `PlayerDraft` cannot supply one.
+ *
+ * `editedPlayers` are rows the server already owns, changed here. Their `id` is a server id, so
+ * it is not a `clientId` of anything.
+ */
+export interface RosterPush {
+  newPlayers: readonly Player[];
+  editedPlayers: readonly Player[];
+  headToHead: readonly HeadToHead[];
+}
+
+/**
+ * What a push produced.
+ *
+ * `snapshot` is nullable, and `fetchRoster` refusing the same case is not an inconsistency —
+ * it is the difference between the two directions. A pull that cannot produce a
+ * `RosterSnapshot` (no viewer chosen on the account yet, see `RosterSnapshot.viewerId`) has
+ * changed nothing, so failing costs the caller nothing but a retry. A **push** in that state
+ * has already applied: the rows are on the server and `assignedIds` is the only record of
+ * which local row became which server row. Reporting that as a failure would throw the map
+ * away and invite a retry — and `POST /v1/roster/sync` inserts `newPlayers` unconditionally,
+ * so that retry would duplicate every row it just created.
+ *
+ * So a push that lands on an account with no viewer yet returns `snapshot: null` and a full
+ * `assignedIds`: nothing to apply to SQLite this round, but every `LOCAL` -> `REMOTE`
+ * transition still recorded. That is the state a freshly created account is in until
+ * `PUT /v1/me/viewer` has run, which is exactly when the first push happens.
+ */
+export interface RosterPushResult {
+  snapshot: RosterSnapshot | null;
+  /** Local id -> the server id it was assigned. Empty when nothing new was pushed. */
+  assignedIds: ReadonlyMap<PlayerId, PlayerId>;
+}
+
+/**
+ * The push counterpart of `RosterSource`, kept separate rather than added as a second method
+ * on it. A source that can only be read — a fixture, a demo ladder, the seed that ADR-0021
+ * deleted — can honour `fetchRoster` and has nothing to say about `pushRoster`, and a port no
+ * implementer can fully honour is how an interface starts growing `throw new Error('unsupported')`.
+ *
+ * `RemoteRosterSource` implements both, because the backend answers in both directions.
+ */
+export interface RosterSink {
+  /** Identifies the sink in sync logs and in the failure surfaced to the user. */
+  readonly name: string;
+  pushRoster(push: RosterPush): Promise<Result<RosterPushResult>>;
+}
