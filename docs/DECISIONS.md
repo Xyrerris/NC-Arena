@@ -2110,3 +2110,47 @@ of a diff. The snapshot was regenerated from the schema as of the baseline commi
 the hand-written `0000_init.sql` statement for statement; `.prettierignore` gained
 `backend/src/db/migrations/`, which had been covered for the client's generated migrations since
 Phase 2 but never for these.
+
+**Addendum, 2026-09-19 — what the client side of the sync actually had to grow.** Decision 3 says
+the snapshot a push returns is applied "exactly as a pull would". Building it showed that is true of
+the snapshot and not of the rows underneath it, in three ways worth writing down.
+
+**`LOCAL` -> `REMOTE` is an id rewrite, not a flag.** A pushed row has one id here and a different
+one upstream, so the snapshot that comes back describes it under an id `replaceRoster` has never
+seen. Left alone, that function does exactly what ARCHITECTURE.md §7 asks of it — it keeps a local
+row the snapshot does not claim — and the roster ends up holding the row twice, once local and once
+remote. `replaceRoster` therefore takes the `clientId` -> server id map as a third argument: an
+adopted id drops out of the kept set, and **every head-to-head end is read through the map before
+the three preservation rules run**. That second half is what keeps 4.10.2's promise across a sync
+that renames the rows: a swipe recorded against `local-m8f2…` is a swipe against whatever that row
+became, and rule 1 discards a record whose ends did not survive. Nothing updates a primary key in
+place — the ids move by way of the delete and re-insert already in that transaction, which is also
+what keeps it correct under `PRAGMA foreign_keys` ON, as the Node project runs it and the device
+does not.
+
+**A record cannot be pushed in the same sync that creates its players.** Both ends are typed as
+uuids on the wire, and a `LOCAL` row's id is not one — the server has no row to attach it to until
+the very push that assigns it. So a record is pushed only once both ends are rows the server already
+knows, which means a match swiped in against a hand-entered player reaches the server on the sync
+_after_ the one that adopts them. It is not lost in the meantime; it is in SQLite, carried across by
+the paragraph above. Making it one round trip would mean letting a record name its ends by
+`clientId` and resolving them server-side after the inserts — a real contract change, deliberately
+not made here.
+
+**A first sync usually takes three round trips, because of the viewer.** `RosterSnapshot.viewerId`
+is not optional, and a freshly created account has none until `PUT /v1/me/viewer` has run — so the
+push comes back with no snapshot at all. When the device knows who the user is, it seats that row
+upstream by the id the push just assigned it, then pulls. When it does not, there is nothing to seat
+and nothing to apply: the rows are upstream, the local ones stay `LOCAL`, and the next sync re-sends
+them. That re-send is safe only because of the idempotency addendum above — without it, "nobody has
+chosen a viewer yet" would have quietly duplicated the ladder on every refresh.
+
+**The API key lives in MMKV, next to `viewerId` and the sort.** That is storage, not a security
+claim. MMKV is not an encrypted keystore, and an attacker with the device unlocked, a backup of it,
+or root can read the key exactly as they can read the roster it protects. The key is worth what the
+account is worth — one person's ladder, no email, no password, nothing reused anywhere else — and
+ADR-0035's decision 2 is explicit that this is identification, not authentication. If that ever
+stops being true, the move is `expo-secure-store` behind the same `ArenaPreferences` methods, which
+is why the port names them rather than exposing a store. `EXPO_PUBLIC_API_URL` is the matching
+build-time half: unset, no source is constructed and the app is the hand-filled ladder ADR-0021
+describes; the setup flow is what guarantees a key exists before the roster is reachable.

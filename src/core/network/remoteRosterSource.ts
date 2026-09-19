@@ -19,16 +19,17 @@ import {
   type RosterSnapshot,
   type RosterSource,
 } from '../common';
+import type { PlayerId } from '../model';
 import { rosterSnapshotDtoSchema, rosterSyncRequestSchema, rosterSyncResponseSchema } from './dto';
 import type { RosterSnapshotDto } from './dto';
-import { HttpClient } from './httpClient';
+import { HttpClient, type ApiKeySource } from './httpClient';
 import { assignedIdsFromDto, rosterPushToDto, rosterSnapshotFromDto } from './mappers';
 
 export class RemoteRosterSource implements RosterSource, RosterSink {
   readonly name = 'backend';
   private readonly client: HttpClient;
 
-  constructor(baseUrl: string, apiKey: string) {
+  constructor(baseUrl: string, apiKey: ApiKeySource) {
     this.client = new HttpClient(baseUrl, apiKey);
   }
 
@@ -86,6 +87,20 @@ export class RemoteRosterSource implements RosterSource, RosterSink {
       snapshot: this.toSnapshot(parsed.data.snapshot),
       assignedIds: assignedIdsFromDto(parsed.data.assignedIds),
     });
+  }
+
+  async setViewer(playerId: PlayerId): Promise<Result<void>> {
+    const response = await this.client.request<unknown>('/v1/me/viewer', {
+      method: 'PUT',
+      body: JSON.stringify({ playerId }),
+    });
+    if (!response.ok) {
+      return err(this.failure(`${response.error.code} — ${response.error.message}`));
+    }
+    // The response echoes the id back. Nothing here reads it: the caller passed it in, and a
+    // server that answered with a different one would be a contract violation this method has
+    // no better answer for than the next pull, which reads the viewer from the snapshot.
+    return ok(undefined);
   }
 
   /** The snapshot, or null when the account has not said which player is the viewer yet. */

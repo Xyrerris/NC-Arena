@@ -12,6 +12,8 @@ import {
   err,
   ok,
   type Result,
+  type RosterPush,
+  type RosterSink,
   type RosterSnapshot,
   type RosterSource,
   type ShortUnit,
@@ -223,10 +225,20 @@ export interface RosterRepositoryDeps {
    * would be a repository whose boundary had moved.
    */
   source?: RosterSource;
+  /**
+   * Where a local row goes when it leaves the device — absent for the same reason `source`
+   * is, and supplied by the same object: `RemoteRosterSource` implements both ports, because
+   * the backend answers in both directions (ADR-0035, decision 3).
+   *
+   * Separate from `source` in the signature even so. A repository given only a `source` can
+   * still pull, which is what a read-only ladder would be, and nothing here should have to
+   * ask whether the two happen to be the same instance.
+   */
+  sink?: RosterSink;
   preferences: ArenaPreferences;
 }
 
-export const createRosterRepository = ({ db, source, preferences }: RosterRepositoryDeps) => {
+export const createRosterRepository = ({ db, source, sink, preferences }: RosterRepositoryDeps) => {
   const viewerId = (): PlayerId => preferences.getViewerId() ?? NO_VIEWER;
 
   /**
@@ -245,8 +257,8 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     for (const listener of viewerListeners) listener();
   };
 
-  const write = (snapshot: RosterSnapshot): void => {
-    replaceRoster(db, snapshot);
+  const write = (snapshot: RosterSnapshot, adopted?: ReadonlyMap<PlayerId, PlayerId>): void => {
+    replaceRoster(db, snapshot, adopted);
     preferences.setViewerId(snapshot.viewerId);
     preferences.setSeason(snapshot.season);
     // A sync moves the same id the user can move, so it announces it the same way.
@@ -264,6 +276,95 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     if (!fetched.ok) return fetched;
     try {
       write(fetched.value);
+      return ok(undefined);
+    } catch (cause) {
+      return err(toError(cause));
+    }
+  };
+
+  /**
+   * What this device has that the server has not seen.
+   *
+   * `editedPlayers` is always empty, and that is a fact about the product rather than a gap
+   * here: ADR-0020 lets the user edit only a `LOCAL` row, so there is no way on any screen to
+   * produce an edit to a row the server owns. The wire carries the case (`playerEditDtoSchema`)
+   * because the server has to answer a second device that *has* synced a row and then changed
+   * it; this device cannot reach that state yet, and inventing rows to fill the field would be
+   * inventing edits nobody made.
+   *
+   * A record is only pushed once **both** of its ends are rows the server already knows. The
+   * wire types both ends as uuids (`headToHeadDtoSchema`), and a `LOCAL` row's id is not one —
+   * it is `local-…`, and the server has no row to attach it to until this very push assigns
+   * one. So a match swiped in against a hand-entered player waits for the sync *after* the one
+   * that adopts them, when the id it needs exists. It is not lost in the meantime: it stays in
+   * SQLite, and `replaceRoster` carries it across the transition under the adopted id.
+   */
+  const collectPush = (): RosterPush => {
+    const rows = allPlayersQuery(db).all();
+    const known = new Set<string>(
+      rows.filter((row) => row.origin === 'REMOTE').map((row) => row.id),
+    );
+
+    return {
+      newPlayers: rows.filter((row) => row.origin === 'LOCAL').map(toPlayer),
+      editedPlayers: [],
+      headToHead: allHeadToHeadQuery(db)
+        .all()
+        .map(toHeadToHead)
+        .filter((record) => known.has(record.viewerId) && known.has(record.opponentId)),
+    };
+  };
+
+  /**
+   * One sync: push what this device has, then apply what the server answers with.
+   *
+   * Push before pull, in one operation, because the pull **replaces** the ladder
+   * (`replaceRoster`) and a local row that had not been pushed first would survive only as a
+   * row nothing upstream knows about — which is the bootstrap ADR-0035 replaced, not a design.
+   * Pushing first means the snapshot that comes back already describes those rows, under the
+   * ids the server issued, and `assignedIds` is what tells the writer they are the same rows.
+   *
+   * **The viewer is why a first sync can take three round trips.** `RosterSnapshot.viewerId`
+   * is not optional, and a freshly created account has none until `PUT /v1/me/viewer` has run
+   * — so the push comes back with no snapshot at all. When this device knows who the user is,
+   * it seats that row upstream (by the id the push just assigned it) and pulls again. When it
+   * does not, there is nothing to seat and nothing to apply: the rows are on the server, the
+   * local ones stay `LOCAL`, and the next sync re-pushes them. That re-push is safe because
+   * the endpoint is idempotent — it answers with the ids it assigned the first time rather
+   * than creating the rows twice — so the sync simply converges once somebody is the viewer.
+   */
+  const syncRoster = async (): Promise<Result<void>> => {
+    // Nothing upstream: fall back to `refresh`, which answers the same way for the same
+    // reason rather than reporting a failure at a roster that is working.
+    if (sink === undefined || source === undefined) return refresh();
+
+    const pushed = await sink.pushRoster(collectPush());
+    if (!pushed.ok) return pushed;
+    const adopted = pushed.value.assignedIds;
+
+    let snapshot = pushed.value.snapshot;
+    if (snapshot === null) {
+      const local = preferences.getViewerId();
+      if (local !== null) {
+        // The push may have just given this row a server id; if it did not, the row was
+        // already the server's and its own id is the one to seat.
+        const seated = await sink.setViewer(adopted.get(local) ?? local);
+        if (!seated.ok) return seated;
+
+        const pulled = await source.fetchRoster();
+        if (!pulled.ok) return pulled;
+        snapshot = pulled.value;
+      }
+    }
+
+    // Still nothing to apply: the push landed, but nobody has said which row is the viewer,
+    // so no snapshot can be built. Reporting success is the honest answer — the rows are
+    // upstream, and the thing that is missing is a choice the user has not made (ADR-0022),
+    // not a failure the sync can retry its way out of.
+    if (snapshot === null) return ok(undefined);
+
+    try {
+      write(snapshot, adopted);
       return ok(undefined);
     } catch (cause) {
       return err(toError(cause));
@@ -453,6 +554,13 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
       live(headToHeadCountQuery(db), (rows: { count: number }[]): number => rows[0]?.count ?? 0),
 
     refresh,
+
+    /**
+     * Push, then pull, as one operation (ADR-0035). `refresh` stays beside it and stays
+     * pull-only: a restore or a first run has nothing to push, and a caller that only wants
+     * the server's version of the ladder should not have to send one.
+     */
+    syncRoster,
 
     createPlayer,
 

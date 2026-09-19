@@ -7,25 +7,39 @@
  * is the only layer allowed to read `core/prefs` (ARCHITECTURE.md §4), so it is also the only
  * layer that can hand this client a token — this module has no way to fetch one itself, by the
  * same boundary that keeps it from importing `core/data`.
+ *
+ * The token may be given as a function, and on a device it is. A device acquires its key part
+ * way through a run — it has none until the user has created an account or entered a recovery
+ * code (ADR-0035, decision 2) — so a key read once at construction would be the key the app
+ * started with, and the client would go on sending nothing long after pairing succeeded. A
+ * plain string is still accepted, because a test that holds one fixed has no such problem.
  */
 
 import { err, ok, type Result } from '../common';
 import { offlineError, parseApiError, type NetworkError } from './errors';
 
+/** A fixed token, or a way to read whichever one is current. */
+export type ApiKeySource = string | null | (() => string | null);
+
 export class HttpClient {
+  private readonly readApiKey: () => string | null;
+
   constructor(
     private readonly baseUrl: string,
-    private readonly apiKey: string | null,
-  ) {}
+    apiKey: ApiKeySource,
+  ) {
+    this.readApiKey = typeof apiKey === 'function' ? apiKey : () => apiKey;
+  }
 
   async request<T>(path: string, init: RequestInit = {}): Promise<Result<T, NetworkError>> {
+    const apiKey = this.readApiKey();
     let response: Response;
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
         ...init,
         headers: {
           'Content-Type': 'application/json',
-          ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+          ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           ...init.headers,
         },
       });

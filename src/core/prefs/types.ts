@@ -42,6 +42,27 @@ export interface ArenaPreferences {
    */
   getSeason(): number | null;
   setSeason(season: number): void;
+
+  /**
+   * This device's bearer token for the backend — null until an account exists (ADR-0035,
+   * decision 2). `core/network` takes it as a constructor argument and cannot read it
+   * itself: `core/data` is the only layer allowed to reach `core/prefs` (§4), so it is also
+   * the only layer that can hand one over.
+   *
+   * It lives here, beside `viewerId` and the sort, rather than in a store of its own. The
+   * ADR is explicit that this is not an authentication system: the key identifies whose
+   * roster a request is about, the way `viewerId` identifies which row is you. A second
+   * store would imply a security boundary MMKV does not provide and this product does not
+   * claim — see the addendum in ADR-0035 for what that does and does not mean.
+   */
+  getApiKey(): string | null;
+  setApiKey(key: string): void;
+  /**
+   * Forgets the account this device was paired to. The counterpart to `clearViewerId`, and
+   * owed for the same reason: a key the server no longer recognises is not the same state
+   * as never having paired, and only one of the two should send the user back to setup.
+   */
+  clearApiKey(): void;
 }
 
 export const DEFAULT_SHORT_UNIT: ShortUnit = 'BILLIONS';
@@ -52,4 +73,5 @@ export const PREF_KEYS = {
   rosterSort: 'pref.rosterSort',
   viewerId: 'pref.viewerId',
   season: 'pref.season',
+  apiKey: 'pref.apiKey',
 } as const;

@@ -13,12 +13,14 @@ export const createMemoryPreferences = (
     rosterSort: RosterSort;
     viewerId: PlayerId;
     season: number;
+    apiKey: string;
   }> = {},
 ): ArenaPreferences => {
   let shortUnit = isShortUnit(initial.shortUnit) ? initial.shortUnit : DEFAULT_SHORT_UNIT;
   let rosterSort = isRosterSort(initial.rosterSort) ? initial.rosterSort : DEFAULT_ROSTER_SORT;
   let viewerId: PlayerId | null = initial.viewerId ?? null;
   let season: number | null = initial.season ?? null;
+  let apiKey: string | null = initial.apiKey ?? null;
 
   return {
     getShortUnit: () => shortUnit,
@@ -39,6 +41,13 @@ export const createMemoryPreferences = (
     getSeason: () => season,
     setSeason: (next) => {
       season = next;
+    },
+    getApiKey: () => apiKey,
+    setApiKey: (key) => {
+      apiKey = key;
+    },
+    clearApiKey: () => {
+      apiKey = null;
     },
   };
 };

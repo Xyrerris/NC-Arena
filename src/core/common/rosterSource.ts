@@ -89,4 +89,17 @@ export interface RosterSink {
   /** Identifies the sink in sync logs and in the failure surfaced to the user. */
   readonly name: string;
   pushRoster(push: RosterPush): Promise<Result<RosterPushResult>>;
+  /**
+   * Tells the upstream which player is the viewer.
+   *
+   * It sits beside `pushRoster` rather than in a port of its own because both are the same
+   * thing — what this device writes upstream — and one method does not earn an interface.
+   *
+   * It takes an id the upstream can already resolve, so it is called *after* a push has
+   * adopted the row, never with a local id. Until something calls it, an account has no
+   * viewer and therefore no `RosterSnapshot` can be built from it at all
+   * (`RosterSnapshot.viewerId` is not optional), which is why a first sync usually has to
+   * push, set the viewer, and only then pull.
+   */
+  setViewer(playerId: PlayerId): Promise<Result<void>>;
 }

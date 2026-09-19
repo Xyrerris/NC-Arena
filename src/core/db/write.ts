@@ -120,21 +120,43 @@ const highestRank = (tx: ArenaDatabase): number =>
  *    (ARCHITECTURE.md §7), stated here as a filter rather than left to insert order — the
  *    composite primary key would otherwise make it a question of which INSERT ran second,
  *    which is not a policy.
- * 3. **A pairing the snapshot does not mention is kept.** Absence is not a zero. There is
- *    no upload path (open decision 1), so a local swipe is data that exists in one place;
- *    a snapshot that omits the pairing is silent about it, not authoritative about it.
- *    Two remote players are covered by rule 2 the moment the snapshot has an opinion.
+ * 3. **A pairing the snapshot does not mention is kept.** Absence is not a zero. A snapshot
+ *    that omits the pairing is silent about it, not authoritative about it — a swipe against
+ *    a row the server has never been told about exists in one place only. Two remote players
+ *    are covered by rule 2 the moment the snapshot has an opinion.
+ *
+ * **`adopted` is how a pushed row stops being local** (ADR-0035, decision 3). A sync that
+ * pushes first gets back a map from each local id to the server id it was assigned, and the
+ * snapshot that follows describes those rows under their *new* ids. Without the map this
+ * function would see a local row the snapshot does not claim, keep it by rule 1, and leave
+ * the roster holding both copies — the row twice, once local and once remote.
+ *
+ * So an adopted id is dropped from the kept set, and every record end is read through the
+ * map before the three rules run. That second half is what makes the `LOCAL` -> `REMOTE`
+ * transition preserve the match records that survive it: a swipe recorded against
+ * `local-m8f2…` is a swipe against the server row that id became, and rule 1 has to be able
+ * to see that or it discards the record as pointing at a row that did not survive.
+ *
+ * Nothing here updates a primary key in place. The ids move by virtue of the delete and the
+ * re-insert this function already does, which is also what keeps it correct with
+ * `PRAGMA foreign_keys` ON — as the Node test project runs it, and the device does not.
  */
-export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void => {
+export const replaceRoster = (
+  db: ArenaDatabase,
+  snapshot: RosterSnapshot,
+  adopted: ReadonlyMap<string, string> = new Map(),
+): void => {
   db.transaction((tx) => {
     const claimed = new Set<string>(snapshot.players.map((player) => player.id));
+    /** A local id the server has now issued a real one for, or the id unchanged. */
+    const settled = (id: string): string => adopted.get(id) ?? id;
     const kept = tx
       .select()
       .from(players)
       .where(eq(players.origin, 'LOCAL'))
       .orderBy(asc(players.rank))
       .all()
-      .filter((row) => !claimed.has(row.id));
+      .filter((row) => !claimed.has(row.id) && !adopted.has(row.id));
 
     // The ids the table holds once this transaction ends, which is what a record's two ends
     // are checked against.
@@ -146,6 +168,11 @@ export const replaceRoster = (db: ArenaDatabase, snapshot: RosterSnapshot): void
       .select()
       .from(headToHead)
       .all()
+      .map((row) => ({
+        ...row,
+        viewerId: settled(row.viewerId),
+        opponentId: settled(row.opponentId),
+      }))
       .filter(
         (row) =>
           surviving.has(row.viewerId) &&

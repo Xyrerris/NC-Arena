@@ -51,4 +51,15 @@ export const mmkvPreferences: ArenaPreferences = {
     return stored === undefined || !Number.isSafeInteger(stored) ? null : stored;
   },
   setSeason: (season) => storage.set(PREF_KEYS.season, season),
+
+  getApiKey: () => {
+    const stored = storage.getString(PREF_KEYS.apiKey);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setApiKey: (key) => storage.set(PREF_KEYS.apiKey, key),
+  // Removed rather than blanked, for the same reason as `clearViewerId`: a key that is gone
+  // cannot be read back by a later version that stops treating the empty string as absent.
+  clearApiKey: () => {
+    storage.remove(PREF_KEYS.apiKey);
+  },
 };

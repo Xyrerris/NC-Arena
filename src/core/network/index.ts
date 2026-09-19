@@ -52,5 +52,6 @@ export {
 } from './mappers';
 
 export { HttpClient } from './httpClient';
+export type { ApiKeySource } from './httpClient';
 
 export { RemoteRosterSource } from './remoteRosterSource';

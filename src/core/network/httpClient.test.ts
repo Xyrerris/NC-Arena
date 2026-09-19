@@ -75,3 +75,42 @@ describe('HttpClient', () => {
     });
   });
 });
+
+describe('HttpClient — reading the key per request', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const captureAuth = () => {
+    const sent: (string | undefined)[] = [];
+    global.fetch = jest.fn((_url: string, init: RequestInit) => {
+      sent.push((init.headers as Record<string, string> | undefined)?.['Authorization']);
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }) as unknown as typeof fetch;
+    return sent;
+  };
+
+  it('picks up a key stored after the client was built', async () => {
+    const sent = captureAuth();
+    // What a device looks like across pairing: no key on the first request, a key on the
+    // next one, with nothing rebuilt in between (ADR-0035, decision 2).
+    let stored: string | null = null;
+    const client = new HttpClient('https://api.example.com', () => stored);
+
+    await client.request('/v1/roster');
+    stored = 'paired-key';
+    await client.request('/v1/roster');
+
+    expect(sent).toEqual([undefined, 'Bearer paired-key']);
+  });
+
+  it('still accepts a fixed string, which is what a test holds', async () => {
+    const sent = captureAuth();
+
+    await new HttpClient('https://api.example.com', 'fixed').request('/v1/roster');
+
+    expect(sent).toEqual(['Bearer fixed']);
+  });
+});

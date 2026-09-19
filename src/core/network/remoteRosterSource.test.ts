@@ -228,3 +228,45 @@ describe('RemoteRosterSource.pushRoster', () => {
     }
   });
 });
+
+describe('RemoteRosterSource.setViewer', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  const respondWith = (body: unknown, status = 200) => {
+    const sent: { url?: string; init?: RequestInit } = {};
+    global.fetch = jest.fn((url: string, init: RequestInit) => {
+      sent.url = url;
+      sent.init = init;
+      return Promise.resolve(new Response(JSON.stringify(body), { status }));
+    }) as unknown as typeof fetch;
+    return sent;
+  };
+
+  it('PUTs the player id to the viewer endpoint', async () => {
+    const sent = respondWith({ viewerId: validPlayer.id });
+
+    const result = await new RemoteRosterSource('https://api.example.com', 'key').setViewer(
+      asPlayerId(validPlayer.id),
+    );
+
+    expect(result.ok).toBe(true);
+    expect(sent.url).toBe('https://api.example.com/v1/me/viewer');
+    expect(sent.init?.method).toBe('PUT');
+    expect(JSON.parse(String(sent.init?.body))).toEqual({ playerId: validPlayer.id });
+  });
+
+  it('fails with the taxonomy code when the account does not own that player', async () => {
+    respondWith({ error: { code: 'NOT_FOUND', message: 'No player on this account.' } }, 404);
+
+    const result = await new RemoteRosterSource('https://api.example.com', 'key').setViewer(
+      asPlayerId(validPlayer.id),
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('NOT_FOUND');
+  });
+});
