@@ -11,9 +11,18 @@
  *
  * Returns the fresh snapshot so the caller can hand it straight back — the client applies it
  * with `replaceRoster` exactly as a pull would (ARCHITECTURE.md §7).
+ *
+ * **This endpoint is idempotent, and step 1 is the only part that had to be made so.** An edit
+ * is keyed by a server id and overwrites, so replaying it lands on the same row; a head-to-head
+ * row is upserted by its own key. A *new* row had neither: it was inserted unconditionally and
+ * its `clientId` was read once and thrown away. That made a lost response unrecoverable — the
+ * client cannot tell "applied" from "never arrived", its only safe move is to push again, and
+ * the retry created a second copy of every row. `players.clientId` and the unique index over
+ * `(account_id, client_id)` are what close that hole, and the read below is what turns a replay
+ * into the same answer rather than a conflict.
  */
 
-import { and, eq, max } from 'drizzle-orm';
+import { and, eq, inArray, max } from 'drizzle-orm';
 
 import type { HeadToHeadDto, NewPlayerDto, PlayerEditDto } from '../schemas/player.js';
 import { db } from '../db/client.js';
@@ -40,11 +49,34 @@ export const applyRosterSync = async (
       .where(eq(players.accountId, input.accountId));
     let nextRank = (row?.highestRank ?? 0) + 1;
 
+    // Which of this push's clientIds this account has already accepted. On a first push this is
+    // empty and every row below is inserted; on a replay it holds them all and nothing is.
+    const clientIds = input.newPlayers.map((draft) => draft.clientId);
+    const alreadyAccepted = new Map<string, string>();
+    if (clientIds.length > 0) {
+      const seen = await tx
+        .select({ id: players.id, clientId: players.clientId })
+        .from(players)
+        .where(and(eq(players.accountId, input.accountId), inArray(players.clientId, clientIds)));
+      for (const existing of seen) {
+        if (existing.clientId !== null) alreadyAccepted.set(existing.clientId, existing.id);
+      }
+    }
+
     for (const draft of input.newPlayers) {
+      const accepted = alreadyAccepted.get(draft.clientId);
+      if (accepted !== undefined) {
+        // Already created by an earlier push whose response the client did not receive. Answer
+        // with the id it was given then, and do not consume a rank: the row already has one.
+        assignedIds[draft.clientId] = accepted;
+        continue;
+      }
+
       const [inserted] = await tx
         .insert(players)
         .values({
           accountId: input.accountId,
+          clientId: draft.clientId,
           name: draft.name,
           nameFolded: foldPlayerName(draft.name),
           level: draft.level,
@@ -60,12 +92,29 @@ export const applyRosterSync = async (
           spd: draft.spd,
           updatedAt: new Date(),
         })
+        .onConflictDoNothing({ target: [players.accountId, players.clientId] })
         .returning({ id: players.id });
-      if (!inserted) {
-        throw new Error('insert returned no row');
+
+      if (inserted) {
+        assignedIds[draft.clientId] = inserted.id;
+        nextRank += 1;
+        continue;
       }
-      assignedIds[draft.clientId] = inserted.id;
-      nextRank += 1;
+
+      // No row came back, so the unique index refused the insert: a concurrent push for the
+      // same clientId committed between the read above and this write. That is the race the
+      // index exists for — the read alone cannot close it, because a read and a write are two
+      // statements. The row that won is the one this response has to name, so it is read back
+      // rather than retried.
+      const [raced] = await tx
+        .select({ id: players.id })
+        .from(players)
+        .where(and(eq(players.accountId, input.accountId), eq(players.clientId, draft.clientId)))
+        .limit(1);
+      if (!raced) {
+        throw new Error(`insert of ${draft.clientId} was refused but no row holds it`);
+      }
+      assignedIds[draft.clientId] = raced.id;
     }
 
     for (const edit of input.editedPlayers) {

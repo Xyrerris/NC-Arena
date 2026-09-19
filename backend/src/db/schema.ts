@@ -23,6 +23,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 
@@ -84,6 +85,21 @@ export const players = pgTable(
     hit: bigint('hit', { mode: 'number' }).notNull(),
     spd: bigint('spd', { mode: 'number' }).notNull(),
     /**
+     * The id the device that created this row knows it by — `POST /v1/roster/sync`'s
+     * `clientId`, kept rather than discarded once it has been answered.
+     *
+     * Keeping it is what makes that endpoint idempotent. The response carries the
+     * `clientId` -> server id map, so a response lost in transit leaves the client unable to
+     * tell "applied" from "never arrived"; without this column its only safe move is to push
+     * again, and the retry inserts a second copy of every row. With it, the replay finds the
+     * row it already created and is answered with the same id.
+     *
+     * Nullable, and deliberately so: rows that predate this column have no `clientId` to
+     * record, and Postgres treats NULLs as distinct in a unique index, so any number of them
+     * coexist per account. A row is only ever keyed here by the device that invented it.
+     */
+    clientId: text('client_id'),
+    /**
      * Decides which push wins when two devices edit the same row between syncs
      * (ADR-0035, decision 3 — last write wins, no merge).
      */
@@ -93,6 +109,11 @@ export const players = pgTable(
     index('players_account_rank_idx').on(table.accountId, table.rank),
     index('players_account_name_folded_idx').on(table.accountId, table.nameFolded),
     index('players_account_combat_power_idx').on(table.accountId, table.combatPower),
+    // The durable half of the idempotency guarantee. `applyRosterSync` reads before it writes,
+    // but a read and a write are two statements: two pushes racing on the same `clientId` can
+    // both find nothing. This index is what makes the loser of that race a conflict rather
+    // than a duplicate, and the sync handles it by answering with the row that won.
+    uniqueIndex('players_account_client_id_idx').on(table.accountId, table.clientId),
   ],
 );
 

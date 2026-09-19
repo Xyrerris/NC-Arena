@@ -13,3 +13,8 @@ package-lock.json
 # §7), but it is generated: reformatting it would produce churn on every regenerate and
 # make the diff that matters harder to read.
 src/core/db/migrations/
+# The same, for the backend's own schema (ADR-0035). This was latent until the baseline
+# snapshot existed: the directory held only .sql, which Prettier has no parser for and skips,
+# plus a hand-written journal that happened to match its style. drizzle-kit writes the
+# snapshots in its own shape, so the first real `db:generate` turned `npm run verify` red.
+backend/src/db/migrations/

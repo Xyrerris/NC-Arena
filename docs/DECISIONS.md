@@ -2078,3 +2078,35 @@ the same reason: the generic "any VPS with Docker" instructions this ADR first d
 this service is actually going to be run, and a doc that describes a path nobody takes drifts from the
 one that matters. The design questions decision 1 actually answers — self-hosted vs. managed, the
 account/API-key shape, the sync contract — are unaffected; only which process terminates TLS changed.
+
+**Addendum, 2026-09-19 — `POST /v1/roster/sync` is idempotent, and decision 3 as first built was
+not.** Decision 3 describes `clientId` as the key that lets `origin` flip `LOCAL` -> `REMOTE` "in one
+round trip, rather than in a second request that could fail after the first succeeded". It was right
+about the shape and silent about what happens when the _one_ round trip fails — specifically when it
+fails after the server has committed. The client cannot distinguish a response lost in transit from a
+request that never arrived; offline-first means it will retry; and `applyRosterSync` read each
+`clientId` once, used it to build the response map, and discarded it. Nothing keyed the row, so the
+retry inserted a second copy of every row in `newPlayers`. Reproduced against PostgreSQL 16: pushing
+two players and replaying the identical request left four, under four different server ids, and the
+client would have adopted the second pair and orphaned the first.
+
+`players.client_id` now persists that key, with a unique index over `(account_id, client_id)`
+(`0001_client_id.sql`). The merge reads the clientIds in a push before writing and answers an
+already-accepted one with the id it was given the first time, consuming no rank; the index closes the
+narrower race where two concurrent pushes both read nothing, and the loser is read back rather than
+retried. The column is nullable because rows created before it have no such key, and Postgres treats
+NULLs as distinct in a unique index, so any number of them coexist per account.
+
+Nothing on the wire changed: `clientId` was already sent, already required, already the response's
+key. What changed is that the contract can now _promise_ replay safety, which `openapi.yaml` states,
+and that the promise is the reason the client may retry a failed push at all. The two other
+directions already had this property and were left alone — an edit is keyed by a server id and
+overwrites, a head-to-head row is upserted by its own key — which is why only `newPlayers` needed
+fixing.
+
+This also fixed a latent hole in the tooling: `migrations/meta/` held no `0000_snapshot.json`, so
+`db:generate` had no baseline and re-emitted all four `CREATE TABLE`s as the next migration instead
+of a diff. The snapshot was regenerated from the schema as of the baseline commit and checked against
+the hand-written `0000_init.sql` statement for statement; `.prettierignore` gained
+`backend/src/db/migrations/`, which had been covered for the client's generated migrations since
+Phase 2 but never for these.

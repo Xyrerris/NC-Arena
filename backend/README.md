@@ -23,12 +23,20 @@ npm run dev                    # http://localhost:3000, reloads on save
 
 `GET /health` returns `{ "ok": true }` once the service is up.
 
-Schema changes: edit `src/db/schema.ts`, then `npm run db:generate` (needs `DATABASE_URL`
-reachable) to have drizzle-kit diff and write the next `src/db/migrations/NNNN_*.sql` — commit
-the generated SQL, the same discipline `src/core/db/migrations/` already follows on the client.
-`0000_init.sql` was hand-written to match the schema at the time this ADR landed, because there
-was no reachable Postgres to generate it against in that environment; treat it as the baseline
-and let `db:generate` take over from here.
+Schema changes: edit `src/db/schema.ts`, then `npm run db:generate` to have drizzle-kit diff and
+write the next `src/db/migrations/NNNN_*.sql` — commit the generated SQL, the same discipline
+`src/core/db/migrations/` already follows on the client. Generation does **not** need a reachable
+database: drizzle-kit diffs the schema against the snapshots under `migrations/meta/`, and only
+`db:migrate` connects to anything.
+
+`0000_init.sql` is hand-written — there was no reachable Postgres when this ADR landed — but
+`meta/0000_snapshot.json` beside it is not, and without that snapshot `db:generate` had no
+baseline to diff against: it re-emitted all four `CREATE TABLE`s as the next migration, which
+would have failed against any database that already had them. The snapshot was regenerated from
+the schema at that commit and checked against the hand-written SQL statement for statement, so
+the two agree; from here `db:generate` produces real incremental diffs, as `0001_client_id.sql`
+does. If you ever regenerate the baseline, diff it against `0000_init.sql` again rather than
+trusting it.
 
 ## Deploying with Coolify
 

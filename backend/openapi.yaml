@@ -62,6 +62,13 @@ paths:
         Push rows this device has that the server has not seen (new, keyed by clientId) or has
         edited (existing, keyed by server id), plus head-to-head records. Returns the fresh
         snapshot and the clientId -> server id map (ADR-0035, decision 3).
+      description: >
+        Idempotent in all three directions. An edit is keyed by a server id and overwrites; a
+        head-to-head row is upserted by its own key; and a new row is keyed by its clientId,
+        which the server retains, so replaying a push answers with the ids it assigned the
+        first time instead of creating a second copy. That matters because a client whose
+        response is lost in transit cannot tell "applied" from "never arrived", and its only
+        safe move is to send the same push again.
       requestBody:
         required: true
         content:
@@ -178,7 +185,10 @@ components:
             rank: { readOnly: true }
             clientId:
               type: string
-              description: This device's own id for the row, until the response assigns a server one.
+              description: >
+                This device's own id for the row, until the response assigns a server one. The
+                server keeps it, unique per account, so that a replayed push is answered with
+                the same server id rather than creating the row twice.
     HeadToHead:
       type: object
       required: [viewerId, opponentId, wins, losses]
