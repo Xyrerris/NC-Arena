@@ -4,11 +4,19 @@
  *
  * What it does *not* do is as much the point. It never touches SQLite, never sees a Drizzle
  * row and never calls the network — it reads observers off the repository and maps them to
- * `*Ui` types. Phase 5 swaps the source behind those observers, and if this file has to
- * change then the boundary was in the wrong place.
+ * `*Ui` types.
+ *
+ * **The sync is a TanStack mutation, and nothing here reads its data** (ARCHITECTURE.md §7).
+ * That is the rule §7 calls "most likely to be violated by habit": the reflex is to render
+ * what the mutation returned, and doing so would put the network back in front of a
+ * component and reintroduce the "is this stale?" branching offline-first exists to delete.
+ * `syncRoster` returns `Promise<Result<void>>` — there is no data to read even by accident —
+ * and what the screen re-renders from is `useLiveQuery` over the rows the sync wrote. The
+ * mutation owns only the *lifecycle*: is one in flight, and did the last one fail.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useCallback, useMemo, useState } from 'react';
 
 import { useArenaData, useViewerId } from '@/core/data';
 import type { RosterSort } from '@/core/model';
@@ -34,8 +42,6 @@ export const useRoster = (): RosterController => {
   // an async read here would show one frame of rank order before reordering itself.
   const [sort, setSort] = useState<RosterSort>(() => repository.getRosterSort());
   const [query, setQuery] = useState('');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [refreshError, setRefreshError] = useState<Error | null>(null);
   const [recordError, setRecordError] = useState<Error | null>(null);
 
   /**
@@ -78,22 +84,39 @@ export const useRoster = (): RosterController => {
     [viewer.data],
   );
 
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  /**
+   * One sync — push what this device has, then apply what comes back (ADR-0035; the owner's
+   * decision 1). It is `syncRoster`, not `refresh`: a pull alone would replace the ladder
+   * with a snapshot that does not describe the rows typed in here, which is the bootstrap
+   * ADR-0035 replaced rather than a design. With no sink configured `syncRoster` falls back
+   * to a plain pull by itself, so a build with no backend behaves exactly as it did.
+   *
+   * The mutation is what ARCHITECTURE.md §7 asks for by name: it owns "retry, backoff, is a
+   * refresh in flight". Two of those are visible here — `isPending` replaces a hand-rolled
+   * boolean, and the unmount bookkeeping that boolean needed is gone, because React Query
+   * does not deliver a result to an observer that has gone away.
+   *
+   * **`retry` is 0, deliberately, and this is the place that decision lives.** This sync is
+   * a gesture: somebody pulled the list down and is watching it. Retrying behind a spinner
+   * makes a failure take longer to report without making it likelier to succeed, and the
+   * remedy — pull again — is already in the user's hands. The periodic background task is
+   * the caller that has nobody watching and should turn this up; `POST /v1/roster/sync` is
+   * idempotent (a63c4bd), which is what will make that safe when it does.
+   */
+  const sync = useMutation<void, Error>({
+    mutationFn: async () => {
+      const result = await repository.syncRoster();
+      // Two failure conventions meet here, and only here. `Result` is what this codebase
+      // uses for a failure the product has a screen for; a rejected promise is what React
+      // Query understands. Nothing else would set `error`, so the unwrap has to throw.
+      if (!result.ok) throw result.error;
+    },
+    retry: 0,
+  });
 
-  const refresh = useCallback(() => {
-    setIsRefreshing(true);
-    void repository.refresh().then((result) => {
-      if (!mounted.current) return;
-      setRefreshError(result.ok ? null : result.error);
-      setIsRefreshing(false);
-    });
-  }, [repository]);
+  // Stable across renders (React Query binds both), but named as dependencies anyway so the
+  // handlers below do not have to be re-read to know what they close over.
+  const { mutate: startSync, reset: clearSyncError } = sync;
 
   const onEvent = useCallback(
     (event: RosterEvent) => {
@@ -106,9 +129,9 @@ export const useRoster = (): RosterController => {
       switch (event.type) {
         case 'search':
           setQuery(event.query);
-          // A new search clears a stale refresh failure too; otherwise the error state
+          // A new search clears a stale sync failure too; otherwise the error state
           // outlives the query that caused it and the roster looks permanently broken.
-          setRefreshError(null);
+          clearSyncError();
           return;
         case 'sort':
           setSort(event.sort);
@@ -118,7 +141,7 @@ export const useRoster = (): RosterController => {
           repository.setRosterSort(event.sort);
           return;
         case 'refresh':
-          refresh();
+          startSync();
           return;
         case 'record': {
           const result = repository.recordMatch(event.id, event.outcome);
@@ -130,10 +153,10 @@ export const useRoster = (): RosterController => {
         }
       }
     },
-    [refresh, repository],
+    [clearSyncError, repository, startSync],
   );
 
-  const failure = roster.error ?? viewer.error ?? refreshError;
+  const failure = roster.error ?? viewer.error ?? sync.error;
 
   const season = repository.getSeason();
 
@@ -162,10 +185,10 @@ export const useRoster = (): RosterController => {
       header,
       rows,
       query,
-      isRefreshing,
+      isRefreshing: sync.isPending,
       recordError: recordError?.message ?? null,
     };
-  }, [failure, roster.loaded, viewer.loaded, rows, query, header, isRefreshing, recordError]);
+  }, [failure, roster.loaded, viewer.loaded, rows, query, header, sync.isPending, recordError]);
 
   return { state, onEvent };
 };

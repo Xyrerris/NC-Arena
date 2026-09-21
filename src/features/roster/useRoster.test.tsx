@@ -11,12 +11,20 @@
  * (ARCHITECTURE.md §10).
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import { err, ok, type RosterSnapshot, type RosterSource } from '@/core/common';
+import {
+  err,
+  ok,
+  type RosterPush,
+  type RosterSink,
+  type RosterSnapshot,
+  type RosterSource,
+} from '@/core/common';
 import { ArenaDataProvider, type RosterRepository } from '@/core/data';
-import { asPlayerId, type HeadToHead, type Player } from '@/core/model';
+import { asPlayerId, type HeadToHead, type Player, type PlayerDraft } from '@/core/model';
 import {
   createStubLiveData,
   createTestDatabase,
@@ -45,6 +53,21 @@ const player = (id: string, name: string, rank: number, combatPower: number): Pl
   spd: 4_000_000 + rank,
 });
 
+/** A row typed in on this device, so it starts `LOCAL` and has somewhere to be pushed to. */
+const draftFor = (name: string): PlayerDraft => ({
+  name,
+  level: 12,
+  gameCode: '',
+  combatPower: 500_000,
+  score: 10,
+  hp: 9,
+  atk: 1,
+  def: 2,
+  critPercent: 3,
+  hit: 4,
+  spd: 5,
+});
+
 const record = (opponentId: string, wins: number, losses: number): HeadToHead => ({
   viewerId: asPlayerId('p-a'),
   opponentId: asPlayerId(opponentId),
@@ -70,10 +93,22 @@ const sourceOf = (snapshot: RosterSnapshot): RosterSource => ({
   fetchRoster: async () => ok(snapshot),
 });
 
-const wrapperFor = (repository: RosterRepository, useLiveData = createStubLiveData()) =>
-  function Harness({ children }: { children: ReactNode }) {
-    return <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>;
+/**
+ * A fresh `QueryClient` per harness, built outside the component. React Query caches per
+ * client, so a shared one would let a mutation started by one test be observed by the next;
+ * and a client constructed *inside* `Harness` would be a new client on every render, which
+ * silently discards the state the mutation is keeping.
+ */
+const wrapperFor = (repository: RosterRepository, useLiveData = createStubLiveData()) => {
+  const client = new QueryClient();
+  return function Harness({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={client}>
+        <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>
+      </QueryClientProvider>
+    );
   };
+};
 
 const namesOf = (state: RosterUiState): string[] =>
   state.kind === 'ready' ? state.rows.map((row) => row.name) : [];
@@ -367,6 +402,134 @@ describe('useRoster', () => {
       });
       await waitFor(() => expect(result.current.state).toMatchObject({ kind: 'ready' }));
       expect(attempts).toBe(2);
+    });
+  });
+
+  /**
+   * The owner's decision 1: a sync is push-then-pull as one operation, fired by this
+   * gesture and by the periodic task — not by every local write. Before this, pull-to-
+   * refresh called `refresh()` and a row typed in here never left the device.
+   */
+  describe('pull-to-refresh is a sync, not a pull', () => {
+    /** Records what was pushed, and answers the way a fresh account's server does. */
+    const createSpySink = () => {
+      const pushes: RosterPush[] = [];
+      const sink: RosterSink = {
+        name: 'spy',
+        pushRoster: (push: RosterPush) => {
+          pushes.push(push);
+          return Promise.resolve(ok({ snapshot: null, assignedIds: new Map() }));
+        },
+        setViewer: () => Promise.resolve(ok(undefined)),
+      };
+      return { pushes, sink };
+    };
+
+    const withSink = (sink: RosterSink, source: RosterSource = sourceOf(FIXTURE)) =>
+      createTestRepository(handle.db, source, undefined, sink).repository;
+
+    it('pushes what this device has before pulling', async () => {
+      const spy = createSpySink();
+      const repo = withSink(spy.sink);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() => expect(spy.pushes).toHaveLength(1));
+    });
+
+    it('carries a hand-entered row up, which a plain pull never did', async () => {
+      const spy = createSpySink();
+      const repo = withSink(spy.sink);
+      expect(repo.createPlayer(draftFor('Ekko')).ok).toBe(true);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() => expect(spy.pushes).toHaveLength(1));
+      expect(spy.pushes[0]?.newPlayers.map((row) => row.name)).toEqual(['Ekko']);
+    });
+
+    it('surfaces a failed push the same way a failed pull is surfaced', async () => {
+      // The push half can fail on its own — offline, or a key the server no longer knows —
+      // and it must reach the same recoverable banner rather than a crash or a blank list.
+      const refusing: RosterSink = {
+        name: 'refusing',
+        pushRoster: () => Promise.resolve(err(new Error('backend: OFFLINE — no network'))),
+        setViewer: () => Promise.resolve(ok(undefined)),
+      };
+      const repo = withSink(refusing);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          kind: 'error',
+          message: 'backend: OFFLINE — no network',
+          canRetry: true,
+        }),
+      );
+    });
+
+    it('reports a sync in flight, and stops reporting one when it lands', async () => {
+      // `isRefreshing` is the mutation's `isPending` now. The roster stays on screen
+      // throughout — decision 2 — so this is a spinner on a list, never a blank screen.
+      let land = (): void => {};
+      const held = new Promise<void>((resolve) => {
+        land = resolve;
+      });
+      const slow: RosterSink = {
+        name: 'slow',
+        pushRoster: async () => {
+          await held;
+          return ok({ snapshot: null, assignedIds: new Map() });
+        },
+        setViewer: () => Promise.resolve(ok(undefined)),
+      };
+      const repo = withSink(slow);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      // Both halves inside an async `act`: a synchronous one around a handler that starts a
+      // promise lets that promise settle outside any act scope, which corrupts the renderer
+      // for the rest of the file rather than failing the test that caused it.
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+      expect(result.current.state).toMatchObject({ kind: 'ready', isRefreshing: true });
+
+      await act(async () => {
+        land();
+        await held;
+      });
+
+      await waitFor(() => expect(result.current.state).toMatchObject({ isRefreshing: false }));
+    });
+
+    it('falls back to a plain pull when there is no sink, so a backendless build is unchanged', async () => {
+      let pulls = 0;
+      const counting: RosterSource = {
+        name: 'counting',
+        fetchRoster: async () => {
+          pulls += 1;
+          return ok(FIXTURE);
+        },
+      };
+      const repo = wired.restart(counting);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() => expect(pulls).toBe(1));
+      expect(result.current.state).toMatchObject({ kind: 'ready' });
     });
   });
 });

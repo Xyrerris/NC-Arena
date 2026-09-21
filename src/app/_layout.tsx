@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -49,6 +50,19 @@ void SplashScreen.preventAutoHideAsync();
  */
 const ARENA_DATA: ArenaData = { repository: arenaRepository, useLiveData: useExpoLiveData };
 
+/**
+ * TanStack Query's client, which §4 puts here among the providers and §7 explains the job
+ * of: it owns the sync call's lifecycle, and nothing else.
+ *
+ * There is not a single `useQuery` in this app and there is not meant to be. SQLite is the
+ * source of truth, screens read it through `useLiveQuery`, and the one thing this client
+ * holds is `useRoster`'s sync mutation — so there is no cache here for a component to read
+ * from, which is the §7 rule stated as a fact about the wiring rather than as a convention.
+ *
+ * At module scope so the client outlives a re-render, the same reason `ARENA_DATA` is.
+ */
+const queryClient = new QueryClient();
+
 export default function RootLayout() {
   const { success, error } = useArenaMigrations();
   const fonts = useArenaFonts();
@@ -72,9 +86,11 @@ export default function RootLayout() {
         {failure ? (
           <BootFailure message={failure.message} />
         ) : (
-          <ArenaDataProvider value={ARENA_DATA}>
-            <ArenaGate fontScale={fontScale} />
-          </ArenaDataProvider>
+          <QueryClientProvider client={queryClient}>
+            <ArenaDataProvider value={ARENA_DATA}>
+              <ArenaGate fontScale={fontScale} />
+            </ArenaDataProvider>
+          </QueryClientProvider>
         )}
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -365,12 +365,22 @@ Native reflex is to render `data` straight out of `useQuery`. Doing so here rein
 the branching the offline-first design exists to delete, so it is called out in review and guarded
 by the §4 boundary (a feature cannot import `core/network` at all).
 
+**Live since Phase 5.** `useRoster` holds the one mutation in the app; `src/app/_layout.tsx` holds
+the one `QueryClient`. There is no `useQuery` anywhere, and the mutation's `mutationFn` returns
+`void` — so there is no cached data for a component to read even by mistake, which is this rule
+stated as a fact about the wiring rather than as a convention to remember. `retry` is set on that
+mutation, at 0, because a pull-to-refresh has somebody watching it; the periodic task is the caller
+that should turn it up, and `POST /v1/roster/sync`'s idempotency is what makes that safe.
+
 ```ts
 export interface RosterRepository {
   observeRoster(sort: RosterSort, query: string): LiveQuery<RosterEntry[]>;
   observePlayer(id: PlayerId): LiveQuery<PlayerDetail | null>;
   observeViewer(): LiveQuery<Player | null>;
+  /** Pull only. Still the background-safe path, and what syncRoster falls back to. */
   refresh(): Promise<Result<void>>;
+  /** Push then pull, as one operation. This is what pull-to-refresh calls (ADR-0035). */
+  syncRoster(): Promise<Result<void>>;
 
   // ADR-0020. The app writes players offline; an online database takes over later.
   createPlayer(draft: PlayerDraft): Result<Player>;

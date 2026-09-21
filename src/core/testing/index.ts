@@ -13,7 +13,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import path from 'node:path';
 
 import { createRosterRepository, type RosterRepository, type UseLiveData } from '../data';
-import type { AccountGateway, RosterSource } from '../common';
+import type { AccountGateway, RosterSink, RosterSource } from '../common';
 import { refoldPlayerNames, type ArenaDatabase } from '../db';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 
@@ -112,10 +112,17 @@ export const createTestRepository = (
    * unset. A setup test passes a fake to open the gate.
    */
   gateway?: AccountGateway,
+  /**
+   * Where a local row goes when it leaves the device. Omitted, `syncRoster` has nothing to
+   * push to and falls back to a plain pull — which is what every test written before there
+   * was a backend assumes, and why this is last and optional rather than folded into
+   * `source`. Pass one to exercise the push half from above the repository.
+   */
+  sink?: RosterSink,
 ): TestRepository => {
   const preferences = createMemoryPreferences();
   const build = (from: RosterSource | undefined = source) =>
-    createRosterRepository({ db, source: from, gateway, preferences });
+    createRosterRepository({ db, source: from, sink, gateway, preferences });
   return { repository: build(), preferences, restart: build };
 };
 

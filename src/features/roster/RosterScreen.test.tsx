@@ -11,6 +11,7 @@
  * jest-expo runs at fontScale 2, so every render here is also a 200 % font-scale render.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -102,14 +103,24 @@ const METRICS = {
  * That substitution is the whole reason the observers return `{ query, map }`, and it is
  * what lets this file assert on SQL results with no emulator in the loop.
  */
-const wrapWith = (repository: RosterRepository, useLiveData = createStubLiveData()) =>
-  function Harness({ children }: { children: ReactNode }) {
+/**
+ * A fresh `QueryClient` per harness, built outside the component. React Query caches per
+ * client, so a shared one would let a mutation started by one test be observed by the next;
+ * and a client constructed *inside* `Harness` would be a new client on every render, which
+ * silently discards the state the mutation is keeping.
+ */
+const wrapWith = (repository: RosterRepository, useLiveData = createStubLiveData()) => {
+  const client = new QueryClient();
+  return function Harness({ children }: { children: ReactNode }) {
     return (
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>
-      </SafeAreaProvider>
+      <QueryClientProvider client={client}>
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>
+        </SafeAreaProvider>
+      </QueryClientProvider>
     );
   };
+};
 
 const renderRoster = (repository: RosterRepository, useLiveData = createStubLiveData()) =>
   render(<RosterScreen />, { wrapper: wrapWith(repository, useLiveData) });
