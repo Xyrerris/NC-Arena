@@ -751,12 +751,17 @@ that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, whic
 - TanStack Query owning the sync call; success writes to SQLite; **no component reads `useQuery`
   data** (ARCHITECTURE.md §7).
 - `expo-background-task` periodic refresh, pull-to-refresh, sync-failure surfacing.
-- Conflict/staleness policy: last-write-wins from server, with a visible "updated N ago".
+- Conflict/staleness policy: last-write-wins from server, with a visible "updated N ago". **The
+  label is in**, from a `lastSyncedAt` preference stamped where a snapshot is applied; it ticks
+  itself and renders nothing at all before a first sync or after a restore, rather than guessing.
 
 **Exit criteria**
 
 - App functions fully offline on previously synced data.
-- Airplane-mode → refresh shows a recoverable error, never a crash or a blank screen.
+- Airplane-mode → refresh shows a recoverable error, never a crash or a blank screen. **Met.** A
+  failed sync is a banner with its own retry over a ladder that stays entirely readable; only an
+  unreadable _query_ reaches the `error` state. Asserted in
+  `RosterScreen.test.tsx` — "keeps every row on screen when a sync fails".
 - A contract test asserts a stat value above `Int32.MAX` survives the full
   JSON → Zod → SQLite → domain → UI path unchanged, **and** that a value above
   `Number.MAX_SAFE_INTEGER` is rejected at parse time rather than silently rounded. These are the

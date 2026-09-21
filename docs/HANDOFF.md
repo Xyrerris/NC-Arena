@@ -20,7 +20,7 @@ runs until this device is paired. `EXPO_PUBLIC_API_URL` is still unset everywher
 no source, no gateway and therefore no gate, and behaves exactly as ADR-0021 describes: a ladder
 that starts empty and is filled by hand.
 
-Five commits carry it:
+Six commits carry it:
 
 | Commit    | What it settled                                                                                             |
 | --------- | ----------------------------------------------------------------------------------------------------------- |
@@ -30,7 +30,7 @@ Five commits carry it:
 | `5c5b792` | The setup gate: `AccountGateway`, `RemoteAccountGateway`, the `core/data` key seam, `features/accountSetup` |
 | `08ab09f` | Pull-to-refresh calls `syncRoster` through a TanStack mutation; the one `QueryClient` lands in `_layout`    |
 
-`npm run verify` is green: 575 tests across both Jest projects, 94.51 % statements against a 93 %
+`npm run verify` is green: 601 tests across both Jest projects, 94.68 % statements against a 93 %
 threshold.
 
 ## Decided already — do not reopen without the owner
@@ -69,19 +69,18 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   one mutation is in `useRoster`, the one `QueryClient` is in `_layout.tsx`, and there is no
   `useQuery` anywhere. `retry` is set to 0 there with the reasoning written down — **that is the
   knob the periodic task should turn up**, not a default to leave alone.
-- **The indicator, the banner and "updated N ago"** (decision 2) — **now the next thing, and more
-  urgent than it was.** A sync failure currently takes the roster down to `{ kind: 'error' }`, which
-  still meets the roadmap's exit criterion (a recoverable error, not a crash or a blank screen) but
-  **not** decision 2's "data stays on screen, a failure is a banner". That was harmless while
-  `refresh()` was a no-op and could not fail; it is not harmless now that pull-to-refresh makes a
-  real network call that will fail routinely. The fix is in `useRoster`'s `state` memo: `sync.error`
-  should stop feeding `failure` and become a line above the list, the way `recordError` already is.
-  `preferences.getSeason()` is the precedent for storing a scalar the snapshot carried; a "last
-  synced at" would be the same shape.
-- **The periodic refresh.** `expo-background-task` is installed but referenced nowhere, and its
-  config-plugin declaration was deliberately removed from `app.config.ts` in 4.10 because it was a
-  no-op on Android — ADR-0034 decision 5 says it goes back **beside the code that uses it**. That is
-  this work.
+- ~~**The indicator, the banner and "updated N ago"** (decision 2).~~ **Done.** Only the reads feed
+  `failure` now; `sync.error` is a banner with its own retry. **Pull-to-refresh had to ship with
+  it** — there was no such gesture anywhere in the app, and the error screen's TRY AGAIN was the
+  only thing that could fire a sync. `lastSyncedAt` sits beside `season` in `core/prefs`, stamped
+  where a snapshot is _applied_ rather than where a request succeeded.
+- **The periodic refresh** — the last one before turning the URL on. `expo-background-task` is
+  installed but referenced nowhere, and its config-plugin declaration was deliberately removed from
+  `app.config.ts` in 4.10 because it was a no-op on Android — ADR-0034 decision 5 says it goes back
+  **beside the code that uses it**. Two things are already waiting for it: `useRoster`'s mutation
+  sets `retry: 0` because a pull-to-refresh has somebody watching, and **this caller is the one that
+  should turn it up** (the endpoint's idempotency is what makes that safe); and `header.isSyncing`
+  already drives the badge, so a background sync will announce itself with no new UI.
 - **Turn the URL on.** The gate exists now, so this is unblocked — but see "Operational" below
   first: `0001_client_id.sql` has to be applied before the first device syncs, not after.
 
@@ -118,6 +117,10 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   from any second device, with the app looking like setup had succeeded.
   `AccountSetupScreen.test.tsx`'s "keeps the code on screen although the key is already stored"
   fails if you swap the latch for a live read.
+- **A failed sync is a banner; a failed _query_ is still the `error` state.** The split is in
+  `useRoster`'s `failure`, which reads `roster.error ?? viewer.error` and deliberately **not**
+  `sync.error`. Putting the sync back in there undoes the owner's decision 2 in one line, and the
+  screen it produces looks reasonable in every test that does not go offline.
 - **`editedPlayers` is always empty**, and that is the product: ADR-0020 lets the user edit only a
   `LOCAL` row, so no screen can produce an edit to a row the server owns. The wire carries the case
   because a second device can reach it.
