@@ -528,10 +528,14 @@ describe('useRoster', () => {
       await act(async () => {
         result.current.onEvent({ type: 'refresh' });
       });
-      expect(result.current.state).toMatchObject({
-        kind: 'ready',
-        header: { isSyncing: true },
-      });
+      // `waitFor` for the reason the screen test gives: React Query's notifications are
+      // batched through a scheduler, so this is not settled when the act scope returns.
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          kind: 'ready',
+          header: { isSyncing: true },
+        }),
+      );
 
       await act(async () => {
         land();

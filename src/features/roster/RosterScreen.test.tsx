@@ -750,7 +750,13 @@ describe('RosterScreen — syncing, and saying so', () => {
       fireEvent(screen.getByTestId('roster-list'), 'refresh');
     });
 
-    expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Syncing…');
+    // `waitFor`, not a bare expect: React Query notifies its observers through a batching
+    // scheduler, so `isPending` reaching the tree is not guaranteed by the time the act
+    // scope above returns. A bare assertion here passes alone and fails under a loaded
+    // suite, which is the worst kind of red.
+    await waitFor(() =>
+      expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Syncing…'),
+    );
     // The whole of decision 2: the rows stay exactly where they were.
     await expectNames(['Aurel', 'Brann', 'Cinder', 'Dross']);
 
