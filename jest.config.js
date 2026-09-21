@@ -33,8 +33,8 @@ module.exports = {
    *    `expoLiveData.ts`, `mmkvPreferences.ts`, the three under `core/ocr`) import modules
    *    plain Node cannot resolve. That is *why* each is deliberately thin, and each says so
    *    in its own header;
-   *  - `useViewerId.ts` is a React hook and `core/design-system` is components, so both
-   *    belong to the native project;
+   *  - `useViewerId.ts` and `useNeedsAccount.ts` are React hooks and `core/design-system` is
+   *    components, so all of them belong to the native project;
    *  - `core/testing` is the fakes, and coverage of a fake measures nothing;
    *  - barrels and `.d.ts` carry no statements.
    */
@@ -48,6 +48,7 @@ module.exports = {
     '!src/core/data/arenaRepository.ts',
     '!src/core/data/expoBackupFile.ts',
     '!src/core/data/expoLiveData.ts',
+    '!src/core/data/useNeedsAccount.ts',
     '!src/core/data/useViewerId.ts',
     '!src/core/prefs/mmkvPreferences.ts',
     '!src/core/ocr/expoImageSource.ts',

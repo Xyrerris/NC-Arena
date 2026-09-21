@@ -2154,3 +2154,41 @@ stops being true, the move is `expo-secure-store` behind the same `ArenaPreferen
 is why the port names them rather than exposing a store. `EXPO_PUBLIC_API_URL` is the matching
 build-time half: unset, no source is constructed and the app is the hand-filled ladder ADR-0021
 describes; the setup flow is what guarantees a key exists before the roster is reachable.
+
+**Addendum, 2026-09-21 — the setup gate, and why it does not close itself.** Decision 2 says an
+account is minted by `POST /v1/accounts` and joined by `POST /v1/accounts/link`, and the addendum
+above ends by saying "the setup flow is what guarantees a key exists before the roster is
+reachable". This is that flow. Three things about building it are worth writing down.
+
+**The gate latches at mount; it does not watch `needsAccount`.** The obvious shape — render setup
+while no key is stored, render the app once one is — is wrong, and quietly so. The key is stored the
+instant `POST /v1/accounts` answers, so `needsAccount` goes false **while the recovery code is still
+on screen**. A gate reading it live swaps the roster in over the one and only time that code is ever
+displayed, and the server keeps only its SHA-256 (`backend/src/auth/token.ts`), so nothing can show
+it again: the account becomes unreachable from any second device, permanently, and the failure looks
+exactly like a successful setup. So `ArenaGate` reads the condition once, at mount, and closes only
+when the screen says the user has read the code. `AccountSetupScreen.test.tsx` asserts that pairing
+— `needsAccount()` false, code still on screen, `onDone` not called — because it is the one
+invariant here whose breach is silent and irreversible.
+
+**The failure taxonomy the screen needs is not the wire's.** `NetworkError` has eight codes;
+`AccountGateway` answers with three — `UNRECOGNISED`, `OFFLINE`, `FAILED` — because the screen has
+only two remedies to offer (fix what you typed, or try again later) and a fourth code with no
+distinct remedy behind it is a distinction the user cannot act on. `NOT_FOUND` maps to
+`UNRECOGNISED` **only on `linkAccount`**: the same status from `createAccount` means the base URL is
+wrong, and sending somebody off to check a recovery code they never typed is worse than saying
+nothing. The port declares its own error type in `core/common` rather than importing the wire's,
+which §4 forbids anyway — the boundary and the product agree here.
+
+**One action, two labels.** The field is either filled in or it is not, and that is the whole
+decision, so the button says `Create an account` or `Link this device` accordingly. Two buttons
+would ask the user to choose again something they have already said by typing, and would have to
+answer "what happens if I press Create with a code in the box?" — a question this shape cannot pose.
+A code is trimmed before it decides the branch: a value pasted with the newline the clipboard
+carried is a code, and creating a second account because of one is unrecoverable in exactly the way
+this screen exists to prevent.
+
+**Operationally, this is the commit that makes `0001_client_id.sql` urgent.** While no client called
+the backend, an unapplied migration was harmless. The gate is what puts a real key on a real device,
+and from the first sync after it `applyRosterSync` writes to a column that may not exist. See
+HANDOFF.md's "Operational".

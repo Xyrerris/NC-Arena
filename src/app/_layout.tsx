@@ -1,16 +1,17 @@
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { ArenaDataProvider, type ArenaData } from '@/core/data';
+import { ArenaDataProvider, useNeedsAccount, type ArenaData } from '@/core/data';
 import { arenaRepository } from '@/core/data/arenaRepository';
 import { useExpoLiveData } from '@/core/data/expoLiveData';
 import { useArenaMigrations } from '@/core/db/client';
 import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-system';
+import { AccountSetupScreen } from '@/features/accountSetup';
 
 /**
  * Root layout.
@@ -72,12 +73,44 @@ export default function RootLayout() {
           <BootFailure message={failure.message} />
         ) : (
           <ArenaDataProvider value={ARENA_DATA}>
-            <ArenaStack key={fontScale} />
+            <ArenaGate fontScale={fontScale} />
           </ArenaDataProvider>
         )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+/**
+ * The setup gate (ADR-0035, decision 2). With a backend configured and no API key stored,
+ * there is nothing the app can do until this device is paired, so the gate is what there is
+ * instead of the stack — not a route, because a route would be somewhere the user could
+ * navigate away from.
+ *
+ * **Whether setup is required is latched at mount, and that is load-bearing.** The key is
+ * stored the moment the account exists, so `needsAccount` goes false while the recovery code
+ * is still on screen. Reading it live would close the gate over the one and only time that
+ * code is ever shown, and nothing — not the server, which keeps only its hash — could show
+ * it again. So the gate opens on what was true at launch and closes when the screen says it
+ * is done.
+ *
+ * `fontScale` keys the stack, not this component, for the same reason. The remount is what
+ * re-measures the navigation tree after a font-scale change (ADR-0030); applying it here
+ * would reset the latch and discard a recovery code mid-read if the user changed their font
+ * size while it was up. The gate re-renders and re-lays-out like any other view.
+ */
+function ArenaGate({ fontScale }: { fontScale: number }) {
+  const needsAccount = useNeedsAccount();
+  const [required] = useState(needsAccount);
+  const [done, setDone] = useState(false);
+
+  // Stable, so the setup hook's memoised controller is not rebuilt on every render of this
+  // component — `onDone` is a dependency of the submit handler it hands to the screen.
+  const finish = useCallback(() => setDone(true), []);
+
+  if (required && !done) return <AccountSetupScreen onDone={finish} />;
+
+  return <ArenaStack key={fontScale} />;
 }
 
 function ArenaStack() {

@@ -18,7 +18,10 @@
 
 export {
   apiErrorSchema,
+  createAccountResponseSchema,
   headToHeadDtoSchema,
+  linkAccountRequestSchema,
+  linkAccountResponseSchema,
   newPlayerDtoSchema,
   playerDtoSchema,
   playerEditDtoSchema,
@@ -28,7 +31,10 @@ export {
 } from './dto';
 export type {
   ApiErrorDto,
+  CreateAccountResponseDto,
   HeadToHeadDto,
+  LinkAccountRequestDto,
+  LinkAccountResponseDto,
   NewPlayerDto,
   PlayerDto,
   PlayerEditDto,
@@ -54,4 +60,5 @@ export {
 export { HttpClient } from './httpClient';
 export type { ApiKeySource } from './httpClient';
 
+export { RemoteAccountGateway } from './remoteAccountGateway';
 export { RemoteRosterSource } from './remoteRosterSource';

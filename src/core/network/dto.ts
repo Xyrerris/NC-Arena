@@ -14,6 +14,36 @@ import { z } from 'zod';
 
 const safeStat = z.number().int().safe().nonnegative();
 
+/**
+ * `POST /v1/accounts`'s response — the first call a device ever makes (ADR-0035, decision 2).
+ *
+ * Neither secret is given a shape beyond "a non-empty string". They are opaque to this
+ * client: the server mints them as 256 bits of base64url (`backend/src/auth/token.ts`) and
+ * may change how, and a client that pinned the format would start rejecting valid keys the
+ * day it did. What is worth asserting is that they are *there*, because a response missing
+ * one would otherwise be stored as `undefined` and every later request would go out
+ * unauthenticated with nothing saying why.
+ */
+export const createAccountResponseSchema = z.object({
+  accountId: z.uuid(),
+  apiKey: z.string().min(1),
+  recoveryCode: z.string().min(1),
+});
+export type CreateAccountResponseDto = z.infer<typeof createAccountResponseSchema>;
+
+/** `POST /v1/accounts/link`'s request body. */
+export const linkAccountRequestSchema = z.object({
+  recoveryCode: z.string().min(1),
+});
+export type LinkAccountRequestDto = z.infer<typeof linkAccountRequestSchema>;
+
+/** `POST /v1/accounts/link`'s response. No recovery code: linking does not mint a second one. */
+export const linkAccountResponseSchema = z.object({
+  accountId: z.uuid(),
+  apiKey: z.string().min(1),
+});
+export type LinkAccountResponseDto = z.infer<typeof linkAccountResponseSchema>;
+
 export const playerDtoSchema = z.object({
   id: z.uuid(),
   name: z.string().min(1).max(64),

@@ -33,4 +33,5 @@ export {
   type RosterRepository,
   type RosterRepositoryDeps,
 } from './rosterRepository';
+export { useNeedsAccount } from './useNeedsAccount';
 export { useViewerId } from './useViewerId';

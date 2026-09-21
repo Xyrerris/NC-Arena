@@ -13,7 +13,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import path from 'node:path';
 
 import { createRosterRepository, type RosterRepository, type UseLiveData } from '../data';
-import type { RosterSource } from '../common';
+import type { AccountGateway, RosterSource } from '../common';
 import { refoldPlayerNames, type ArenaDatabase } from '../db';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 
@@ -103,10 +103,19 @@ export interface TestRepository {
  * `refresh` should not have to invent one to say so, and one that does still passes the
  * fixture it wants. Omitted, the repository is wired exactly as the app's own is.
  */
-export const createTestRepository = (db: ArenaDatabase, source?: RosterSource): TestRepository => {
+export const createTestRepository = (
+  db: ArenaDatabase,
+  source?: RosterSource,
+  /**
+   * The account endpoints. Omitted, the repository has none — which is what makes
+   * `needsAccount` false, and is exactly the app as it ships with `EXPO_PUBLIC_API_URL`
+   * unset. A setup test passes a fake to open the gate.
+   */
+  gateway?: AccountGateway,
+): TestRepository => {
   const preferences = createMemoryPreferences();
   const build = (from: RosterSource | undefined = source) =>
-    createRosterRepository({ db, source: from, preferences });
+    createRosterRepository({ db, source: from, gateway, preferences });
   return { repository: build(), preferences, restart: build };
 };
 

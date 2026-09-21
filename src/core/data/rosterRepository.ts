@@ -11,6 +11,9 @@
 import {
   err,
   ok,
+  type AccountCredentials,
+  type AccountError,
+  type AccountGateway,
   type Result,
   type RosterPush,
   type RosterSink,
@@ -173,6 +176,16 @@ const NOT_YOURS = 'Only players you added on this device can be edited or remove
 const NO_SUCH_PLAYER = 'That player is not on the roster.';
 
 /**
+ * There is no backend in this build (`EXPO_PUBLIC_API_URL` unset), so there is no account to
+ * create. No screen can reach this: `needsAccount` is false without a gateway, so the setup
+ * gate never opens. It is the honest answer for a caller that asked anyway.
+ */
+const NO_BACKEND: AccountError = {
+  reason: 'FAILED',
+  message: 'This build has no backend configured.',
+};
+
+/**
  * A result is *yours against them*, so there has to be a "you" (ARCHITECTURE.md §2.3).
  *
  * It covers two states the user cannot tell apart and does not need to: no avatar has ever
@@ -235,10 +248,25 @@ export interface RosterRepositoryDeps {
    * ask whether the two happen to be the same instance.
    */
   sink?: RosterSink;
+  /**
+   * How this device gets an API key in the first place (ADR-0035, decision 2) — absent for
+   * the same reason `source` is, and supplied alongside it.
+   *
+   * Its presence is what makes the setup gate a question at all. With no gateway there is no
+   * backend, so there is no account to create and nothing to stand in front of the roster:
+   * the app is the hand-filled ladder ADR-0021 describes, and `needsAccount` says so.
+   */
+  gateway?: AccountGateway;
   preferences: ArenaPreferences;
 }
 
-export const createRosterRepository = ({ db, source, sink, preferences }: RosterRepositoryDeps) => {
+export const createRosterRepository = ({
+  db,
+  source,
+  sink,
+  gateway,
+  preferences,
+}: RosterRepositoryDeps) => {
   const viewerId = (): PlayerId => preferences.getViewerId() ?? NO_VIEWER;
 
   /**
@@ -255,6 +283,30 @@ export const createRosterRepository = ({ db, source, sink, preferences }: Roster
 
   const notifyViewerChanged = (): void => {
     for (const listener of viewerListeners) listener();
+  };
+
+  /**
+   * The setup gate's subscription, kept apart from the viewer's rather than folded into it.
+   * They change at different moments and are watched by different screens: the gate cares
+   * only whether a key exists, and re-running it every time a sync moved the viewer would
+   * re-render the whole app for an answer that had not changed.
+   */
+  const accountListeners = new Set<() => void>();
+
+  const notifyAccountChanged = (): void => {
+    for (const listener of accountListeners) listener();
+  };
+
+  /**
+   * Stores the key this device authenticates with from its very next request onwards.
+   *
+   * It takes effect immediately rather than on the next launch because `arenaRepository`
+   * hands `RemoteRosterSource` a *getter* for the key instead of its value — so the first
+   * sync after setup is already authenticated.
+   */
+  const adoptApiKey = (apiKey: string): void => {
+    preferences.setApiKey(apiKey);
+    notifyAccountChanged();
   };
 
   const write = (snapshot: RosterSnapshot, adopted?: ReadonlyMap<PlayerId, PlayerId>): void => {
@@ -701,6 +753,67 @@ export const createRosterRepository = ({ db, source, sink, preferences }: Roster
       return () => {
         viewerListeners.delete(listener);
       };
+    },
+
+    /**
+     * Whether the setup gate has to stand in front of the roster (ADR-0035, decision 2).
+     *
+     * Two conditions, and both matter. **No gateway** means this build has no backend at all,
+     * so there is no account to create and the app is the hand-filled ladder ADR-0021
+     * describes — gating it would put a sign-up screen in front of a product that does not
+     * have accounts. **A stored key** means this device is already paired, and setup is over
+     * for good: nothing in the app clears the key, so the gate opens once per install.
+     *
+     * Read it through `useNeedsAccount` rather than calling it in a render, for the reason
+     * `getViewerId` says: it is a subscription, not a value.
+     */
+    needsAccount: (): boolean => gateway !== undefined && preferences.getApiKey() === null,
+
+    /** `useSyncExternalStore`'s half of the pair. Returns the unsubscribe. */
+    subscribeAccount: (listener: () => void): (() => void) => {
+      accountListeners.add(listener);
+      return () => {
+        accountListeners.delete(listener);
+      };
+    },
+
+    /**
+     * Mints an account and pairs this device to it — the "left the recovery code empty"
+     * branch of the setup screen.
+     *
+     * The credentials are **returned**, not merely stored, and that is the one place in this
+     * app where a secret travels up into a component. It has to: the server keeps only
+     * hashes, so this response is the only time either secret exists outside the device, and
+     * the screen's whole job is to show the recovery code while it still can. Nothing reads
+     * it back afterwards — `needsAccount` answers with a boolean precisely so that the
+     * subscription every launch runs cannot carry a token.
+     *
+     * The key is stored before this returns, so a user who kills the app without reading the
+     * code keeps a working install. What they lose is the ability to ever add a second
+     * device, which no later call can give back.
+     */
+    createAccount: async (): Promise<Result<AccountCredentials, AccountError>> => {
+      if (gateway === undefined) return err(NO_BACKEND);
+      const created = await gateway.createAccount();
+      if (created.ok) adoptApiKey(created.value.apiKey);
+      return created;
+    },
+
+    /**
+     * Pairs this device to an account that already exists — the "typed a recovery code"
+     * branch.
+     *
+     * Returns nothing on success. The response carries an `accountId` and a fresh `apiKey`,
+     * and the screen has no use for either: the key is stored here, and the account is
+     * identified by the key from now on. A refusal is the only thing the caller acts on, and
+     * `AccountError.reason` is what tells "that code is wrong" from "you are offline".
+     */
+    linkAccount: async (recoveryCode: string): Promise<Result<void, AccountError>> => {
+      if (gateway === undefined) return err(NO_BACKEND);
+      const linked = await gateway.linkAccount(recoveryCode);
+      if (!linked.ok) return err(linked.error);
+      adoptApiKey(linked.value.apiKey);
+      return ok(undefined);
     },
 
     /** Null before the first sync; the header renders no season label rather than a wrong one. */

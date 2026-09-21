@@ -21,26 +21,38 @@
  * unauthenticated. Passing the getter means pairing takes effect on the next request rather
  * than on the next launch.
  *
- * Nothing guards against the window where a URL is configured and no key is stored yet — the
- * setup flow does, by standing in front of the roster until one is. Until that flow exists,
- * leaving the variable unset is what keeps this off.
+ * The window where a URL is configured and no key is stored yet **is** guarded now: the
+ * setup gate stands in front of the roster until one is (`needsAccount`), and the gateway
+ * below is what lets it mint one. Both are built from the same flag, so a build with no URL
+ * has no gate either — it is the hand-filled ladder ADR-0021 describes, and a sign-up screen
+ * in front of it would be asking for an account the product does not have.
  */
 
-import { RemoteRosterSource } from '../network';
+import { RemoteAccountGateway, RemoteRosterSource } from '../network';
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
 import { createRosterRepository } from './rosterRepository';
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 
+const configured = apiUrl === undefined || apiUrl === '' ? undefined : apiUrl;
+
 const backend =
-  apiUrl === undefined || apiUrl === ''
+  configured === undefined
     ? undefined
-    : new RemoteRosterSource(apiUrl, () => mmkvPreferences.getApiKey());
+    : new RemoteRosterSource(configured, () => mmkvPreferences.getApiKey());
+
+/**
+ * The account endpoints, which take no key because they are how this device gets one. Built
+ * from the same flag as the source: a build with no backend has no accounts either, and
+ * `needsAccount` reads its absence as "never gate this app".
+ */
+const accounts = configured === undefined ? undefined : new RemoteAccountGateway(configured);
 
 export const arenaRepository = createRosterRepository({
   db: arenaDb,
   source: backend,
   sink: backend,
+  gateway: accounts,
   preferences: mmkvPreferences,
 });

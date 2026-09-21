@@ -6,6 +6,13 @@
  * one of the three boundaries the formatting contract is tested at.
  */
 
+export type {
+  AccountCredentials,
+  AccountError,
+  AccountFailure,
+  AccountGateway,
+  LinkedAccount,
+} from './accountGateway';
 export { err, isOk, ok, type Result } from './result';
 export type {
   RosterPush,

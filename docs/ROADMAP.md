@@ -761,7 +761,12 @@ that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, whic
   JSON → Zod → SQLite → domain → UI path unchanged, **and** that a value above
   `Number.MAX_SAFE_INTEGER` is rejected at parse time rather than silently rounded. These are the
   §2.1 regression guards, and the second is the one this platform actually needs.
-- The `features/` diff for this phase is empty.
+- The `features/` diff for this phase is empty **of changes the swap forced**. Read as written this
+  is now literally false — `features/accountSetup` is new (ADR-0035's fifth addendum) — and the
+  distinction is the one that was always meant: no existing feature had to change to move the roster
+  from SQLite-only to server-backed, which is what this criterion exists to prove. The setup gate
+  and the sync indicator are UI the owner asked for on top, not the boundary giving way. If a
+  _pre-existing_ feature directory acquires a diff, the boundary was wrong.
 
 ---
 
