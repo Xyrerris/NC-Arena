@@ -1,0 +1,117 @@
+# Handoff — Phase 5, mid-flight
+
+**As of 2026-09-21.** Branch: `claude/backend-data-management-w98hph` (see CLAUDE.md — all work goes
+there until the owner says otherwise).
+
+This file says where Phase 5 stopped and which decisions are already made, so the next session
+argues about the right things. It is not a substitute for ADR-0035 and its four addenda in
+DECISIONS.md, which carry the reasoning; this is the map.
+
+## Where things stand
+
+The backend is **built, deployed and verified**. It runs on the owner's OVH VPS through Coolify as a
+Docker Compose resource with `backend/` as its base directory. The owner has confirmed `/health`,
+the TLS certificate, the migrations and account creation against the live service.
+
+The client can do the **whole round trip** — pull, push, adopt the ids the server assigns, set the
+viewer — and none of it is wired to a screen. `EXPO_PUBLIC_API_URL` is unset everywhere, so the app
+builds no source at all and behaves exactly as ADR-0021 describes: a ladder that starts empty and is
+filled by hand. Nothing a user can see has changed yet.
+
+Three commits carry it:
+
+| Commit    | What it settled                                                                              |
+| --------- | -------------------------------------------------------------------------------------------- |
+| `06fd643` | The client's push half: wire schemas, domain → DTO mappers, `pushRoster` behind `RosterSink` |
+| `a63c4bd` | `POST /v1/roster/sync` made idempotent — `players.client_id` + a unique index                |
+| `d8732e9` | `syncRoster` in the repository, and `LOCAL` → `REMOTE` as an id rewrite that keeps records   |
+
+`npm run verify` is green on `d8732e9`: 533 tests across both Jest projects, 94.19 % statements
+against a 93 % threshold.
+
+## Decided already — do not reopen without the owner
+
+The owner answered these in session. They are settled:
+
+1. **A sync is push-then-pull as one operation**, fired by pull-to-refresh and by the periodic
+   `expo-background-task` — **not** on every local write. Local rows stay `LOCAL` until the next
+   sync.
+2. **The roster does not block during a sync.** Data stays on screen; a minimal, non-blocking
+   indicator (a small spinner or badge) says an operation is running; plus the "updated N ago" the
+   roadmap already asks for. A failure is a recoverable banner, never a crash or a blank screen —
+   that one is an exit criterion, not a preference.
+3. **First launch asks for a recovery code.** Entered and valid → `POST /v1/accounts/link`, which
+   returns a fresh API key for this device. Left empty → `POST /v1/accounts`, which mints an account
+   and shows the API key and recovery code **once**.
+4. **`EXPO_PUBLIC_API_URL` is the off switch**, and the API key lives in `core/prefs` (MMKV) beside
+   `viewerId`. The setup gate from (3) is what guarantees a key exists before the roster is
+   reachable — nothing else guards that window.
+
+One tension the owner and I agreed on: the roadmap's "the `features/` diff for this phase is empty"
+reads as _swapping the data source must not force feature changes_, and stays true. The setup screen
+and the sync indicator are additive UI the owner asked for, not the swap forcing anyone's hand.
+
+## What to pick up
+
+Roughly in dependency order. All of it is above the data layer; none of it needs the ports to change.
+
+- **The setup gate (decision 3).** A route that stands in front of the roster while
+  `preferences.getApiKey()` is null. Needs two calls the client does not have yet —
+  `POST /v1/accounts` and `POST /v1/accounts/link` — which belong in `core/network` beside
+  `RemoteRosterSource`, and a `core/data` seam to store the key. The recovery code is shown once and
+  never again: the screen has to say so, and losing it before a second device is paired is final for
+  that pairing.
+- **`useRoster` calls `syncRoster`** through TanStack Query, on pull-to-refresh. `@tanstack/react-query`
+  has been in `package.json` unreferenced since Phase 0 waiting for exactly this. **No component may
+  read `useQuery`'s data** (ARCHITECTURE.md §7) — the mutation writes to SQLite and the screens keep
+  reading `useLiveQuery`. This is the rule most likely to be broken by habit.
+- **The indicator, the banner and "updated N ago"** (decision 2). `preferences.getSeason()` is the
+  precedent for storing a scalar the snapshot carried; a "last synced at" would be the same shape.
+- **The periodic refresh.** `expo-background-task` is installed but referenced nowhere, and its
+  config-plugin declaration was deliberately removed from `app.config.ts` in 4.10 because it was a
+  no-op on Android — ADR-0034 decision 5 says it goes back **beside the code that uses it**. That is
+  this work.
+- **Turn the URL on** once the gate exists, and only then.
+
+## Things that will cost you a day if you rediscover them
+
+- **`POST /v1/roster/sync` is idempotent, and everything leans on that.** A replayed push is answered
+  with the ids assigned the first time. Before `a63c4bd` it duplicated every row; reproduced against
+  a real PostgreSQL 16 before fixing. If you touch `applyRosterSync`, the unique index on
+  `(account_id, client_id)` and the read-before-write are what hold it up.
+- **A head-to-head record cannot be pushed in the same sync that creates its players.** Both ends are
+  uuids on the wire and a `LOCAL` id is not one, so a record against a hand-entered player reaches
+  the server one sync later. It is not lost meanwhile — `replaceRoster` carries it across under the
+  adopted id. Making it one round trip means letting a record name its ends by `clientId` and
+  resolving them server-side: a real contract change, deliberately not made.
+- **A first sync usually takes three round trips.** `RosterSnapshot.viewerId` is not optional and a
+  fresh account has none, so the push returns no snapshot; the device seats the viewer with the id
+  the push just assigned, then pulls. With no local viewer there is nothing to seat and nothing to
+  apply, and the sync converges once somebody is the viewer.
+- **`replaceRoster`'s third argument is load-bearing in two places.** An adopted id drops out of the
+  kept set _and_ every record end is read through the map. Drop the second half and adopting a row
+  silently discards every match played against it — the promise 4.10.2 exists to keep.
+  `src/core/data/rosterSync.test.ts` fails if you break either half; that was checked by breaking
+  them.
+- **`editedPlayers` is always empty**, and that is the product: ADR-0020 lets the user edit only a
+  `LOCAL` row, so no screen can produce an edit to a row the server owns. The wire carries the case
+  because a second device can reach it.
+- **`backend/` is a second, independent package.** Its own `package.json` and `tsconfig.json`, and
+  `npm run verify` at the root does **not** touch it. Run `npm run typecheck` and `npm run build`
+  inside `backend/` yourself. It has no test runner at all — the backend's behaviour was verified by
+  driving a real Postgres by hand, which is a gap somebody should close.
+- **`npm run db:generate` needs no database**, and diffs against `migrations/meta/*_snapshot.json`.
+  The baseline snapshot exists now; before `a63c4bd` it did not, and generation silently re-emitted
+  the whole schema as the next migration.
+
+## Operational
+
+- A deploy that carries a new migration needs `node dist/db/migrate.js` run from the `app`
+  container's console in Coolify, right after the redeploy. Not `npm run db:migrate` — `tsx` is not
+  in the production image and `src/` is not copied into it.
+- **`0001_client_id.sql` has not been applied to the live database yet** unless the owner has done it
+  since 2026-09-21. Between the redeploy and that command, `applyRosterSync` writes to a column that
+  does not exist and every sync answers 500. Harmless while no client calls it; stops being harmless
+  the moment the setup gate ships.
+- Nothing backs up the Postgres volume. The `recoveryCode` shown at account creation is the only way
+  a second device ever joins that account.
