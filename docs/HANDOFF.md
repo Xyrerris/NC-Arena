@@ -20,7 +20,7 @@ runs until this device is paired. `EXPO_PUBLIC_API_URL` is still unset everywher
 no source, no gateway and therefore no gate, and behaves exactly as ADR-0021 describes: a ladder
 that starts empty and is filled by hand.
 
-Four commits carry it:
+Five commits carry it:
 
 | Commit    | What it settled                                                                                             |
 | --------- | ----------------------------------------------------------------------------------------------------------- |
@@ -28,8 +28,9 @@ Four commits carry it:
 | `a63c4bd` | `POST /v1/roster/sync` made idempotent — `players.client_id` + a unique index                               |
 | `d8732e9` | `syncRoster` in the repository, and `LOCAL` → `REMOTE` as an id rewrite that keeps records                  |
 | `5c5b792` | The setup gate: `AccountGateway`, `RemoteAccountGateway`, the `core/data` key seam, `features/accountSetup` |
+| `08ab09f` | Pull-to-refresh calls `syncRoster` through a TanStack mutation; the one `QueryClient` lands in `_layout`    |
 
-`npm run verify` is green: 570 tests across both Jest projects, 94.51 % statements against a 93 %
+`npm run verify` is green: 575 tests across both Jest projects, 94.51 % statements against a 93 %
 threshold.
 
 ## Decided already — do not reopen without the owner
@@ -64,12 +65,19 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   whether the gate opens. **Read the fifth addendum to ADR-0035 before touching it** — the gate
   latches its decision at mount rather than watching `needsAccount`, and the reason is the kind of
   bug that looks like success.
-- **`useRoster` calls `syncRoster`** through TanStack Query, on pull-to-refresh. `@tanstack/react-query`
-  has been in `package.json` unreferenced since Phase 0 waiting for exactly this. **No component may
-  read `useQuery`'s data** (ARCHITECTURE.md §7) — the mutation writes to SQLite and the screens keep
-  reading `useLiveQuery`. This is the rule most likely to be broken by habit.
-- **The indicator, the banner and "updated N ago"** (decision 2). `preferences.getSeason()` is the
-  precedent for storing a scalar the snapshot carried; a "last synced at" would be the same shape.
+- ~~**`useRoster` calls `syncRoster`** through TanStack Query, on pull-to-refresh.~~ **Done.** The
+  one mutation is in `useRoster`, the one `QueryClient` is in `_layout.tsx`, and there is no
+  `useQuery` anywhere. `retry` is set to 0 there with the reasoning written down — **that is the
+  knob the periodic task should turn up**, not a default to leave alone.
+- **The indicator, the banner and "updated N ago"** (decision 2) — **now the next thing, and more
+  urgent than it was.** A sync failure currently takes the roster down to `{ kind: 'error' }`, which
+  still meets the roadmap's exit criterion (a recoverable error, not a crash or a blank screen) but
+  **not** decision 2's "data stays on screen, a failure is a banner". That was harmless while
+  `refresh()` was a no-op and could not fail; it is not harmless now that pull-to-refresh makes a
+  real network call that will fail routinely. The fix is in `useRoster`'s `state` memo: `sync.error`
+  should stop feeding `failure` and become a line above the list, the way `recordError` already is.
+  `preferences.getSeason()` is the precedent for storing a scalar the snapshot carried; a "last
+  synced at" would be the same shape.
 - **The periodic refresh.** `expo-background-task` is installed but referenced nowhere, and its
   config-plugin declaration was deliberately removed from `app.config.ts` in 4.10 because it was a
   no-op on Android — ADR-0034 decision 5 says it goes back **beside the code that uses it**. That is
@@ -97,6 +105,12 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   silently discards every match played against it — the promise 4.10.2 exists to keep.
   `src/core/data/rosterSync.test.ts` fails if you break either half; that was checked by breaking
   them.
+- **An async handler needs an `async` act scope, in every screen and hook test.** A synchronous
+  `act(() => { result.current.onEvent(...) })` around a handler that starts a promise lets that
+  promise settle outside any act scope, and RNTL then corrupts the renderer **for the rest of the
+  file** — the next `render` produces an empty tree and the failure lands on an unrelated test with
+  a message about a missing testID. It cost two bisects in one session. `await act(async () => ...)`
+  everywhere, and suspect ordering first when a test passes alone and fails in the file.
 - **The setup gate latches at mount, and must keep doing so.** The API key is stored the instant
   `POST /v1/accounts` answers, so `needsAccount()` goes false **while the recovery code is still on
   screen**. A gate that watched it instead of latching would close over the only time that code is
