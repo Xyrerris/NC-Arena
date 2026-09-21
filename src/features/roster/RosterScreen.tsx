@@ -33,6 +33,8 @@ import type { MatchOutcome, PlayerId, RosterSort } from '@/core/model';
 import { RosterRow } from './RosterRow';
 import {
   SORT_OPTIONS,
+  SYNCING_LABEL,
+  SYNC_RETRY_LABEL,
   playerCountLabel,
   type RosterHeaderUi,
   type RosterRowUi,
@@ -122,6 +124,26 @@ function RosterHeader({
           </ArenaText>
         )}
       </View>
+
+      {/*
+        How old this ladder is, and whether that is being fixed right now. Both are a line
+        of text rather than anything that covers the list: the owner's decision 2 is that
+        the roster does not block during a sync, so this is the whole of the indicator.
+
+        The two swap rather than stack. "Syncing…" answers the question "how stale is
+        this?" better than the stale number does while a sync is in flight, and two lines
+        that contradict each other for a second is worse than one that is always current.
+      */}
+      {header.isSyncing || header.lastSyncedLabel !== null ? (
+        <ArenaText
+          variant="bodyCaption"
+          tone={header.isSyncing ? 'accent' : 'subtle'}
+          accessibilityLiveRegion="polite"
+          testID="roster-sync-status"
+        >
+          {header.isSyncing ? SYNCING_LABEL : header.lastSyncedLabel}
+        </ArenaText>
+      ) : null}
 
       {/*
         The add control sits beside the count rather than floating over the list. A FAB
@@ -253,9 +275,49 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
             </View>
           ) : null}
 
+          {/*
+            A sync that failed says so here, above a ladder that is still entirely usable.
+            It is not the `error` state and that is the point: being offline does not make
+            the rows already on this device unreadable, and taking them away to report it
+            would do so at exactly the moment the user cannot get them back.
+
+            It carries its own retry because pull-to-refresh is a gesture with nothing on
+            screen to announce it — and because this banner is reachable in the empty
+            state, where there may be no rows to pull against.
+          */}
+          {state.syncError === null ? null : (
+            <View style={styles.syncError}>
+              <ArenaText
+                variant="bodySmall"
+                tone="negative"
+                accessibilityLiveRegion="polite"
+                testID="roster-sync-error"
+              >
+                {state.syncError}
+              </ArenaText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Try syncing again"
+                onPress={onRetry}
+                style={styles.syncRetry}
+                testID="roster-sync-retry"
+              >
+                <ArenaText variant="labelStrong" tone="accent">
+                  {SYNC_RETRY_LABEL}
+                </ArenaText>
+              </Pressable>
+            </View>
+          )}
+
           <FlashList
             data={state.kind === 'ready' ? state.rows : NO_ROWS}
             extraData={state.header.sort}
+            // Pull-to-refresh, which is what fires a sync (the owner's decision 1). Until
+            // now the only way to reach one was the `error` screen's TRY AGAIN — and that
+            // screen is no longer where a sync failure lands, so without this gesture a
+            // sync would have become unreachable.
+            refreshing={state.header.isSyncing}
+            onRefresh={onRetry}
             keyExtractor={(row) => row.id}
             renderItem={({ item }) => (
               <RosterRow row={item} onPress={onOpenPlayer} onRecord={onRecord} />
@@ -331,6 +393,21 @@ const styles = StyleSheet.create({
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
   recordError: { paddingHorizontal: layout.screenGutter, paddingTop: space[8] },
+  syncError: {
+    flexDirection: 'row',
+    // Wraps rather than shrinks, like every other text-beside-control row: at 200 % font
+    // scale the sentence and the button cannot share a line.
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: layout.screenGutter,
+    paddingTop: space[8],
+    gap: space[8],
+  },
+  syncRetry: {
+    minHeight: layout.minTouchTarget,
+    justifyContent: 'center',
+  },
   list: { paddingBottom: space[40] },
   centred: {
     flex: 1,

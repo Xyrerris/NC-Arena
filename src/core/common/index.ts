@@ -21,6 +21,7 @@ export type {
   RosterSnapshot,
   RosterSource,
 } from './rosterSource';
+export { nextChangeIn, timeSince } from './relativeTime';
 export { assertSafeInteger, divideHalfUp, pow10, rescaleHalfUp } from './rounding';
 export {
   DOT_SEPARATORS,

@@ -313,6 +313,13 @@ export const createRosterRepository = ({
     replaceRoster(db, snapshot, adopted);
     preferences.setViewerId(snapshot.viewerId);
     preferences.setSeason(snapshot.season);
+    // Stamped here rather than where the request succeeded, and the difference is the whole
+    // meaning of the label: this records when rows from the server were last *applied* to
+    // this device, not when one was last asked for. A sync that lands on an account with no
+    // viewer yet returns ok with no snapshot (see `syncRoster`) and does not reach this
+    // line — nothing was updated, so "updated just now" would be a claim about a ladder
+    // that did not move.
+    preferences.setLastSyncedAt(Date.now());
     // A sync moves the same id the user can move, so it announces it the same way.
     notifyViewerChanged();
   };
@@ -508,6 +515,10 @@ export const createRosterRepository = ({
     if (backup.viewerId === null) preferences.clearViewerId();
     else preferences.setViewerId(asPlayerId(backup.viewerId));
     if (backup.season !== null) preferences.setSeason(backup.season);
+    // Every row on screen now came from a file, so the last sync no longer describes any of
+    // them. Cleared rather than left behind: the roster renders no staleness label at all
+    // instead of dating a restored ladder by a sync that did not produce it.
+    preferences.clearLastSyncedAt();
     // A restore moves the same id a sync moves, so it announces it the same way.
     notifyViewerChanged();
 
@@ -818,6 +829,20 @@ export const createRosterRepository = ({
 
     /** Null before the first sync; the header renders no season label rather than a wrong one. */
     getSeason: (): number | null => preferences.getSeason(),
+
+    /**
+     * When rows from the server were last applied, as epoch milliseconds — the input to the
+     * roster's "updated N ago" (ROADMAP.md Phase 5's staleness policy).
+     *
+     * Null before the first sync, and null again after a restore from a file. Both mean the
+     * same thing to the screen: nothing here can honestly say how old this ladder is, so it
+     * says nothing.
+     *
+     * A plain read, like `getSeason`. It changes only when `write` runs, and `write`
+     * already announces itself through `subscribeViewerId` — so every screen reading this
+     * re-renders when it moves without a second subscription to keep in step.
+     */
+    getLastSyncedAt: (): number | null => preferences.getLastSyncedAt(),
 
     getShortUnit: (): ShortUnit => preferences.getShortUnit(),
     setShortUnit: (unit: ShortUnit): void => preferences.setShortUnit(unit),

@@ -13,6 +13,7 @@ export const createMemoryPreferences = (
     rosterSort: RosterSort;
     viewerId: PlayerId;
     season: number;
+    lastSyncedAt: number;
     apiKey: string;
   }> = {},
 ): ArenaPreferences => {
@@ -20,6 +21,7 @@ export const createMemoryPreferences = (
   let rosterSort = isRosterSort(initial.rosterSort) ? initial.rosterSort : DEFAULT_ROSTER_SORT;
   let viewerId: PlayerId | null = initial.viewerId ?? null;
   let season: number | null = initial.season ?? null;
+  let lastSyncedAt: number | null = initial.lastSyncedAt ?? null;
   let apiKey: string | null = initial.apiKey ?? null;
 
   return {
@@ -41,6 +43,13 @@ export const createMemoryPreferences = (
     getSeason: () => season,
     setSeason: (next) => {
       season = next;
+    },
+    getLastSyncedAt: () => lastSyncedAt,
+    setLastSyncedAt: (at) => {
+      lastSyncedAt = at;
+    },
+    clearLastSyncedAt: () => {
+      lastSyncedAt = null;
     },
     getApiKey: () => apiKey,
     setApiKey: (key) => {

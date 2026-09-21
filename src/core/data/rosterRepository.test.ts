@@ -26,6 +26,7 @@ import {
 } from '../model';
 import { createMemoryPreferences } from '../prefs';
 import { createTestDatabase, type TestDatabase } from '../testing';
+import { serialiseBackup } from './rosterBackup';
 import { PlayerDraftRejected, createRosterRepository } from './rosterRepository';
 
 const player = (id: string, name: string, rank: number, combatPower: number): Player => ({
@@ -282,7 +283,9 @@ describe('rosterRepository — refresh and an empty start', () => {
   it('treats a refresh with no source as nothing to do, not as a failure', async () => {
     // There is no upstream yet, and the roster is already showing everything there is.
     // An error here would put a working, hand-filled roster behind "The ladder could not
-    // be read" — see `RosterUiState`, where any failure replaces the whole list.
+    // be read" — the `error` state in `RosterUiState`, which is still where an unreadable
+    // *query* lands. A failed sync no longer goes there; it is a banner over a readable
+    // ladder (the owner's decision 2).
     const handle = createTestDatabase();
     const repo = createRosterRepository({
       db: handle.db,
@@ -1302,5 +1305,83 @@ describe('rosterRepository — recording a match from the roster', () => {
     for (let i = 0; i < 5; i += 1) repo.recordMatch(asPlayerId('p-b'), 'WIN');
 
     expect(order()).toEqual(['Brann', 'Cinder', 'Aurel', 'Dross']);
+  });
+});
+
+describe('rosterRepository — how old the ladder is', () => {
+  /**
+   * The input to the roster's "updated N ago" (ROADMAP.md Phase 5's staleness policy). It
+   * is asserted here rather than through a screen because what it means is a data question:
+   * *when did rows from the server last land on this device*, which is not the same as
+   * "when did a request last succeed".
+   */
+  let handle: TestDatabase;
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+  });
+
+  afterEach(() => {
+    handle.close();
+  });
+
+  it('is null before anything has ever been synced', () => {
+    const repo = createRosterRepository({
+      db: handle.db,
+      preferences: createMemoryPreferences(),
+    });
+
+    // The header renders no staleness label at all rather than dating an empty ladder.
+    expect(repo.getLastSyncedAt()).toBeNull();
+  });
+
+  it('is stamped when a snapshot is applied', async () => {
+    const before = Date.now();
+    const repo = repositoryOn(handle);
+
+    expect((await repo.refresh()).ok).toBe(true);
+
+    const stamped = repo.getLastSyncedAt();
+    expect(stamped).not.toBeNull();
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('is not stamped by a refresh that failed', async () => {
+    const failing: RosterSource = {
+      name: 'failing',
+      fetchRoster: async () => err(new Error('offline')),
+    };
+    const repo = repositoryOn(handle, failing);
+
+    expect((await repo.refresh()).ok).toBe(false);
+
+    // Nothing landed, so nothing here may claim the ladder is fresh.
+    expect(repo.getLastSyncedAt()).toBeNull();
+  });
+
+  it('moves forward on a later sync', async () => {
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    const first = repo.getLastSyncedAt();
+
+    // A real clock, so the second stamp has to be at least the first.
+    expect((await repo.refresh()).ok).toBe(true);
+
+    expect(repo.getLastSyncedAt()).toBeGreaterThanOrEqual(first ?? 0);
+  });
+
+  it('is forgotten by a restore, because the rows no longer came from a sync', async () => {
+    // ADR-0033 replaces every row from a file. A timestamp left behind would date that
+    // ladder by a sync that did not produce it, and "Updated 2 min ago" would be a claim
+    // about rows the server has never seen.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    expect(repo.getLastSyncedAt()).not.toBeNull();
+
+    const file = serialiseBackup(repo.exportSnapshot());
+    expect(repo.importSnapshot(file).ok).toBe(true);
+
+    expect(repo.getLastSyncedAt()).toBeNull();
   });
 });

@@ -52,6 +52,18 @@ export const mmkvPreferences: ArenaPreferences = {
   },
   setSeason: (season) => storage.set(PREF_KEYS.season, season),
 
+  getLastSyncedAt: () => {
+    const stored = storage.getNumber(PREF_KEYS.lastSyncedAt);
+    // Validated like the season, and for the same reason: a value written by code that no
+    // longer exists, or a fractional one, would render as a staleness label nobody can
+    // explain. `<= 0` catches a cleared-to-zero write as "never synced" too.
+    return stored === undefined || !Number.isSafeInteger(stored) || stored <= 0 ? null : stored;
+  },
+  setLastSyncedAt: (at) => storage.set(PREF_KEYS.lastSyncedAt, at),
+  clearLastSyncedAt: () => {
+    storage.remove(PREF_KEYS.lastSyncedAt);
+  },
+
   getApiKey: () => {
     const stored = storage.getString(PREF_KEYS.apiKey);
     return stored === undefined || stored === '' ? null : stored;

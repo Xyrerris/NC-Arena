@@ -357,7 +357,31 @@ describe('useRoster', () => {
       });
     });
 
-    it('surfaces a failed refresh, and clears it when the search changes', async () => {
+    it('keeps the ladder on screen when a sync fails, and says so above it', async () => {
+      // The owner's decision 2. Airplane mode is exactly when somebody needs to read the
+      // rows they already have, so a failed sync is a line above them, never the `error`
+      // state that replaces them.
+      const failing: RosterSource = {
+        name: 'failing',
+        fetchRoster: async () => err(new Error('airplane mode')),
+      };
+      const repo = wired.restart(failing);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          kind: 'ready',
+          syncError: 'airplane mode',
+        }),
+      );
+      expect(namesOf(result.current.state)).toEqual(['Aurel', 'Brann', 'Cinder', 'Dross']);
+    });
+
+    it('clears a stale sync failure when the search changes', async () => {
       const failing: RosterSource = {
         name: 'failing',
         fetchRoster: async () => err(new Error('airplane mode')),
@@ -369,7 +393,7 @@ describe('useRoster', () => {
         result.current.onEvent({ type: 'refresh' });
       });
       await waitFor(() =>
-        expect(result.current.state).toMatchObject({ kind: 'error', message: 'airplane mode' }),
+        expect(result.current.state).toMatchObject({ syncError: 'airplane mode' }),
       );
 
       // A stale failure must not outlive the query that caused it, or the roster looks
@@ -377,7 +401,7 @@ describe('useRoster', () => {
       await act(async () => {
         result.current.onEvent({ type: 'search', query: 'a' });
       });
-      expect(result.current.state).toMatchObject({ kind: 'ready' });
+      expect(result.current.state).toMatchObject({ kind: 'ready', syncError: null });
     });
 
     it('recovers when a retry succeeds', async () => {
@@ -395,12 +419,14 @@ describe('useRoster', () => {
       await act(async () => {
         result.current.onEvent({ type: 'refresh' });
       });
-      await waitFor(() => expect(result.current.state).toMatchObject({ kind: 'error' }));
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ syncError: 'airplane mode' }),
+      );
 
       await act(async () => {
         result.current.onEvent({ type: 'refresh' });
       });
-      await waitFor(() => expect(result.current.state).toMatchObject({ kind: 'ready' }));
+      await waitFor(() => expect(result.current.state).toMatchObject({ syncError: null }));
       expect(attempts).toBe(2);
     });
   });
@@ -471,16 +497,16 @@ describe('useRoster', () => {
 
       await waitFor(() =>
         expect(result.current.state).toMatchObject({
-          kind: 'error',
-          message: 'backend: OFFLINE — no network',
-          canRetry: true,
+          kind: 'ready',
+          syncError: 'backend: OFFLINE — no network',
         }),
       );
     });
 
     it('reports a sync in flight, and stops reporting one when it lands', async () => {
-      // `isRefreshing` is the mutation's `isPending` now. The roster stays on screen
-      // throughout — decision 2 — so this is a spinner on a list, never a blank screen.
+      // `header.isSyncing` is the mutation's `isPending`, and it drives both the
+      // pull-to-refresh spinner and the badge. The roster stays on screen throughout —
+      // decision 2 — so this is a spinner on a list, never a blank screen.
       let land = (): void => {};
       const held = new Promise<void>((resolve) => {
         land = resolve;
@@ -502,14 +528,19 @@ describe('useRoster', () => {
       await act(async () => {
         result.current.onEvent({ type: 'refresh' });
       });
-      expect(result.current.state).toMatchObject({ kind: 'ready', isRefreshing: true });
+      expect(result.current.state).toMatchObject({
+        kind: 'ready',
+        header: { isSyncing: true },
+      });
 
       await act(async () => {
         land();
         await held;
       });
 
-      await waitFor(() => expect(result.current.state).toMatchObject({ isRefreshing: false }));
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ header: { isSyncing: false } }),
+      );
     });
 
     it('falls back to a plain pull when there is no sink, so a backendless build is unchanged', async () => {
@@ -530,6 +561,63 @@ describe('useRoster', () => {
 
       await waitFor(() => expect(pulls).toBe(1));
       expect(result.current.state).toMatchObject({ kind: 'ready' });
+    });
+  });
+
+  /**
+   * ROADMAP.md Phase 5's staleness policy, at the seam where it becomes a string. The
+   * arithmetic itself is proven in `core/common/relativeTime.test.ts`; what is asserted
+   * here is that the roster asks the right question and renders nothing when it cannot
+   * answer.
+   */
+  describe('how old the ladder is', () => {
+    it('says how long ago the last sync landed', async () => {
+      // `beforeEach` refreshed, so the stamp is moments old.
+      const { result } = await mount();
+
+      expect(result.current.state).toMatchObject({
+        header: { lastSyncedLabel: 'Updated just now' },
+      });
+    });
+
+    it('renders no staleness label when nothing has synced on this device', async () => {
+      // Fresh preferences over rows that are already there — which is exactly what a
+      // restore from a file leaves behind (ADR-0033): a full ladder no sync produced.
+      // Rendering nothing beats dating it by a sync that did not happen.
+      const repo = createTestRepository(handle.db).repository;
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      expect(result.current.state).toMatchObject({ header: { lastSyncedLabel: null } });
+      expect(namesOf(result.current.state)).toHaveLength(4);
+    });
+
+    it('is not syncing when nothing is in flight', async () => {
+      const { result } = await mount();
+
+      expect(result.current.state).toMatchObject({ header: { isSyncing: false } });
+    });
+
+    it('keeps the staleness label through a failed sync, because it is still true', async () => {
+      // The ladder did not move, so how old it is did not change. Blanking the label on a
+      // failure would lose the one fact the user most needs when the server is unreachable.
+      const failing: RosterSource = {
+        name: 'failing',
+        fetchRoster: async () => err(new Error('airplane mode')),
+      };
+      const { repository: repo, preferences: prefs } = createTestRepository(handle.db, failing);
+      prefs.setLastSyncedAt(Date.now());
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          syncError: 'airplane mode',
+          header: { lastSyncedLabel: 'Updated just now' },
+        }),
+      );
     });
   });
 });

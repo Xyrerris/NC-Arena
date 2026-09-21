@@ -16,12 +16,14 @@
  */
 
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { nextChangeIn } from '@/core/common';
 import { useArenaData, useViewerId } from '@/core/data';
 import type { RosterSort } from '@/core/model';
 import {
   seasonLabel,
+  updatedLabel,
   toRosterRowUi,
   toViewerCardUi,
   type RosterEvent,
@@ -156,9 +158,37 @@ export const useRoster = (): RosterController => {
     [clearSyncError, repository, startSync],
   );
 
-  const failure = roster.error ?? viewer.error ?? sync.error;
+  /**
+   * Only the *reads* can break this screen. A query that cannot run means there is no
+   * ladder to show and the error state is the honest answer; a sync that failed means the
+   * ladder on screen is older than the user hoped, which is a line above it rather than a
+   * reason to take it away (the owner's decision 2). That distinction is the whole of this
+   * item, and putting `sync.error` back in here is how it would be undone.
+   */
+  const failure = roster.error ?? viewer.error;
 
   const season = repository.getSeason();
+  const lastSyncedAt = repository.getLastSyncedAt();
+
+  /**
+   * The clock the staleness label is rendered against.
+   *
+   * It is state with a self-rescheduling timer rather than a fixed interval, because
+   * `nextChangeIn` knows exactly when the label could next read differently: within the
+   * minute while it counts minutes, within the day once it counts days. A 30-second
+   * interval would wake React ~2 900 times a day to re-render the string "3 d ago".
+   *
+   * The timeout is scheduled against a **fresh** `Date.now()`, not against `now`. After a
+   * long stretch with no label to tick — a device that has never synced — `now` is as old
+   * as this screen, and scheduling from it would put the first tick an hour late.
+   */
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (lastSyncedAt === null) return;
+    const id = setTimeout(() => setNow(Date.now()), nextChangeIn(lastSyncedAt, Date.now()));
+    return () => clearTimeout(id);
+  }, [lastSyncedAt, now]);
 
   const header: RosterHeaderUi = useMemo(
     () => ({
@@ -166,8 +196,10 @@ export const useRoster = (): RosterController => {
       viewer: viewerUi,
       totalPlayers: rosterSize.data,
       sort,
+      lastSyncedLabel: updatedLabel(lastSyncedAt, now),
+      isSyncing: sync.isPending,
     }),
-    [season, viewerUi, rosterSize.data, sort],
+    [season, viewerUi, rosterSize.data, sort, lastSyncedAt, now, sync.isPending],
   );
 
   const state: RosterUiState = useMemo(() => {
@@ -179,16 +211,17 @@ export const useRoster = (): RosterController => {
     // no swipe, then grow one a frame later. Waiting for both trades a flicker of wrong
     // affordances for a slightly longer spinner.
     if (!roster.loaded || !viewer.loaded) return { kind: 'loading' };
-    if (rows.length === 0) return { kind: 'empty', query, header };
+    const syncError = sync.error?.message ?? null;
+    if (rows.length === 0) return { kind: 'empty', query, header, syncError };
     return {
       kind: 'ready',
       header,
       rows,
       query,
-      isRefreshing: sync.isPending,
       recordError: recordError?.message ?? null,
+      syncError,
     };
-  }, [failure, roster.loaded, viewer.loaded, rows, query, header, sync.isPending, recordError]);
+  }, [failure, roster.loaded, viewer.loaded, rows, query, header, sync.error, recordError]);
 
   return { state, onEvent };
 };

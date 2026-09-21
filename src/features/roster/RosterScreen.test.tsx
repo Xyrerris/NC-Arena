@@ -639,3 +639,128 @@ describe('RosterScreen — recording a match from a row', () => {
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'p-b' } });
   });
 });
+
+/**
+ * The owner's decision 2, on screen: the roster does not block during a sync, a small
+ * indicator says one is running, and a failure is a recoverable banner over a ladder that
+ * is still entirely readable — never a crash and never a blank screen, which is also
+ * ROADMAP.md Phase 5's exit criterion.
+ */
+describe('RosterScreen — syncing, and saying so', () => {
+  let handle: TestDatabase;
+  let wired: TestRepository;
+
+  beforeEach(async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    mockPush.mockClear();
+    handle = createTestDatabase();
+    wired = createTestRepository(handle.db, sourceOf(FIXTURE));
+    expect((await wired.repository.refresh()).ok).toBe(true);
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    handle.close();
+  });
+
+  it('syncs when the list is pulled down', async () => {
+    // Until this gesture existed the only way to reach a sync was the `error` screen's
+    // TRY AGAIN — and a sync failure no longer lands there, so without this the feature
+    // would be unreachable.
+    let attempts = 0;
+    const counting: RosterSource = {
+      name: 'counting',
+      fetchRoster: async () => {
+        attempts += 1;
+        return ok(FIXTURE);
+      },
+    };
+    await renderRoster(wired.restart(counting));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+
+    await waitFor(() => expect(attempts).toBe(1));
+  });
+
+  it('shows how old the ladder is', async () => {
+    await renderRoster(wired.repository);
+
+    expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Updated just now');
+  });
+
+  it('keeps every row on screen when a sync fails, and explains above them', async () => {
+    const failing: RosterSource = {
+      name: 'failing',
+      fetchRoster: async () => err(new Error('airplane mode')),
+    };
+    await renderRoster(wired.restart(failing));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+
+    await waitFor(() => expect(screen.getByTestId('roster-sync-error')).toBeTruthy());
+    expect(screen.getByTestId('roster-sync-error')).toHaveTextContent('airplane mode');
+    // The exit criterion, stated as an assertion: not a crash, and not a blank screen.
+    expect(screen.queryByTestId('roster-error')).toBeNull();
+    await expectNames(['Aurel', 'Brann', 'Cinder', 'Dross']);
+  });
+
+  it('offers a retry on the banner that runs another sync', async () => {
+    let attempts = 0;
+    const flaky: RosterSource = {
+      name: 'flaky',
+      fetchRoster: async () => {
+        attempts += 1;
+        return attempts === 1 ? err(new Error('airplane mode')) : ok(FIXTURE);
+      },
+    };
+    await renderRoster(wired.restart(flaky));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+    await waitFor(() => expect(screen.getByTestId('roster-sync-error')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('roster-sync-retry'));
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('roster-sync-error')).toBeNull());
+    expect(attempts).toBe(2);
+  });
+
+  it('says a sync is running, without taking the ladder away', async () => {
+    let land = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    const slow: RosterSource = {
+      name: 'slow',
+      fetchRoster: async () => {
+        await held;
+        return ok(FIXTURE);
+      },
+    };
+    await renderRoster(wired.restart(slow));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+
+    expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Syncing…');
+    // The whole of decision 2: the rows stay exactly where they were.
+    await expectNames(['Aurel', 'Brann', 'Cinder', 'Dross']);
+
+    await act(async () => {
+      land();
+      await held;
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Updated just now'),
+    );
+  });
+});

@@ -44,6 +44,24 @@ export interface ArenaPreferences {
   setSeason(season: number): void;
 
   /**
+   * When a snapshot from the server was last written to this device, as epoch
+   * milliseconds. Null before the first sync — and the roster renders no staleness label
+   * at all rather than guessing, the same rule `getSeason` follows.
+   *
+   * It is set where `setSeason` is, because it is the same kind of fact: a scalar that
+   * belongs to the snapshot as a whole rather than to any row in it.
+   */
+  getLastSyncedAt(): number | null;
+  setLastSyncedAt(at: number): void;
+  /**
+   * Forgets when the ladder last came from the server. A **restore** is the caller
+   * (ADR-0033): it replaces every row from a file, so a timestamp left behind would date
+   * rows the server never sent. Back to null is the honest answer — the same "render
+   * nothing rather than a guess" the season label already makes.
+   */
+  clearLastSyncedAt(): void;
+
+  /**
    * This device's bearer token for the backend — null until an account exists (ADR-0035,
    * decision 2). `core/network` takes it as a constructor argument and cannot read it
    * itself: `core/data` is the only layer allowed to reach `core/prefs` (§4), so it is also
@@ -73,5 +91,6 @@ export const PREF_KEYS = {
   rosterSort: 'pref.rosterSort',
   viewerId: 'pref.viewerId',
   season: 'pref.season',
+  lastSyncedAt: 'pref.lastSyncedAt',
   apiKey: 'pref.apiKey',
 } as const;
