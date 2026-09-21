@@ -4,7 +4,7 @@
 there until the owner says otherwise).
 
 This file says where Phase 5 stopped and which decisions are already made, so the next session
-argues about the right things. It is not a substitute for ADR-0035 and its four addenda in
+argues about the right things. It is not a substitute for ADR-0035 and its five addenda in
 DECISIONS.md, which carry the reasoning; this is the map.
 
 ## Where things stand
@@ -14,20 +14,23 @@ Docker Compose resource with `backend/` as its base directory. The owner has con
 the TLS certificate, the migrations and account creation against the live service.
 
 The client can do the **whole round trip** — pull, push, adopt the ids the server assigns, set the
-viewer — and none of it is wired to a screen. `EXPO_PUBLIC_API_URL` is unset everywhere, so the app
-builds no source at all and behaves exactly as ADR-0021 describes: a ladder that starts empty and is
-filled by hand. Nothing a user can see has changed yet.
+viewer — and the **setup gate is now the one part of it wired to a screen**: with a URL configured,
+a launch with no stored key shows `features/accountSetup` instead of the roster, and nothing else
+runs until this device is paired. `EXPO_PUBLIC_API_URL` is still unset everywhere, so the app builds
+no source, no gateway and therefore no gate, and behaves exactly as ADR-0021 describes: a ladder
+that starts empty and is filled by hand.
 
-Three commits carry it:
+Four commits carry it:
 
-| Commit    | What it settled                                                                              |
-| --------- | -------------------------------------------------------------------------------------------- |
-| `06fd643` | The client's push half: wire schemas, domain → DTO mappers, `pushRoster` behind `RosterSink` |
-| `a63c4bd` | `POST /v1/roster/sync` made idempotent — `players.client_id` + a unique index                |
-| `d8732e9` | `syncRoster` in the repository, and `LOCAL` → `REMOTE` as an id rewrite that keeps records   |
+| Commit    | What it settled                                                                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| `06fd643` | The client's push half: wire schemas, domain → DTO mappers, `pushRoster` behind `RosterSink`                |
+| `a63c4bd` | `POST /v1/roster/sync` made idempotent — `players.client_id` + a unique index                               |
+| `d8732e9` | `syncRoster` in the repository, and `LOCAL` → `REMOTE` as an id rewrite that keeps records                  |
+| `5c5b792` | The setup gate: `AccountGateway`, `RemoteAccountGateway`, the `core/data` key seam, `features/accountSetup` |
 
-`npm run verify` is green on `d8732e9`: 533 tests across both Jest projects, 94.19 % statements
-against a 93 % threshold.
+`npm run verify` is green: 570 tests across both Jest projects, 94.51 % statements against a 93 %
+threshold.
 
 ## Decided already — do not reopen without the owner
 
@@ -55,12 +58,12 @@ and the sync indicator are additive UI the owner asked for, not the swap forcing
 
 Roughly in dependency order. All of it is above the data layer; none of it needs the ports to change.
 
-- **The setup gate (decision 3).** A route that stands in front of the roster while
-  `preferences.getApiKey()` is null. Needs two calls the client does not have yet —
-  `POST /v1/accounts` and `POST /v1/accounts/link` — which belong in `core/network` beside
-  `RemoteRosterSource`, and a `core/data` seam to store the key. The recovery code is shown once and
-  never again: the screen has to say so, and losing it before a second device is paired is final for
-  that pairing.
+- ~~**The setup gate (decision 3).**~~ **Done.** `AccountGateway` (core/common) is implemented by
+  `RemoteAccountGateway` over the two unauthenticated endpoints; `createAccount`/`linkAccount` on
+  the repository store the key; `useNeedsAccount` and `ArenaGate` in `src/app/_layout.tsx` decide
+  whether the gate opens. **Read the fifth addendum to ADR-0035 before touching it** — the gate
+  latches its decision at mount rather than watching `needsAccount`, and the reason is the kind of
+  bug that looks like success.
 - **`useRoster` calls `syncRoster`** through TanStack Query, on pull-to-refresh. `@tanstack/react-query`
   has been in `package.json` unreferenced since Phase 0 waiting for exactly this. **No component may
   read `useQuery`'s data** (ARCHITECTURE.md §7) — the mutation writes to SQLite and the screens keep
@@ -71,7 +74,8 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   config-plugin declaration was deliberately removed from `app.config.ts` in 4.10 because it was a
   no-op on Android — ADR-0034 decision 5 says it goes back **beside the code that uses it**. That is
   this work.
-- **Turn the URL on** once the gate exists, and only then.
+- **Turn the URL on.** The gate exists now, so this is unblocked — but see "Operational" below
+  first: `0001_client_id.sql` has to be applied before the first device syncs, not after.
 
 ## Things that will cost you a day if you rediscover them
 
@@ -93,6 +97,13 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   silently discards every match played against it — the promise 4.10.2 exists to keep.
   `src/core/data/rosterSync.test.ts` fails if you break either half; that was checked by breaking
   them.
+- **The setup gate latches at mount, and must keep doing so.** The API key is stored the instant
+  `POST /v1/accounts` answers, so `needsAccount()` goes false **while the recovery code is still on
+  screen**. A gate that watched it instead of latching would close over the only time that code is
+  ever shown — and the server keeps only its hash, so the account would be permanently unreachable
+  from any second device, with the app looking like setup had succeeded.
+  `AccountSetupScreen.test.tsx`'s "keeps the code on screen although the key is already stored"
+  fails if you swap the latch for a live read.
 - **`editedPlayers` is always empty**, and that is the product: ADR-0020 lets the user edit only a
   `LOCAL` row, so no screen can produce an edit to a row the server owns. The wire carries the case
   because a second device can reach it.
