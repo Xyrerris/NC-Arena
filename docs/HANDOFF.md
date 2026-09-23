@@ -16,9 +16,11 @@ the TLS certificate, the migrations and account creation against the live servic
 The client can do the **whole round trip** — pull, push, adopt the ids the server assigns, set the
 viewer — and the **setup gate is now the one part of it wired to a screen**: with a URL configured,
 a launch with no stored key shows `features/accountSetup` instead of the roster, and nothing else
-runs until this device is paired. `EXPO_PUBLIC_API_URL` is still unset everywhere, so the app builds
-no source, no gateway and therefore no gate, and behaves exactly as ADR-0021 describes: a ladder
-that starts empty and is filled by hand.
+runs until this device is paired. `EXPO_PUBLIC_API_URL` is set in all three `eas.json` profiles
+(2026-09-23), so every EAS build talks to the live service. A local `expo start` does not read
+`eas.json`: without a `.env.local` carrying the same variable it builds no source, no gateway and
+therefore no gate, and behaves exactly as ADR-0021 describes — a ladder that starts empty and is
+filled by hand.
 
 Six commits carry it:
 
@@ -98,13 +100,11 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   `BackgroundTask.triggerTaskWorkerForTestingAsync()` runs it on demand — that is the check to do
   once the URL is on.
 
-- **Turn the URL on.** The gate, the periodic sync and the live schema are all ready. **What is
-  left is TLS:** as of 2026-09-23 the service answers `/health` over `http://` only — `https://`
-  on the same sslip.io host does not connect. A debug build reaches plain HTTP (React Native's
-  debug manifest allows cleartext, for Metro), but a `preview` or `production` build does not:
-  Android refuses cleartext by default, every request fails as `OFFLINE`, and the API key would
-  travel in the clear anyway. Either Coolify issues a certificate for the domain, or cleartext is
-  allowed on purpose (`expo-build-properties`, `usesCleartextTraffic`) — the owner's call.
+- ~~**Turn the URL on.**~~ **Done for EAS builds.** The service has a Let's Encrypt certificate
+  (Coolify, 2026-09-23; plain HTTP now redirects to HTTPS), and `eas.json` carries the `https://`
+  URL in every profile — no cleartext allowance was needed. Locally it is on only where a
+  `.env.local` sets it (git-ignored, so once per machine). What is not yet seen: a first account
+  created and a first sync completed against the live service from a device.
 - ~~**Run the migrations on every redeploy, automatically.**~~ **Done.** The backend's `Dockerfile`
   `CMD` is `node dist/db/migrate.js && exec node dist/index.js`: every container start applies what
   is new, then serves. A failed migration keeps the server from starting and the container
