@@ -79,6 +79,13 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  // The EAS project the builds belong to. Written by hand because `eas init` cannot write into
+  // a dynamic config, and without it `eas build` stops at linking the project. `owner` pins it
+  // to one account: the login can create projects in two, and EAS will not guess between them.
+  owner: 'xyrerris',
+  extra: {
+    eas: { projectId: 'cfaf7d02-5126-428e-bde0-6f2d478ff716' },
+  },
   experiments: {
     typedRoutes: true,
     // On by default in the SDK 57 template. Kept, and recorded in ADR-0003 —
