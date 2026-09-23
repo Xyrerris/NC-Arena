@@ -19,4 +19,13 @@ EXPOSE 3000
 # wget is busybox-provided on node:*-alpine, so it costs nothing extra to install.
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
   CMD wget -qO- http://127.0.0.1:3000/health || exit 1
-CMD ["node", "dist/index.js"]
+# Migrations run on every start, before the server listens. A deploy that carried a new
+# migration used to need somebody to open the container's console and run this by hand, and
+# every sync answered 500 until they did. The migrator skips what is already applied, so a start
+# with nothing new costs one query.
+#
+# `&&` is the failure policy: a migration that fails keeps the server from starting at all, and
+# the container restarts and retries. A server running against a schema it does not match would
+# answer 500 anyway — a stopped one says so in the logs instead of in every request.
+# `exec` hands PID 1 to node, so Coolify's stop signal reaches the server rather than the shell.
+CMD ["sh", "-c", "node dist/db/migrate.js && exec node dist/index.js"]

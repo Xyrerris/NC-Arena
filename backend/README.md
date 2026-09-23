@@ -70,21 +70,21 @@ is actually deployed.
    under its Git/webhook settings). From here, a `git push` to that branch is the whole deploy:
    Coolify's webhook fires, it rebuilds `app`'s image from this `Dockerfile` and restarts the
    stack — no SSH, no manual `docker compose` command.
-5. **Deploy once by hand** the first time (a "Deploy" button in Coolify), then apply the committed
-   migrations against the fresh `db`: open a console/terminal on the running `app` container from
-   Coolify's UI and run `node dist/db/migrate.js`. Coolify's exact label for this varies by
-   version — look for "Execute Command", "Terminal" or a console icon on the `app` service.
+5. **Deploy once by hand** the first time (a "Deploy" button in Coolify). The container applies
+   the committed migrations itself before the server starts (the `Dockerfile`'s `CMD` runs
+   `node dist/db/migrate.js` first), so a fresh `db` is ready as soon as `app` is healthy. If `app`
+   keeps restarting instead, read its logs: a failed migration stops the server from starting.
 6. **Verify:** `curl https://<your-domain>/health` should return `{"ok":true}`. The `HEALTHCHECK`
    baked into the image (`Dockerfile`) is also what Coolify reads to show `app` as healthy rather
    than just "running".
 
 ### Every deploy after that
 
-`git push` to the tracked branch → Coolify rebuilds and redeploys automatically. Run the migrate
-command from step 5 again only after a push that added a new file under `src/db/migrations/` — a
-redeploy with no new migration is a no-op for `db:migrate` (`drizzle-orm`'s migrator skips what is
-already applied), so running it on every deploy is harmless if you'd rather not track which pushes
-need it.
+`git push` to the tracked branch → Coolify rebuilds and redeploys automatically, and the new
+container applies any new file under `src/db/migrations/` before it listens. A redeploy with no new
+migration is a no-op for the migrator (`drizzle-orm` skips what is already applied). Running
+`node dist/db/migrate.js` from the container's console by hand still works, and is still
+idempotent, if you ever need it outside a deploy.
 
 ### Backups
 

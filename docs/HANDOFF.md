@@ -98,15 +98,18 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   `BackgroundTask.triggerTaskWorkerForTestingAsync()` runs it on demand — that is the check to do
   once the URL is on.
 
-- **Turn the URL on.** Nothing blocks it any more: the gate exists, the periodic sync exists, and
-  `0001_client_id.sql` is applied to the live database (see "Operational").
-- **Run the migrations on every redeploy, automatically.** Today a deploy that carries a migration
-  needs somebody to open the `app` container's console in Coolify and run
-  `node dist/db/migrate.js` by hand, and between the redeploy and that command every sync answers 500. The container already ships what the command needs (`dist/db/migrations` is copied in the
-  Dockerfile), so the fix is to run it before the server starts — a `CMD` of
-  `node dist/db/migrate.js && node dist/index.js`, or Coolify's pre/post-deployment command.
-  Decide what a failed migration does (the `&&` form refuses to start the new server, which keeps
-  the old one serving only if Coolify's health check holds the rollout back — check that it does).
+- **Turn the URL on.** The gate, the periodic sync and the live schema are all ready. **What is
+  left is TLS:** as of 2026-09-23 the service answers `/health` over `http://` only — `https://`
+  on the same sslip.io host does not connect. A debug build reaches plain HTTP (React Native's
+  debug manifest allows cleartext, for Metro), but a `preview` or `production` build does not:
+  Android refuses cleartext by default, every request fails as `OFFLINE`, and the API key would
+  travel in the clear anyway. Either Coolify issues a certificate for the domain, or cleartext is
+  allowed on purpose (`expo-build-properties`, `usesCleartextTraffic`) — the owner's call.
+- ~~**Run the migrations on every redeploy, automatically.**~~ **Done.** The backend's `Dockerfile`
+  `CMD` is `node dist/db/migrate.js && exec node dist/index.js`: every container start applies what
+  is new, then serves. A failed migration keeps the server from starting and the container
+  restarts; that is deliberate — a server on a schema it does not match answers 500 anyway, and a
+  stopped one says why in its logs. Not yet seen on the live deploy.
 
 ## Things that will cost you a day if you rediscover them
 
@@ -158,8 +161,8 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
 
 ## Operational
 
-- A deploy that carries a new migration needs `node dist/db/migrate.js` run from the `app`
-  container's console in Coolify, right after the redeploy — until the item above automates it. Not
+- Migrations apply themselves on every container start (see the `Dockerfile`). Running
+  `node dist/db/migrate.js` from the `app` container's console still works and is idempotent. Not
   `npm run db:migrate` — `tsx` is not in the production image and `src/` is not copied into it.
 - **`0001_client_id.sql` is applied to the live database** — the owner ran it from the container's
   terminal on 2026-09-23. The live schema now matches `applyRosterSync`.
