@@ -16,7 +16,6 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://app-aumtkrugfbxomdgdew0cngxn.158.69.253.229.sslip.io"
       },
@@ -25,7 +24,6 @@
       }
     },
     "production": {
-      "channel": "production",
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://app-aumtkrugfbxomdgdew0cngxn.158.69.253.229.sslip.io"
