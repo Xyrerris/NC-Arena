@@ -15,11 +15,11 @@
  * mutation owns only the *lifecycle*: is one in flight, and did the last one fail.
  */
 
-import { useMutation } from '@tanstack/react-query';
+import { useIsMutating, useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { nextChangeIn } from '@/core/common';
-import { useArenaData, useViewerId } from '@/core/data';
+import { SYNC_MUTATION_KEY, syncMutation, useArenaData, useViewerId } from '@/core/data';
 import type { RosterSort } from '@/core/model';
 import {
   seasonLabel,
@@ -94,27 +94,27 @@ export const useRoster = (): RosterController => {
    * to a plain pull by itself, so a build with no backend behaves exactly as it did.
    *
    * The mutation is what ARCHITECTURE.md §7 asks for by name: it owns "retry, backoff, is a
-   * refresh in flight". Two of those are visible here — `isPending` replaces a hand-rolled
-   * boolean, and the unmount bookkeeping that boolean needed is gone, because React Query
-   * does not deliver a result to an observer that has gone away.
+   * refresh in flight". Two of those are visible here — the mutation cache replaces a
+   * hand-rolled boolean, and the unmount bookkeeping that boolean needed is gone, because
+   * React Query does not deliver a result to an observer that has gone away.
+   *
+   * The key, scope and `mutationFn` are `syncMutation`'s, shared with the periodic task
+   * (`core/data/backgroundSync.ts`) — it is the same operation from a second caller.
    *
    * **`retry` is 0, deliberately, and this is the place that decision lives.** This sync is
    * a gesture: somebody pulled the list down and is watching it. Retrying behind a spinner
    * makes a failure take longer to report without making it likelier to succeed, and the
-   * remedy — pull again — is already in the user's hands. The periodic background task is
-   * the caller that has nobody watching and should turn this up; `POST /v1/roster/sync` is
-   * idempotent (a63c4bd), which is what will make that safe when it does.
+   * remedy — pull again — is already in the user's hands. The periodic task is the caller
+   * with nobody watching, and it turns this up (`BACKGROUND_SYNC_POLICY`).
    */
-  const sync = useMutation<void, Error>({
-    mutationFn: async () => {
-      const result = await repository.syncRoster();
-      // Two failure conventions meet here, and only here. `Result` is what this codebase
-      // uses for a failure the product has a screen for; a rejected promise is what React
-      // Query understands. Nothing else would set `error`, so the unwrap has to throw.
-      if (!result.ok) throw result.error;
-    },
-    retry: 0,
-  });
+  const sync = useMutation<void, Error>({ ...syncMutation(repository), retry: 0 });
+
+  /**
+   * Any sync in flight, not just this screen's. Read off the shared key so a background sync
+   * that runs while the app is open shows the same badge a pull does — and since the shared
+   * scope queues a pull behind it, the spinner covers the wait for both.
+   */
+  const isSyncing = useIsMutating({ mutationKey: SYNC_MUTATION_KEY }) > 0;
 
   // Stable across renders (React Query binds both), but named as dependencies anyway so the
   // handlers below do not have to be re-read to know what they close over.
@@ -197,9 +197,9 @@ export const useRoster = (): RosterController => {
       totalPlayers: rosterSize.data,
       sort,
       lastSyncedLabel: updatedLabel(lastSyncedAt, now),
-      isSyncing: sync.isPending,
+      isSyncing,
     }),
-    [season, viewerUi, rosterSize.data, sort, lastSyncedAt, now, sync.isPending],
+    [season, viewerUi, rosterSize.data, sort, lastSyncedAt, now, isSyncing],
   );
 
   const state: RosterUiState = useMemo(() => {

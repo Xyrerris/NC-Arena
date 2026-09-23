@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -8,7 +8,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ArenaDataProvider, useNeedsAccount, type ArenaData } from '@/core/data';
-import { arenaRepository } from '@/core/data/arenaRepository';
+import { arenaQueryClient, arenaRepository } from '@/core/data/arenaRepository';
+import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
 import { useExpoLiveData } from '@/core/data/expoLiveData';
 import { useArenaMigrations } from '@/core/db/client';
 import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-system';
@@ -50,19 +51,6 @@ void SplashScreen.preventAutoHideAsync();
  */
 const ARENA_DATA: ArenaData = { repository: arenaRepository, useLiveData: useExpoLiveData };
 
-/**
- * TanStack Query's client, which §4 puts here among the providers and §7 explains the job
- * of: it owns the sync call's lifecycle, and nothing else.
- *
- * There is not a single `useQuery` in this app and there is not meant to be. SQLite is the
- * source of truth, screens read it through `useLiveQuery`, and the one thing this client
- * holds is `useRoster`'s sync mutation — so there is no cache here for a component to read
- * from, which is the §7 rule stated as a fact about the wiring rather than as a convention.
- *
- * At module scope so the client outlives a re-render, the same reason `ARENA_DATA` is.
- */
-const queryClient = new QueryClient();
-
 export default function RootLayout() {
   const { success, error } = useArenaMigrations();
   const fonts = useArenaFonts();
@@ -75,6 +63,18 @@ export default function RootLayout() {
     if (ready) void SplashScreen.hideAsync();
   }, [ready]);
 
+  // The periodic sync is scheduled once the database is known to be usable. The task itself is
+  // *defined* in the entry, not here (see `core/data/backgroundSync.ts` for why); this only asks
+  // the OS to run it. Best-effort: a device that refuses background work still has
+  // pull-to-refresh, so a refusal is a development warning rather than a boot failure.
+  const booted = ready && !failure;
+  useEffect(() => {
+    if (!booted) return;
+    scheduleBackgroundSync().catch((cause: unknown) => {
+      if (__DEV__) console.warn('The periodic sync could not be scheduled.', cause);
+    });
+  }, [booted]);
+
   // Splash stays up. Returning null rather than a spinner is deliberate: a spinner behind a
   // splash screen is invisible work that only makes the boot path harder to reason about.
   if (!ready) return null;
@@ -86,7 +86,7 @@ export default function RootLayout() {
         {failure ? (
           <BootFailure message={failure.message} />
         ) : (
-          <QueryClientProvider client={queryClient}>
+          <QueryClientProvider client={arenaQueryClient}>
             <ArenaDataProvider value={ARENA_DATA}>
               <ArenaGate fontScale={fontScale} />
             </ArenaDataProvider>

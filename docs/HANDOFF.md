@@ -1,6 +1,6 @@
 # Handoff — Phase 5, mid-flight
 
-**As of 2026-09-21.** Branch: `claude/backend-data-management-w98hph` (see CLAUDE.md — all work goes
+**As of 2026-09-23.** Branch: `claude/backend-data-management-w98hph` (see CLAUDE.md — all work goes
 there until the owner says otherwise).
 
 This file says where Phase 5 stopped and which decisions are already made, so the next session
@@ -66,23 +66,47 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   latches its decision at mount rather than watching `needsAccount`, and the reason is the kind of
   bug that looks like success.
 - ~~**`useRoster` calls `syncRoster`** through TanStack Query, on pull-to-refresh.~~ **Done.** The
-  one mutation is in `useRoster`, the one `QueryClient` is in `_layout.tsx`, and there is no
-  `useQuery` anywhere. `retry` is set to 0 there with the reasoning written down — **that is the
-  knob the periodic task should turn up**, not a default to leave alone.
+  one mutation is `syncMutation` in `core/data`, the one `QueryClient` is `arenaQueryClient` beside
+  the repository (it started in `_layout.tsx`; the periodic task moved it), and there is no
+  `useQuery` anywhere. `useRoster` sets `retry: 0` with the reasoning written down; the periodic
+  task sets its own.
 - ~~**The indicator, the banner and "updated N ago"** (decision 2).~~ **Done.** Only the reads feed
   `failure` now; `sync.error` is a banner with its own retry. **Pull-to-refresh had to ship with
   it** — there was no such gesture anywhere in the app, and the error screen's TRY AGAIN was the
   only thing that could fire a sync. `lastSyncedAt` sits beside `season` in `core/prefs`, stamped
   where a snapshot is _applied_ rather than where a request succeeded.
-- **The periodic refresh** — the last one before turning the URL on. `expo-background-task` is
-  installed but referenced nowhere, and its config-plugin declaration was deliberately removed from
-  `app.config.ts` in 4.10 because it was a no-op on Android — ADR-0034 decision 5 says it goes back
-  **beside the code that uses it**. Two things are already waiting for it: `useRoster`'s mutation
-  sets `retry: 0` because a pull-to-refresh has somebody watching, and **this caller is the one that
-  should turn it up** (the endpoint's idempotency is what makes that safe); and `header.isSyncing`
-  already drives the badge, so a background sync will announce itself with no new UI.
-- **Turn the URL on.** The gate exists now, so this is unblocked — but see "Operational" below
-  first: `0001_client_id.sql` has to be applied before the first device syncs, not after.
+- ~~**The periodic refresh.**~~ **Done, not yet seen running on a device.** The task is
+  `core/data/backgroundSync.ts`; its body is `runBackgroundSync` in `core/data/syncMutation.ts`,
+  proven in Node. Three things about it will bite whoever touches it:
+  - **It is defined from the entry, not from a route.** `package.json`'s `main` is now `index.ts`,
+    which imports `expo-router/entry` and then the task module. WorkManager wakes a closed app
+    headless, and no route — not even `_layout.tsx` — is evaluated then; a `defineTask` beside the
+    layout would not exist on the one run it is for. The body awaits `arenaDbReady` for the same
+    reason: there is no splash screen holding a headless run until the migrations finish.
+  - **It shares the pull's mutation.** Same key, same `scope`, same `mutationFn`
+    (`syncMutation`), on the same `QueryClient` — which moved from `_layout.tsx` to
+    `arenaRepository.ts` so both callers can reach it. The scope queues a pull behind a running
+    background sync instead of beside it; `header.isSyncing` reads `useIsMutating` on the key, so
+    the badge _and_ the pull-to-refresh spinner show a background sync with no new UI. A
+    background failure sets no banner — nobody asked for that sync.
+  - **Policy:** `retry: 2` with TanStack's backoff (`BACKGROUND_SYNC_POLICY`), a 60-minute
+    minimum interval, skipped while `needsAccount()` or while a sync is already in flight.
+    Registered from `_layout.tsx` once the database is ready, and **unregistered** when the build
+    has no URL.
+
+  What is not proven: that WorkManager actually fires it on the emulator. In a debug build,
+  `BackgroundTask.triggerTaskWorkerForTestingAsync()` runs it on demand — that is the check to do
+  once the URL is on.
+
+- **Turn the URL on.** Nothing blocks it any more: the gate exists, the periodic sync exists, and
+  `0001_client_id.sql` is applied to the live database (see "Operational").
+- **Run the migrations on every redeploy, automatically.** Today a deploy that carries a migration
+  needs somebody to open the `app` container's console in Coolify and run
+  `node dist/db/migrate.js` by hand, and between the redeploy and that command every sync answers 500. The container already ships what the command needs (`dist/db/migrations` is copied in the
+  Dockerfile), so the fix is to run it before the server starts — a `CMD` of
+  `node dist/db/migrate.js && node dist/index.js`, or Coolify's pre/post-deployment command.
+  Decide what a failed migration does (the `&&` form refuses to start the new server, which keeps
+  the old one serving only if Coolify's health check holds the rollout back — check that it does).
 
 ## Things that will cost you a day if you rediscover them
 
@@ -135,11 +159,9 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
 ## Operational
 
 - A deploy that carries a new migration needs `node dist/db/migrate.js` run from the `app`
-  container's console in Coolify, right after the redeploy. Not `npm run db:migrate` — `tsx` is not
-  in the production image and `src/` is not copied into it.
-- **`0001_client_id.sql` has not been applied to the live database yet** unless the owner has done it
-  since 2026-09-21. Between the redeploy and that command, `applyRosterSync` writes to a column that
-  does not exist and every sync answers 500. Harmless while no client calls it; stops being harmless
-  the moment the setup gate ships.
+  container's console in Coolify, right after the redeploy — until the item above automates it. Not
+  `npm run db:migrate` — `tsx` is not in the production image and `src/` is not copied into it.
+- **`0001_client_id.sql` is applied to the live database** — the owner ran it from the container's
+  terminal on 2026-09-23. The live schema now matches `applyRosterSync`.
 - Nothing backs up the Postgres volume. The `recoveryCode` shown at account creation is the only way
   a second device ever joins that account.

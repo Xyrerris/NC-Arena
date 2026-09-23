@@ -28,6 +28,8 @@
  * in front of it would be asking for an account the product does not have.
  */
 
+import { QueryClient } from '@tanstack/react-query';
+
 import { RemoteAccountGateway, RemoteRosterSource } from '../network';
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
@@ -36,6 +38,9 @@ import { createRosterRepository } from './rosterRepository';
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
 
 const configured = apiUrl === undefined || apiUrl === '' ? undefined : apiUrl;
+
+/** Whether this build talks to a backend at all — what decides if the periodic sync is scheduled. */
+export const backendConfigured = configured !== undefined;
 
 const backend =
   configured === undefined
@@ -56,3 +61,17 @@ export const arenaRepository = createRosterRepository({
   gateway: accounts,
   preferences: mmkvPreferences,
 });
+
+/**
+ * TanStack Query's one client, which §4 puts among the providers and §7 explains the job of:
+ * it owns the sync call's lifecycle, and nothing else. There is no `useQuery` in this app, so
+ * there is no cache here for a component to read from.
+ *
+ * It lives here, beside the repository, rather than in the root layout where it started,
+ * because the layout is not the only caller any more. The periodic task
+ * (`backgroundSync.ts`) runs its sync through this same client, and it has to be the *same*
+ * one: sharing it is what lets the roster's badge see a background sync and what queues a
+ * pull behind one rather than beside it (`syncMutation.ts`). A task started with the app
+ * closed gets this module fresh, which is exactly as much sharing as there is to have.
+ */
+export const arenaQueryClient = new QueryClient();

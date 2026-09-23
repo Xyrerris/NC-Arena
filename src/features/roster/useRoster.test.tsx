@@ -23,7 +23,7 @@ import {
   type RosterSnapshot,
   type RosterSource,
 } from '@/core/common';
-import { ArenaDataProvider, type RosterRepository } from '@/core/data';
+import { ArenaDataProvider, runBackgroundSync, type RosterRepository } from '@/core/data';
 import { asPlayerId, type HeadToHead, type Player, type PlayerDraft } from '@/core/model';
 import {
   createStubLiveData,
@@ -99,8 +99,11 @@ const sourceOf = (snapshot: RosterSnapshot): RosterSource => ({
  * and a client constructed *inside* `Harness` would be a new client on every render, which
  * silently discards the state the mutation is keeping.
  */
-const wrapperFor = (repository: RosterRepository, useLiveData = createStubLiveData()) => {
-  const client = new QueryClient();
+const wrapperFor = (
+  repository: RosterRepository,
+  useLiveData = createStubLiveData(),
+  client = new QueryClient(),
+) => {
   return function Harness({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={client}>
@@ -504,7 +507,7 @@ describe('useRoster', () => {
     });
 
     it('reports a sync in flight, and stops reporting one when it lands', async () => {
-      // `header.isSyncing` is the mutation's `isPending`, and it drives both the
+      // `header.isSyncing` is any sync on the shared key, and it drives both the
       // pull-to-refresh spinner and the badge. The roster stays on screen throughout —
       // decision 2 — so this is a spinner on a list, never a blank screen.
       let land = (): void => {};
@@ -545,6 +548,49 @@ describe('useRoster', () => {
       await waitFor(() =>
         expect(result.current.state).toMatchObject({ header: { isSyncing: false } }),
       );
+    });
+
+    it('shows a background sync as in flight, although this screen did not start it', async () => {
+      // The periodic task runs its sync on the app's one client, with no screen involved.
+      // The badge reads the shared key rather than this hook's own mutation, so a sync that
+      // lands while the app is open announces itself exactly as a pull does.
+      let land = (): void => {};
+      const held = new Promise<void>((resolve) => {
+        land = resolve;
+      });
+      const slow: RosterSink = {
+        name: 'slow',
+        pushRoster: async () => {
+          await held;
+          return ok({ snapshot: null, assignedIds: new Map() });
+        },
+        setViewer: () => Promise.resolve(ok(undefined)),
+      };
+      const repo = withSink(slow);
+      const client = new QueryClient();
+      const { result } = await renderHook(() => useRoster(), {
+        wrapper: wrapperFor(repo, createStubLiveData(), client),
+      });
+
+      let background: Promise<string> = Promise.resolve('');
+      await act(async () => {
+        background = runBackgroundSync(repo, client, { retry: 0 });
+      });
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ header: { isSyncing: true } }),
+      );
+
+      await act(async () => {
+        land();
+        await background;
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ header: { isSyncing: false } }),
+      );
+      await expect(background).resolves.toBe('synced');
+      // Nobody asked for it, so nothing is reported as this screen's failure either.
+      expect(result.current.state).toMatchObject({ syncError: null });
     });
 
     it('falls back to a plain pull when there is no sink, so a backendless build is unchanged', async () => {

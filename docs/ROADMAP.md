@@ -750,7 +750,11 @@ that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, whic
   phase rather than discovering them inside it.
 - TanStack Query owning the sync call; success writes to SQLite; **no component reads `useQuery`
   data** (ARCHITECTURE.md §7).
-- `expo-background-task` periodic refresh, pull-to-refresh, sync-failure surfacing.
+- `expo-background-task` periodic refresh, pull-to-refresh, sync-failure surfacing. **All three are
+  in.** The periodic task (`core/data/backgroundSync.ts`) runs the pull's own mutation on the same
+  client, so it queues behind a pull rather than racing it and shows the same badge; it retries
+  twice where a pull retries never, and it is defined from the app's entry (`index.ts`) because a
+  headless run evaluates no route. Not yet seen firing on a device.
 - Conflict/staleness policy: last-write-wins from server, with a visible "updated N ago". **The
   label is in**, from a `lastSyncedAt` preference stamped where a snapshot is applied; it ticks
   itself and renders nothing at all before a first sync or after a restore, rather than guessing.

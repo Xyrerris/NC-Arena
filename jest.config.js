@@ -29,8 +29,9 @@ module.exports = {
    * The exclusions are not a lower bar; they are files this project structurally cannot load,
    * or that carry nothing to measure:
    *
-   *  - the native-backed adapters (`client.ts`, `arenaRepository.ts`, `expoBackupFile.ts`,
-   *    `expoLiveData.ts`, `mmkvPreferences.ts`, the three under `core/ocr`) import modules
+   *  - the native-backed adapters (`client.ts`, `arenaRepository.ts`, `backgroundSync.ts`,
+   *    `expoBackupFile.ts`, `expoLiveData.ts`, `mmkvPreferences.ts`, the three under
+   *    `core/ocr`) import modules
    *    plain Node cannot resolve. That is *why* each is deliberately thin, and each says so
    *    in its own header;
    *  - `useViewerId.ts` and `useNeedsAccount.ts` are React hooks and `core/design-system` is
@@ -46,6 +47,7 @@ module.exports = {
     '!src/core/design-system/**',
     '!src/core/db/client.ts',
     '!src/core/data/arenaRepository.ts',
+    '!src/core/data/backgroundSync.ts',
     '!src/core/data/expoBackupFile.ts',
     '!src/core/data/expoLiveData.ts',
     '!src/core/data/useNeedsAccount.ts',

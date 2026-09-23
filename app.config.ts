@@ -37,12 +37,12 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router',
-    // No `expo-background-task` here. Its config plugin is `withInfoPlist` and nothing else —
-    // it writes iOS `UIBackgroundModes` and `BGTaskSchedulerPermittedIdentifiers`, and the
-    // module's own AndroidManifest.xml is empty — so on an Android-only build it contributed
-    // exactly nothing while reading as though the app had background work. The package stays
-    // (it is a Phase 5 deliverable); the declaration belongs beside the code that uses it,
-    // which is also when it stops being a no-op if iOS lands (ARCHITECTURE.md §9.6).
+    // Back since Phase 5, beside the code that uses it (ADR-0034, decision 5): the periodic
+    // sync in `src/core/data/backgroundSync.ts`. Its plugin is still `withInfoPlist` and
+    // nothing else, so on Android it changes no native file — WorkManager needs no manifest
+    // entry — but the app now *does* have background work, so the declaration reads true, and
+    // it is what an iOS build would need (ARCHITECTURE.md §9.6).
+    'expo-background-task',
     [
       // ADR-0024. The permission string is written here rather than left to the plugin's
       // default, because Android shows it verbatim and the default says "the app" — which

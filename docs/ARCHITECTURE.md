@@ -365,12 +365,15 @@ Native reflex is to render `data` straight out of `useQuery`. Doing so here rein
 the branching the offline-first design exists to delete, so it is called out in review and guarded
 by the §4 boundary (a feature cannot import `core/network` at all).
 
-**Live since Phase 5.** `useRoster` holds the one mutation in the app; `src/app/_layout.tsx` holds
-the one `QueryClient`. There is no `useQuery` anywhere, and the mutation's `mutationFn` returns
-`void` — so there is no cached data for a component to read even by mistake, which is this rule
-stated as a fact about the wiring rather than as a convention to remember. `retry` is set on that
-mutation, at 0, because a pull-to-refresh has somebody watching it; the periodic task is the caller
-that should turn it up, and `POST /v1/roster/sync`'s idempotency is what makes that safe.
+**Live since Phase 5.** There is one mutation in the app — `syncMutation` in `core/data`, one key
+and one scope — fired by two callers: `useRoster` on pull-to-refresh, and the periodic task in
+`core/data/backgroundSync.ts`. Both run it on the one `QueryClient`, which lives beside the
+repository in `core/data/arenaRepository.ts` because the task has no layout to reach it through.
+There is no `useQuery` anywhere, and the mutation's `mutationFn` returns `void` — so there is no
+cached data for a component to read even by mistake, which is this rule stated as a fact about the
+wiring rather than as a convention to remember. `retry` is each caller's to set: 0 on the pull,
+because somebody is watching it; 2 on the task, because nobody is, and `POST /v1/roster/sync`'s
+idempotency is what makes that safe. The shared scope runs them one after another, never together.
 
 ```ts
 export interface RosterRepository {

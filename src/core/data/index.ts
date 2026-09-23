@@ -33,5 +33,13 @@ export {
   type RosterRepository,
   type RosterRepositoryDeps,
 } from './rosterRepository';
+export {
+  BACKGROUND_SYNC_POLICY,
+  SYNC_MUTATION_KEY,
+  runBackgroundSync,
+  syncMutation,
+  type BackgroundSyncOutcome,
+  type BackgroundSyncPolicy,
+} from './syncMutation';
 export { useNeedsAccount } from './useNeedsAccount';
 export { useViewerId } from './useViewerId';
