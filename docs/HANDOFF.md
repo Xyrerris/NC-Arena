@@ -148,9 +148,11 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   `useRoster`'s `failure`, which reads `roster.error ?? viewer.error` and deliberately **not**
   `sync.error`. Putting the sync back in there undoes the owner's decision 2 in one line, and the
   screen it produces looks reasonable in every test that does not go offline.
-- **`editedPlayers` is always empty**, and that is the product: ADR-0020 lets the user edit only a
-  `LOCAL` row, so no screen can produce an edit to a row the server owns. The wire carries the case
-  because a second device can reach it.
+- **Every row is editable on every device (ADR-0036)**; `editedPlayers` carries the synced rows
+  with an `edited_at` stamp. The stamp is what keeps a pull or an in-flight sync from undoing an
+  edit the server has not seen yet — `rosterSync.test.ts`'s "an edit to a synced row" block fails if
+  `replaceRoster` stops honouring it. Removing a synced player is still refused: the wire has no
+  delete.
 - **`backend/` is a second, independent package.** Its own `package.json` and `tsconfig.json`, and
   `npm run verify` at the root does **not** touch it. Run `npm run typecheck` and `npm run build`
   inside `backend/` yourself. It has no test runner at all — the backend's behaviour was verified by

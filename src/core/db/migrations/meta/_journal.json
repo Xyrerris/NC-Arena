@@ -29,6 +29,13 @@
       "when": 1788641066724,
       "tag": "0003_folded_player_name",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790241710621,
+      "tag": "0004_remote_edits",
+      "breakpoints": true
     }
   ]
 }

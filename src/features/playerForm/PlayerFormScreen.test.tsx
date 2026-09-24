@@ -348,11 +348,13 @@ describe('PlayerFormScreen — editing a player', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
-  it('refuses a synced player instead of offering an edit the next sync would undo', async () => {
+  it('edits a synced player too, but offers no Remove for them (ADR-0036)', async () => {
     await renderEdit(asPlayerId('p-b'));
 
-    await waitFor(() => expect(screen.getByTestId('form-unavailable')).toBeTruthy());
-    expect(screen.queryByTestId('player-form')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Brann'));
+    expect(screen.queryByTestId('form-unavailable')).toBeNull();
+    // A sync cannot tell the server a row is gone, so a removed synced player would return.
+    expect(screen.queryByTestId('form-delete')).toBeNull();
   });
 
   it('says so when the id matches nobody at all', async () => {
@@ -582,7 +584,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it('declines to rewrite a synced player, and says why', async () => {
+  it('rewrites a synced player rather than adding a second row (ADR-0036)', async () => {
     const synced: ScannedLine[] = [
       { text: 'Lv.101 Aurel #a1', frame: { left: 700, top: 58, right: 922, bottom: 92 } },
       ...SHEET.slice(1),
@@ -592,11 +594,8 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Aurel'));
     fireEvent.press(screen.getByTestId('form-submit'));
 
-    const message = await screen.findByTestId('form-message');
-    expect(message).toBeTruthy();
-    // Neither written nor duplicated: the next sync would undo the write (ADR-0020).
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(namesInRoster(repository).filter((name) => name === 'Aurel')).toHaveLength(1);
-    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   /**
@@ -640,7 +639,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
   });
 
-  it('warns rather than promises when the match is a synced player', async () => {
+  it('promises the update for a synced match too', async () => {
     const synced: ScannedLine[] = [
       { text: 'Lv.101 Aurel #a1', frame: { left: 700, top: 58, right: 922, bottom: 92 } },
       ...SHEET.slice(1),
@@ -649,9 +648,8 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     fireEvent.press(screen.getByTestId('form-scan-button'));
 
     const notice = await screen.findByTestId('form-import-notice');
-    expect(notice.props.children).toContain('roster sync');
-    // Save is going to be refused, not turned into an update, so the label does not move.
-    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
+    expect(notice.props.children).toContain('already on the ladder');
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
   });
 
   it('offers no notice on a hand-typed name, where a collision is still a rejection', async () => {

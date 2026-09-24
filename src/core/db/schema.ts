@@ -54,6 +54,16 @@ export const players = sqliteTable(
     origin: text('origin', { enum: ['REMOTE', 'LOCAL'] })
       .notNull()
       .default('REMOTE'),
+    /**
+     * When a `REMOTE` row was last edited on this device, or null when it matches what the
+     * server last sent (ADR-0036). Non-null means "the server has not seen this yet": the
+     * next sync pushes it as an edit, and a snapshot applied before that push landed may not
+     * overwrite it. Always null on a `LOCAL` row — that whole row is unpushed already.
+     *
+     * A timestamp rather than a flag so a sync can tell an edit it pushed from one made
+     * while the request was in flight: only the first is settled by the snapshot.
+     */
+    editedAt: integer('edited_at'),
   },
   (table) => [
     index('players_rank_idx').on(table.rank),

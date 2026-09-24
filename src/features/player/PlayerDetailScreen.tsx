@@ -86,10 +86,10 @@ export function PlayerDetailScreen({ id }: PlayerDetailScreenProps) {
         </Pressable>
 
         {/*
-          Only for a player this device added. A synced row would have any edit overwritten
-          by the next refresh, so there is nothing here to press (ADR-0020).
+          Every player, synced or not: an edit to a synced row is pushed by the next sync,
+          so every device on the account has the same say over it (ADR-0036).
         */}
-        {state.kind === 'ready' && state.canEdit ? (
+        {state.kind === 'ready' ? (
           <ArenaButton
             label="Edit"
             variant="secondary"

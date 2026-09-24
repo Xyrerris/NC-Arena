@@ -22,7 +22,7 @@
  *    nothing about is not an instruction to forget.
  */
 
-import { and, asc, desc, eq, gt, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNotNull, ne, or, sql } from 'drizzle-orm';
 
 import type { RosterSnapshot } from '../common';
 import {
@@ -140,16 +140,34 @@ const highestRank = (tx: ArenaDatabase): number =>
  * Nothing here updates a primary key in place. The ids move by virtue of the delete and the
  * re-insert this function already does, which is also what keeps it correct with
  * `PRAGMA foreign_keys` ON — as the Node test project runs it, and the device does not.
+ *
+ * **`pushedEdits` is how an edit to a synced row stops being pending** (ADR-0036). It maps
+ * each `REMOTE` id the push carried as an edit to the `editedAt` it carried. A row whose
+ * stamp still matches was pushed, so the snapshot already holds that edit and wins. A row
+ * whose stamp does not — edited again while the request was in flight, or never pushed at
+ * all because this is a plain pull — keeps its own stats over the snapshot's, and keeps its
+ * stamp so the next sync pushes it. The snapshot still decides its rank and whether it
+ * exists at all.
  */
 export const replaceRoster = (
   db: ArenaDatabase,
   snapshot: RosterSnapshot,
   adopted: ReadonlyMap<string, string> = new Map(),
+  pushedEdits: ReadonlyMap<string, number> = new Map(),
 ): void => {
   db.transaction((tx) => {
     const claimed = new Set<string>(snapshot.players.map((player) => player.id));
     /** A local id the server has now issued a real one for, or the id unchanged. */
     const settled = (id: string): string => adopted.get(id) ?? id;
+    const pendingEdits = new Map<string, PlayerRow>(
+      tx
+        .select()
+        .from(players)
+        .where(and(eq(players.origin, 'REMOTE'), isNotNull(players.editedAt)))
+        .all()
+        .filter((row) => pushedEdits.get(row.id) !== row.editedAt)
+        .map((row) => [row.id, row]),
+    );
     const kept = tx
       .select()
       .from(players)
@@ -188,26 +206,33 @@ export const replaceRoster = (
     if (snapshot.players.length > 0) {
       tx.insert(players)
         .values(
-          snapshot.players.map((player) => ({
-            id: player.id,
-            name: player.name,
-            // A synced row is folded on arrival, exactly like a typed one. The server has
-            // no idea this column exists, and a remote player the search cannot find would
-            // be the same defect wearing a different hat.
-            nameFolded: foldPlayerName(player.name),
-            level: player.level,
-            gameCode: player.gameCode,
-            rank: player.rank,
-            combatPower: player.combatPower,
-            score: player.score,
-            hp: player.hp,
-            atk: player.atk,
-            def: player.def,
-            critBp: player.critBp,
-            hit: player.hit,
-            spd: player.spd,
-            origin: 'REMOTE' as const,
-          })),
+          snapshot.players.map((player) => {
+            const fromServer = {
+              id: player.id,
+              name: player.name,
+              // A synced row is folded on arrival, exactly like a typed one. The server has
+              // no idea this column exists, and a remote player the search cannot find would
+              // be the same defect wearing a different hat.
+              nameFolded: foldPlayerName(player.name),
+              level: player.level,
+              gameCode: player.gameCode,
+              rank: player.rank,
+              combatPower: player.combatPower,
+              score: player.score,
+              hp: player.hp,
+              atk: player.atk,
+              def: player.def,
+              critBp: player.critBp,
+              hit: player.hit,
+              spd: player.spd,
+              origin: 'REMOTE' as const,
+              editedAt: null,
+            };
+            const edit = pendingEdits.get(player.id);
+            return edit === undefined
+              ? fromServer
+              : { ...edit, id: fromServer.id, rank: fromServer.rank, origin: fromServer.origin };
+          }),
         )
         .run();
     }
@@ -354,21 +379,25 @@ export const insertLocalPlayer = (db: ArenaDatabase, id: PlayerId, draft: Player
   });
 
 /**
- * Rewrites a hand-entered player's stats. Returns null when the id is unknown *or* when
- * the row is `REMOTE`; the caller cannot tell those two apart from the return value and
- * does not need to, because they mean the same thing to the user — not yours to edit.
+ * Rewrites a player's stats, whichever device added them (ADR-0036). Returns null when the
+ * id is unknown.
+ *
+ * A `REMOTE` row is stamped with `editedAt`, which is what makes the edit survive: the next
+ * sync pushes it, and `replaceRoster` will not let a snapshot that predates the push
+ * overwrite it. A `LOCAL` row needs no stamp — the whole row is pushed as new anyway.
  */
-export const updateLocalPlayer = (
+export const updatePlayerRow = (
   db: ArenaDatabase,
   id: PlayerId,
   draft: PlayerDraft,
+  now: number = Date.now(),
 ): PlayerRow | null =>
   db.transaction((tx) => {
     const before = rowById(tx, id);
-    if (before === undefined || before.origin !== 'LOCAL') return null;
+    if (before === undefined) return null;
     tx.update(players)
-      .set(draftColumns(draft))
-      .where(and(eq(players.id, id), eq(players.origin, 'LOCAL')))
+      .set({ ...draftColumns(draft), editedAt: before.origin === 'REMOTE' ? now : null })
+      .where(eq(players.id, id))
       .run();
     return rowById(tx, id) ?? null;
   });
@@ -512,9 +541,9 @@ export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId
  * this lookup decides whether a screenshot updates a player or adds a second one, and
  * `lower()` got that wrong for every non-ASCII name (ADR-0032).
  *
- * It matches a `REMOTE` row like any other. Who may be *written* is `updateLocalPlayer`'s
- * rule and stays there — a lookup that quietly skipped synced rows would answer "no such
- * player" about a player plainly on screen.
+ * It matches a `REMOTE` row like any other: since ADR-0036 either kind can be rewritten, and
+ * a lookup that quietly skipped synced rows would add a second row for a player plainly on
+ * screen.
  */
 export const findPlayerByIdentity = (
   db: ArenaDatabase,

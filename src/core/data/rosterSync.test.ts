@@ -108,7 +108,7 @@ describe('syncRoster — a hand-entered row becomes a server row', () => {
     handle.close();
   });
 
-  it('pushes the local rows, and sends no edits, because no screen can make one', async () => {
+  it('pushes the local rows, and sends no edits when no synced row was changed', async () => {
     const spy = createSpySink(() => ok({ snapshot: null, assignedIds: new Map() }));
     const repo = createRosterRepository({
       db: handle.db,
@@ -123,7 +123,7 @@ describe('syncRoster — a hand-entered row becomes a server row', () => {
 
     expect(spy.pushes).toHaveLength(1);
     expect(spy.pushes[0]?.newPlayers.map((p) => p.name)).toEqual(['Nyx', 'Orrin']);
-    // ADR-0020: only a LOCAL row is editable, so this device cannot produce an edit at all.
+    // Both rows are LOCAL, so they travel whole as new players; there is nothing to edit.
     expect(spy.pushes[0]?.editedPlayers).toEqual([]);
   });
 
@@ -332,5 +332,151 @@ describe('syncRoster — a hand-entered row becomes a server row', () => {
     expect(spy.pushes[0]?.headToHead).toEqual([
       { viewerId: SERVER_A, opponentId: SERVER_B, wins: 3, losses: 1 },
     ]);
+  });
+});
+
+/**
+ * ADR-0036: a synced row is as editable as a hand-entered one, on every device on the account.
+ * The edit has to survive until the server has it — a pull that lands first may not undo it —
+ * and has to stop being "pending" once the push that carried it has been answered.
+ */
+describe('syncRoster — an edit to a synced row', () => {
+  let handle: TestDatabase;
+  const preferences = (): ArenaPreferences =>
+    createMemoryPreferences({ viewerId: asPlayerId(SERVER_A) });
+
+  /** A ladder that has already synced: two REMOTE rows, as a linked device would hold them. */
+  const seedSynced = (): void => {
+    handle.db
+      .insert(players)
+      .values([
+        { ...remotePlayer(SERVER_A, 'Nyx', 1), nameFolded: 'nyx', origin: 'REMOTE' },
+        { ...remotePlayer(SERVER_B, 'Orrin', 2), nameFolded: 'orrin', origin: 'REMOTE' },
+      ])
+      .run();
+  };
+
+  /** What the server holds before it has seen any edit. */
+  const unedited: RosterSnapshot = {
+    season: 41,
+    viewerId: asPlayerId(SERVER_A),
+    players: [remotePlayer(SERVER_A, 'Nyx', 1), remotePlayer(SERVER_B, 'Orrin', 2)],
+    headToHead: [],
+  };
+
+  const combatPowerOf = (id: string): number | undefined =>
+    handle.db
+      .select()
+      .from(players)
+      .all()
+      .find((row) => row.id === id)?.combatPower;
+
+  const editedAtOf = (id: string): number | null | undefined =>
+    handle.db
+      .select()
+      .from(players)
+      .all()
+      .find((row) => row.id === id)?.editedAt;
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+    seedSynced();
+  });
+
+  afterEach(() => {
+    handle.close();
+  });
+
+  it('pushes it as an edit under the server id, and settles it once the server answers', async () => {
+    const spy = createSpySink((push) => {
+      const [edit] = push.editedPlayers;
+      if (!edit) throw new Error('expected an edit');
+      // The server applied it, so its snapshot carries the new value.
+      return ok({
+        snapshot: {
+          ...unedited,
+          players: [remotePlayer(SERVER_A, 'Nyx', 1), { ...edit, rank: 2 }],
+        },
+        assignedIds: new Map(),
+      });
+    });
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([]),
+      sink: spy.sink,
+      preferences: preferences(),
+    });
+
+    expect(
+      repo.updatePlayer(asPlayerId(SERVER_B), { ...draft('Orrin'), combatPower: 9_000 }).ok,
+    ).toBe(true);
+    expect(editedAtOf(SERVER_B)).not.toBeNull();
+
+    expect((await repo.syncRoster()).ok).toBe(true);
+
+    expect(spy.pushes[0]?.newPlayers).toEqual([]);
+    expect(spy.pushes[0]?.editedPlayers).toEqual([
+      expect.objectContaining({ id: SERVER_B, combatPower: 9_000 }),
+    ]);
+    expect(combatPowerOf(SERVER_B)).toBe(9_000);
+    // Settled: the next sync has nothing to send.
+    expect(editedAtOf(SERVER_B)).toBeNull();
+  });
+
+  it('keeps an edit made while the sync was in flight, and pushes it next time', async () => {
+    let repo: ReturnType<typeof createRosterRepository> | undefined;
+    const spy = createSpySink(() => {
+      // The user saves again before the answer arrives. The snapshot below knows nothing
+      // about this second edit, and must not be allowed to undo it.
+      repo?.updatePlayer(asPlayerId(SERVER_B), { ...draft('Orrin'), combatPower: 7_777 });
+      return ok({
+        snapshot: {
+          ...unedited,
+          players: [
+            remotePlayer(SERVER_A, 'Nyx', 1),
+            { ...remotePlayer(SERVER_B, 'Orrin', 2), combatPower: 9_000 },
+          ],
+        },
+        assignedIds: new Map(),
+      });
+    });
+    repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([]),
+      sink: spy.sink,
+      preferences: preferences(),
+    });
+
+    repo.updatePlayer(asPlayerId(SERVER_B), { ...draft('Orrin'), combatPower: 9_000 });
+    // Make sure the in-flight save gets a later stamp than the one the push carries.
+    const pushedAt = editedAtOf(SERVER_B) ?? 0;
+    jest.spyOn(Date, 'now').mockReturnValue(pushedAt + 1);
+
+    await repo.syncRoster();
+    jest.restoreAllMocks();
+
+    expect(combatPowerOf(SERVER_B)).toBe(7_777);
+    expect(editedAtOf(SERVER_B)).toBe(pushedAt + 1);
+
+    await repo.syncRoster();
+    expect(spy.pushes[1]?.editedPlayers).toEqual([
+      expect.objectContaining({ id: SERVER_B, combatPower: 7_777 }),
+    ]);
+  });
+
+  it('is not undone by a pull that runs before it was pushed', async () => {
+    // No sink: `syncRoster` falls back to a plain pull, which pushes nothing.
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([{ ...unedited, season: 42 }]),
+      preferences: preferences(),
+    });
+    repo.updatePlayer(asPlayerId(SERVER_B), { ...draft('Orrin'), combatPower: 9_000 });
+
+    expect((await repo.syncRoster()).ok).toBe(true);
+
+    expect(combatPowerOf(SERVER_B)).toBe(9_000);
+    // Still pending, so the next sync that can push will.
+    expect(editedAtOf(SERVER_B)).not.toBeNull();
   });
 });

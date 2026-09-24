@@ -2192,3 +2192,44 @@ this screen exists to prevent.
 the backend, an unapplied migration was harmless. The gate is what puts a real key on a real device,
 and from the first sync after it `applyRosterSync` writes to a column that may not exist. See
 HANDOFF.md's "Operational".
+
+## ADR-0036 — Every device on an account may edit every player
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5 · **Amends:** ADR-0020 Decision 2
+
+**Context.** ADR-0020 let the user edit only a `LOCAL` row, because a synced row was overwritten by
+the next refresh and an accepted edit would have vanished. Phase 5 turned that from a corner case
+into the whole app: the first sync flips every row to `REMOTE`, and a device joined with the
+recovery code receives nothing _but_ `REMOTE` rows. The owner reported exactly that — after linking,
+nothing could be edited, on any device. The owner's requirement: every device holding the account
+has the same power to edit.
+
+The reason ADR-0020 gave no longer holds. The push half already carried `editedPlayers`, and
+`applyRosterSync` already applies them with last-write-wins. Nothing on the client ever filled the
+field.
+
+**Decision 1 — any row can be edited.** `updatePlayerRow` (was `updateLocalPlayer`) accepts both
+origins. The detail screen always offers Edit, the form opens for a synced player, and a screenshot
+import that matches a synced player rewrites it.
+
+**Decision 2 — a synced row carries `edited_at` until the server has the edit.** Migration
+`0004_remote_edits.sql`. Non-null means pending: `collectPush` sends every such row as an edit, and
+`replaceRoster` keeps its stats over the snapshot's. It is a timestamp, not a flag, because the push
+remembers the stamp each edit left with (`pushedEdits`): a row whose stamp still matches when the
+answer arrives was pushed, so the snapshot carries it and the stamp clears. A row saved again while
+the request was in flight has a newer stamp and stays pending, so neither a slow sync nor a plain
+pull can undo an edit.
+
+**Decision 3 — removal stays `LOCAL`-only, and the form no longer offers it on a synced row.** The
+wire has no way to say a row is gone, so a removed synced player would be back after the next pull.
+Deleting across devices needs a `deletedPlayers` field on `POST /v1/roster/sync` and a tombstone on
+the device until it is pushed — a backend change, deliberately not made here.
+
+**Consequences.**
+
+- Two devices editing the same player between syncs: the sync that lands second wins, whole row, no
+  per-field merge (ADR-0035, decision 3).
+- An edit to a row the server does not hold answers 404 and fails the whole sync. Unreachable while
+  the server has no delete; it becomes reachable the day it gets one.
+- A backup does not carry `edited_at`. A restored synced row is clean, so an edit not yet pushed
+  when the backup was taken is restored as a value the next pull may overwrite.

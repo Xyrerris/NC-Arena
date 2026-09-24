@@ -39,7 +39,7 @@ import {
   sortedRosterQuery,
   toHeadToHead,
   toPlayer,
-  updateLocalPlayer,
+  updatePlayerRow,
   type ArenaDatabase,
   type PlayerDetailRow,
   type PlayerRow,
@@ -165,12 +165,12 @@ const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
 /**
- * One message for "no such player" and for "that player is not yours to change". The two
- * are deliberately indistinguishable to the caller: a row synced from upstream will be
- * overwritten by the next refresh, so an edit the app appeared to accept would vanish —
- * which is a worse answer than declining it (ADR-0020).
+ * One message for "no such player" and for "that player is not yours to remove". Editing is
+ * open to every row since ADR-0036, because an edit to a synced row is pushed like any other
+ * change. Removing is not: the sync has no way to tell the server a row is gone, so the next
+ * pull would put a synced player straight back (ADR-0020).
  */
-const NOT_YOURS = 'Only players you added on this device can be edited or removed.';
+const NOT_YOURS = 'Only players you added on this device can be removed.';
 
 /** `setViewerId` picks an existing row; it never creates one (ADR-0022). */
 const NO_SUCH_PLAYER = 'That player is not on the roster.';
@@ -309,8 +309,12 @@ export const createRosterRepository = ({
     notifyAccountChanged();
   };
 
-  const write = (snapshot: RosterSnapshot, adopted?: ReadonlyMap<PlayerId, PlayerId>): void => {
-    replaceRoster(db, snapshot, adopted);
+  const write = (
+    snapshot: RosterSnapshot,
+    adopted?: ReadonlyMap<PlayerId, PlayerId>,
+    pushedEdits?: ReadonlyMap<string, number>,
+  ): void => {
+    replaceRoster(db, snapshot, adopted, pushedEdits);
     preferences.setViewerId(snapshot.viewerId);
     preferences.setSeason(snapshot.season);
     // Stamped here rather than where the request succeeded, and the difference is the whole
@@ -344,12 +348,11 @@ export const createRosterRepository = ({
   /**
    * What this device has that the server has not seen.
    *
-   * `editedPlayers` is always empty, and that is a fact about the product rather than a gap
-   * here: ADR-0020 lets the user edit only a `LOCAL` row, so there is no way on any screen to
-   * produce an edit to a row the server owns. The wire carries the case (`playerEditDtoSchema`)
-   * because the server has to answer a second device that *has* synced a row and then changed
-   * it; this device cannot reach that state yet, and inventing rows to fill the field would be
-   * inventing edits nobody made.
+   * `editedPlayers` are the synced rows changed here since the last sync — every `REMOTE` row
+   * with an `editedAt` stamp (ADR-0036). `pushedEdits` records which stamp each one left
+   * with, so `replaceRoster` can tell the edit this push carried from one made while it was
+   * in flight. Two devices editing the same player between syncs is settled by whichever
+   * sync lands second, which is the server's policy (ADR-0035, decision 3).
    *
    * A record is only pushed once **both** of its ends are rows the server already knows. The
    * wire types both ends as uuids (`headToHeadDtoSchema`), and a `LOCAL` row's id is not one —
@@ -358,19 +361,23 @@ export const createRosterRepository = ({
    * that adopts them, when the id it needs exists. It is not lost in the meantime: it stays in
    * SQLite, and `replaceRoster` carries it across the transition under the adopted id.
    */
-  const collectPush = (): RosterPush => {
+  const collectPush = (): { push: RosterPush; pushedEdits: ReadonlyMap<string, number> } => {
     const rows = allPlayersQuery(db).all();
     const known = new Set<string>(
       rows.filter((row) => row.origin === 'REMOTE').map((row) => row.id),
     );
+    const edited = rows.filter((row) => row.origin === 'REMOTE' && row.editedAt !== null);
 
     return {
-      newPlayers: rows.filter((row) => row.origin === 'LOCAL').map(toPlayer),
-      editedPlayers: [],
-      headToHead: allHeadToHeadQuery(db)
-        .all()
-        .map(toHeadToHead)
-        .filter((record) => known.has(record.viewerId) && known.has(record.opponentId)),
+      push: {
+        newPlayers: rows.filter((row) => row.origin === 'LOCAL').map(toPlayer),
+        editedPlayers: edited.map(toPlayer),
+        headToHead: allHeadToHeadQuery(db)
+          .all()
+          .map(toHeadToHead)
+          .filter((record) => known.has(record.viewerId) && known.has(record.opponentId)),
+      },
+      pushedEdits: new Map(edited.map((row) => [row.id, row.editedAt ?? 0])),
     };
   };
 
@@ -397,7 +404,8 @@ export const createRosterRepository = ({
     // reason rather than reporting a failure at a roster that is working.
     if (sink === undefined || source === undefined) return refresh();
 
-    const pushed = await sink.pushRoster(collectPush());
+    const { push, pushedEdits } = collectPush();
+    const pushed = await sink.pushRoster(push);
     if (!pushed.ok) return pushed;
     const adopted = pushed.value.assignedIds;
 
@@ -423,7 +431,7 @@ export const createRosterRepository = ({
     if (snapshot === null) return ok(undefined);
 
     try {
-      write(snapshot, adopted);
+      write(snapshot, adopted, pushedEdits);
       return ok(undefined);
     } catch (cause) {
       return err(toError(cause));
@@ -563,13 +571,16 @@ export const createRosterRepository = ({
     }
   };
 
-  /** Edits a player this device added. A `REMOTE` row is refused — see `PlayerOrigin`. */
+  /**
+   * Edits any player on the ladder (ADR-0036). A synced row is stamped as edited and pushed
+   * by the next sync, which is what gives every device on the account the same say over it.
+   */
   const updatePlayer = (id: PlayerId, draft: PlayerDraft): Result<Player> => {
     const rejection = rejectionFor(draft, id);
     if (rejection !== null) return err(rejection);
     try {
-      const row = updateLocalPlayer(db, id, draft);
-      return row === null ? err(new Error(NOT_YOURS)) : ok(toPlayer(row));
+      const row = updatePlayerRow(db, id, draft);
+      return row === null ? err(new Error(NO_SUCH_PLAYER)) : ok(toPlayer(row));
     } catch (cause) {
       return err(toError(cause));
     }
@@ -645,9 +656,8 @@ export const createRosterRepository = ({
      * from this screen — and a subscription re-keyed on every keystroke would cost more
      * than the query it is avoiding.
      *
-     * `origin` comes back with the player because the two answers differ: a `LOCAL` match
-     * is a row Save will rewrite, and a `REMOTE` one is a row Save will refuse. A form told
-     * only "there is a match" would promise the update in both cases and be wrong in one.
+     * `origin` comes back with the player so a caller can say where the match came from;
+     * since ADR-0036 Save rewrites either kind.
      */
     findImportMatch: (name: string, gameCode: string): ImportMatch | null => {
       const row = findPlayerByIdentity(db, name, gameCode);
@@ -678,9 +688,8 @@ export const createRosterRepository = ({
       } catch (cause) {
         return err(toError(cause));
       }
-      // A `REMOTE` match takes the update path deliberately, where `updatePlayer` refuses
-      // it by name (ADR-0020). Falling back to an insert would be worse than the refusal:
-      // it would add a second row for a player the ladder plainly already holds.
+      // Either kind of match is rewritten (ADR-0036). Falling back to an insert would add a
+      // second row for a player the ladder plainly already holds.
       return existing === undefined
         ? createPlayer(draft)
         : updatePlayer(asPlayerId(existing.id), draft);

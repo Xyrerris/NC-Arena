@@ -253,11 +253,7 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave, footer
             the code, which is what makes saying it beforehand worth anything (ADR-0031).
           */}
           {state.importNotice === null ? null : (
-            <ArenaText
-              variant="bodyCaption"
-              tone={state.importNotice.writable ? 'accent' : 'negative'}
-              testID="form-import-notice"
-            >
+            <ArenaText variant="bodyCaption" tone="accent" testID="form-import-notice">
               {state.importNotice.message}
             </ArenaText>
           )}
@@ -272,7 +268,7 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave, footer
             />
           </View>
 
-          {state.mode.kind === 'edit' ? (
+          {state.canDelete ? (
             <ArenaButton
               label="Remove player"
               variant="destructive"

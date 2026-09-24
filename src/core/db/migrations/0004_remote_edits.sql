@@ -1,0 +1,1 @@
+ALTER TABLE `players` ADD `edited_at` integer;

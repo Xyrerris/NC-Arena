@@ -110,7 +110,6 @@ export const usePlayerDetail = (id: PlayerId): PlayerDetailController => {
       kind: 'ready',
       tab,
       header: toPlayerHeaderUi(data.player),
-      canEdit: data.origin === 'LOCAL',
       stats: toStatRows(data.player, shortUnit),
       versus:
         data.viewer === null

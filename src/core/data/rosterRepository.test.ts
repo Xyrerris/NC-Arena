@@ -491,13 +491,15 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
     expect(repo.updatePlayer(localId, { ...localDraft('Nyx'), score: 42 }).ok).toBe(true);
   });
 
-  it('refuses to edit a synced player, because the next sync would undo it', () => {
+  it('edits a synced player too, so every device on the account has the same say (ADR-0036)', () => {
     const synced = asPlayerId('p-b');
     const result = repo.updatePlayer(synced, { ...localDraft('Brann'), combatPower: 1 });
 
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
     const live = repo.observePlayer(synced);
-    expect(live.map(live.query.all())?.player.combatPower).toBe(400);
+    expect(live.map(live.query.all())?.player.combatPower).toBe(1);
+    // Still the server's row: it is pushed as an edit, never as a second player.
+    expect(live.map(live.query.all())?.origin).toBe('REMOTE');
   });
 
   it('refuses to remove a synced player', () => {
@@ -651,12 +653,13 @@ describe('rosterRepository — importing a player from a screenshot', () => {
     expect(repo.playerCount()).toBe(6);
   });
 
-  it('refuses a synced player, rather than adding a second row for them', () => {
-    // `p-b` is REMOTE, and its code is `a2` (see the fixture). The match is found and the
-    // write is declined — the next sync would undo it (ADR-0020).
-    const imported = repo.importPlayer({ ...localDraft('Brann'), gameCode: 'a2' });
+  it('rewrites a synced player, rather than adding a second row for them', () => {
+    // `p-b` is REMOTE, and its code is `a2` (see the fixture). Since ADR-0036 the match is
+    // rewritten like a hand-entered one, and pushed as an edit by the next sync.
+    const imported = repo.importPlayer({ ...localDraft('Brann'), gameCode: 'a2', score: 77 });
 
-    expect(imported.ok).toBe(false);
+    expect(imported.ok).toBe(true);
+    if (imported.ok) expect(imported.value.id).toBe('p-b');
     expect(repo.playerCount()).toBe(5);
   });
 
@@ -669,9 +672,8 @@ describe('rosterRepository — importing a player from a screenshot', () => {
     expect(repo.playerCount()).toBe(5);
   });
 
-  it('names a synced match too, and says whose it is not', () => {
-    // The form needs the difference: one is a row Save rewrites, the other a row Save
-    // refuses — and a lookup that hid the second would let the notice promise an update.
+  it('names a synced match too, and says where it came from', () => {
+    // A lookup that hid synced rows would let an import add a second row for them.
     expect(repo.findImportMatch('Brann', 'a2')?.origin).toBe('REMOTE');
   });
 

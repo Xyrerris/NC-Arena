@@ -258,34 +258,26 @@ export const scanNote = (
  * after-the-fact confirmation has nowhere to appear. Said **before** the press it is also
  * the more useful sentence: the user can still change the name or the code, or cancel.
  *
- * `writable` is the difference between the two matches a scan can make. A `LOCAL` row is
- * one Save rewrites; a `REMOTE` one is a row Save refuses (ADR-0020), and a notice that
- * promised the update in both cases would be wrong in one.
+ * Either kind of match is one Save rewrites: a synced row is as editable as a hand-entered
+ * one since ADR-0036.
  */
 export interface ImportNotice {
   message: string;
-  writable: boolean;
 }
 
 /** `null` when the scanned pair matches nobody — Save adds a player and needs no warning. */
 export const importNotice = (match: ImportMatch | null): ImportNotice | null => {
   if (match === null) return null;
   const who = `${match.player.name}${match.player.gameCode === '' ? '' : ` ${gameCodeLabel(match.player.gameCode)}`}`;
-  return match.origin === 'LOCAL'
-    ? {
-        writable: true,
-        message: `${who} is already on the ladder. Saving updates that player rather than adding a second row.`,
-      }
-    : {
-        writable: false,
-        message: `${who} came from the roster sync, so this screenshot cannot be saved over them.`,
-      };
+  return {
+    message: `${who} is already on the ladder. Saving updates that player rather than adding a second row.`,
+  };
 };
 
 export type PlayerFormUiState =
   /** Edit mode only, while the player is being read out of SQLite. */
   | { kind: 'loading' }
-  /** Edit mode only: the id in the URL matches nothing, or matches a synced player. */
+  /** Edit mode only: the id in the URL matches nothing. */
   | { kind: 'unavailable'; message: string }
   | {
       kind: 'ready';
@@ -302,6 +294,12 @@ export type PlayerFormUiState =
       scan: StatScanUiState;
       /** Non-null only when a scan has matched a player already on the ladder (ADR-0031). */
       importNotice: ImportNotice | null;
+      /**
+       * Whether Remove is offered. Only for a player added on this device: a sync cannot tell
+       * the server a row is gone, so a removed synced player would be back after the next
+       * pull (ADR-0036). Editing has no such limit.
+       */
+      canDelete: boolean;
     };
 
 export type PlayerFormEvent =
@@ -325,14 +323,12 @@ export const VIEWER_EYEBROW = 'YOUR AVATAR';
  *
  * `notice` is the import's doing: a create whose scan matched a player the user owns is
  * about to *update* somebody, and a control still reading "Add player" would be the one
- * place on the screen still saying otherwise (ADR-0031). A match the user cannot write —
- * a synced row — keeps the ordinary label, because Save will be refused rather than
- * turning into an update.
+ * place on the screen still saying otherwise (ADR-0031).
  */
 export const submitLabel = (mode: PlayerFormMode, notice: ImportNotice | null = null): string => {
   switch (mode.kind) {
     case 'create':
-      return notice?.writable === true ? 'Update player' : 'Add player';
+      return notice === null ? 'Add player' : 'Update player';
     case 'edit':
       return 'Save changes';
     case 'viewer':

@@ -38,7 +38,7 @@ export {
   refoldPlayerNames,
   replaceRoster,
   restoreRoster,
-  updateLocalPlayer,
+  updatePlayerRow,
   type RecordMatchOutcome,
   type RecordMatchRefusal,
   type RosterRestore,

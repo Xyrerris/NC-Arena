@@ -111,12 +111,6 @@ export type PlayerDetailUiState =
       kind: 'ready';
       tab: PlayerDetailTab;
       header: PlayerHeaderUi;
-      /**
-       * True only for a player added on this device (ADR-0020). A synced row is not
-       * editable, so the control is absent rather than present-and-refusing — an affordance
-       * that explains why it will not work is still an affordance that does not work.
-       */
-      canEdit: boolean;
       stats: readonly StatRowUi[];
       /**
        * Null before the first sync has said who "you" are — open decision 3. The Stats tab

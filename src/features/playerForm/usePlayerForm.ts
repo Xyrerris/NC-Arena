@@ -62,10 +62,6 @@ export interface PlayerFormController {
 /** Matches no row. Create mode still calls the observer, to keep hook order stable. */
 const NO_PLAYER = asPlayerId('');
 
-const NOT_EDITABLE =
-  'This player came from the roster sync, so the next refresh would overwrite any change. ' +
-  'Only players added on this device can be edited.';
-
 export const usePlayerForm = ({
   mode,
   onSaved,
@@ -284,9 +280,6 @@ export const usePlayerForm = ({
               : 'That player is no longer on the ladder.',
         };
       }
-      if (loaded && origin === 'REMOTE') {
-        return { kind: 'unavailable', message: NOT_EDITABLE };
-      }
       if (!seeded) return { kind: 'loading' };
     }
 
@@ -300,6 +293,7 @@ export const usePlayerForm = ({
       isSaving,
       scan,
       importNotice: notice,
+      canDelete: mode.kind === 'edit' && origin === 'LOCAL',
     };
   }, [
     errors,
