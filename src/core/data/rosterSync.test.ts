@@ -480,3 +480,88 @@ describe('syncRoster — an edit to a synced row', () => {
     expect(editedAtOf(SERVER_B)).not.toBeNull();
   });
 });
+
+/**
+ * ADR-0037: "who am I" is one choice per account. Picking a different player here has to reach
+ * the server, and a sync that lands before it does may not put the old viewer back.
+ */
+describe('syncRoster — choosing a different viewer', () => {
+  let handle: TestDatabase;
+
+  /** The server still believes the viewer is A. */
+  const serverSaysA: RosterSnapshot = {
+    season: 41,
+    viewerId: asPlayerId(SERVER_A),
+    players: [remotePlayer(SERVER_A, 'Nyx', 1), remotePlayer(SERVER_B, 'Orrin', 2)],
+    headToHead: [],
+  };
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+    handle.db
+      .insert(players)
+      .values([
+        { ...remotePlayer(SERVER_A, 'Nyx', 1), nameFolded: 'nyx', origin: 'REMOTE' },
+        { ...remotePlayer(SERVER_B, 'Orrin', 2), nameFolded: 'orrin', origin: 'REMOTE' },
+      ])
+      .run();
+  });
+
+  afterEach(() => {
+    handle.close();
+  });
+
+  it('seats the new viewer upstream, and the pull that follows keeps it', async () => {
+    const preferences = createMemoryPreferences({ viewerId: asPlayerId(SERVER_A) });
+    const spy = createSpySink(() => ok({ snapshot: serverSaysA, assignedIds: new Map() }));
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([{ ...serverSaysA, viewerId: asPlayerId(SERVER_B) }]),
+      sink: spy.sink,
+      preferences,
+    });
+
+    expect(repo.setViewerId(asPlayerId(SERVER_B)).ok).toBe(true);
+    expect((await repo.syncRoster()).ok).toBe(true);
+
+    expect(spy.seated).toEqual([SERVER_B]);
+    expect(preferences.getViewerId()).toBe(SERVER_B);
+    // Told once; the next sync has nothing to seat.
+    expect(preferences.getPendingViewerId()).toBeNull();
+    await repo.syncRoster();
+    expect(spy.seated).toEqual([SERVER_B]);
+  });
+
+  it('is not undone by a pull that runs before the server was told', async () => {
+    const preferences = createMemoryPreferences({ viewerId: asPlayerId(SERVER_A) });
+    // No sink: a plain pull, whose snapshot still names A.
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([serverSaysA]),
+      preferences,
+    });
+
+    repo.setViewerId(asPlayerId(SERVER_B));
+    expect((await repo.syncRoster()).ok).toBe(true);
+
+    expect(preferences.getViewerId()).toBe(SERVER_B);
+    expect(preferences.getPendingViewerId()).toBe(SERVER_B);
+  });
+
+  it('takes the server viewer when nothing was chosen here', async () => {
+    const preferences = createMemoryPreferences({ viewerId: asPlayerId(SERVER_B) });
+    const spy = createSpySink(() => ok({ snapshot: serverSaysA, assignedIds: new Map() }));
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([]),
+      sink: spy.sink,
+      preferences,
+    });
+
+    await repo.syncRoster();
+
+    // Another device changed it; this one follows.
+    expect(spy.seated).toEqual([]);
+    expect(preferences.getViewerId()).toBe(SERVER_A);
+  });
+});

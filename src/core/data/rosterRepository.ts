@@ -315,7 +315,18 @@ export const createRosterRepository = ({
     pushedEdits?: ReadonlyMap<string, number>,
   ): void => {
     replaceRoster(db, snapshot, adopted, pushedEdits);
-    preferences.setViewerId(snapshot.viewerId);
+    // A viewer picked here and not yet seated upstream wins over the snapshot's, exactly as
+    // a pending row edit does (ADR-0037) — otherwise a pull puts back the player the user
+    // just stopped being. It follows the id rewrite, and is dropped if its row is gone.
+    const pending = preferences.getPendingViewerId();
+    const chosen = pending === null ? null : (adopted?.get(pending) ?? pending);
+    if (chosen !== null && playerQuery(db, chosen).all().length > 0) {
+      preferences.setViewerId(chosen);
+      if (chosen !== pending) preferences.setPendingViewerId(chosen);
+    } else {
+      if (pending !== null) preferences.clearPendingViewerId();
+      preferences.setViewerId(snapshot.viewerId);
+    }
     preferences.setSeason(snapshot.season);
     // Stamped here rather than where the request succeeded, and the difference is the whole
     // meaning of the label: this records when rows from the server were last *applied* to
@@ -404,24 +415,27 @@ export const createRosterRepository = ({
     // reason rather than reporting a failure at a roster that is working.
     if (sink === undefined || source === undefined) return refresh();
 
+    const pendingViewer = preferences.getPendingViewerId();
     const { push, pushedEdits } = collectPush();
     const pushed = await sink.pushRoster(push);
     if (!pushed.ok) return pushed;
     const adopted = pushed.value.assignedIds;
 
     let snapshot = pushed.value.snapshot;
-    if (snapshot === null) {
-      const local = preferences.getViewerId();
-      if (local !== null) {
-        // The push may have just given this row a server id; if it did not, the row was
-        // already the server's and its own id is the one to seat.
-        const seated = await sink.setViewer(adopted.get(local) ?? local);
-        if (!seated.ok) return seated;
+    // Two reasons to seat the viewer upstream: the user picked one here that the server has
+    // not heard of (ADR-0037), or the account has none yet and this device knows who it is.
+    const toSeat = pendingViewer ?? (snapshot === null ? preferences.getViewerId() : null);
+    // The push may have just given this row a server id; if it did not, the row was already
+    // the server's and its own id is the one to seat.
+    const target = toSeat === null ? null : (adopted.get(toSeat) ?? toSeat);
+    // Nothing to tell the server when the snapshot the push returned already names it.
+    if (target !== null && snapshot?.viewerId !== target) {
+      const seated = await sink.setViewer(target);
+      if (!seated.ok) return seated;
 
-        const pulled = await source.fetchRoster();
-        if (!pulled.ok) return pulled;
-        snapshot = pulled.value;
-      }
+      const pulled = await source.fetchRoster();
+      if (!pulled.ok) return pulled;
+      snapshot = pulled.value;
     }
 
     // Still nothing to apply: the push landed, but nobody has said which row is the viewer,
@@ -432,6 +446,14 @@ export const createRosterRepository = ({
 
     try {
       write(snapshot, adopted, pushedEdits);
+      // Seated, so no longer pending — unless the user picked someone else while the sync
+      // was in flight, in which case that newer choice is the next sync's to send.
+      if (
+        pendingViewer !== null &&
+        preferences.getPendingViewerId() === (adopted.get(pendingViewer) ?? pendingViewer)
+      ) {
+        preferences.clearPendingViewerId();
+      }
       return ok(undefined);
     } catch (cause) {
       return err(toError(cause));
@@ -713,6 +735,7 @@ export const createRosterRepository = ({
         // about keeping a query key valid, which is a different question.
         if (preferences.getViewerId() === id) {
           preferences.clearViewerId();
+          preferences.clearPendingViewerId();
           // The same announcement every other viewer change makes. Without it the screens
           // holding the old id as their subscription key keep reading a row that is gone.
           notifyViewerChanged();
@@ -763,6 +786,9 @@ export const createRosterRepository = ({
     setViewerId: (id: PlayerId): Result<void> => {
       if (playerQuery(db, id).all().length === 0) return err(new Error(NO_SUCH_PLAYER));
       preferences.setViewerId(id);
+      // The account has one viewer, shared by every device on it. Remembered as pending so
+      // the next sync tells the server instead of taking the old one back (ADR-0037).
+      preferences.setPendingViewerId(id);
       notifyViewerChanged();
       return ok(undefined);
     },

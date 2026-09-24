@@ -44,6 +44,15 @@ export const mmkvPreferences: ArenaPreferences = {
     storage.remove(PREF_KEYS.viewerId);
   },
 
+  getPendingViewerId: () => {
+    const stored = storage.getString(PREF_KEYS.pendingViewerId);
+    return stored === undefined || stored === '' ? null : asPlayerId(stored);
+  },
+  setPendingViewerId: (id) => storage.set(PREF_KEYS.pendingViewerId, id),
+  clearPendingViewerId: () => {
+    storage.remove(PREF_KEYS.pendingViewerId);
+  },
+
   getSeason: () => {
     const stored = storage.getNumber(PREF_KEYS.season);
     // `undefined` is "never synced"; a non-integer is a value written by code that no

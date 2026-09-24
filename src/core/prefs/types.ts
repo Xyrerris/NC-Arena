@@ -36,6 +36,15 @@ export interface ArenaPreferences {
   clearViewerId(): void;
 
   /**
+   * The viewer picked on this device that the server has not been told about yet, or null
+   * (ADR-0037). The account has one viewer upstream, and a sync applies the server's; while
+   * this is set, the sync seats this one upstream first and a pull may not replace it.
+   */
+  getPendingViewerId(): PlayerId | null;
+  setPendingViewerId(id: PlayerId): void;
+  clearPendingViewerId(): void;
+
+  /**
    * The season the last sync described. Null before the first one. It is a preference
    * rather than a column because it belongs to the snapshot as a whole, and giving a
    * single scalar its own table would be a migration for one integer (ADR-0018).
@@ -90,6 +99,7 @@ export const PREF_KEYS = {
   shortUnit: 'pref.shortUnit',
   rosterSort: 'pref.rosterSort',
   viewerId: 'pref.viewerId',
+  pendingViewerId: 'pref.pendingViewerId',
   season: 'pref.season',
   lastSyncedAt: 'pref.lastSyncedAt',
   apiKey: 'pref.apiKey',

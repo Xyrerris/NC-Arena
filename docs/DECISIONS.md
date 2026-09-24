@@ -2233,3 +2233,27 @@ the device until it is pushed — a backend change, deliberately not made here.
   the server has no delete; it becomes reachable the day it gets one.
 - A backup does not carry `edited_at`. A restored synced row is clean, so an edit not yet pushed
   when the backup was taken is restored as a value the next pull may overwrite.
+
+## ADR-0037 — Choosing "who am I" on a device is sent to the server
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5
+
+**Context.** The account has one viewer upstream (`PUT /v1/me/viewer`), and every sync that applies
+a snapshot wrote the snapshot's `viewerId` into the preferences. `setViewerId` changed the
+preference only. So picking a different player worked until the next pull-to-refresh, which put the
+old viewer back. The owner hit exactly that. The only time the client ever seated a viewer upstream
+was the bootstrap case: a fresh account with no viewer at all.
+
+**Decision.** A viewer picked on the device is stored as `pendingViewerId` beside `viewerId`. The
+next sync seats it with `setViewer` (by its adopted id if the push just assigned one), then pulls.
+Until that succeeds, applying a snapshot keeps the pending choice over the snapshot's, the same rule
+ADR-0036 gives a pending row edit. The flag clears only if it still names the viewer that was
+seated, so a second pick made while the sync was in flight goes out on the next one. A pending
+viewer whose row no longer exists is dropped, and the snapshot's is used.
+
+**Consequences.**
+
+- "Who am I" is per account, not per device. A pick on one device reaches the others on their next
+  sync. A device that picked nothing follows the server.
+- Two devices picking different viewers between syncs: the one that syncs last wins.
+- Removing the viewer's row clears the pending choice together with the preference.

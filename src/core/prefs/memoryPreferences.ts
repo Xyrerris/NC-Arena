@@ -20,6 +20,7 @@ export const createMemoryPreferences = (
   let shortUnit = isShortUnit(initial.shortUnit) ? initial.shortUnit : DEFAULT_SHORT_UNIT;
   let rosterSort = isRosterSort(initial.rosterSort) ? initial.rosterSort : DEFAULT_ROSTER_SORT;
   let viewerId: PlayerId | null = initial.viewerId ?? null;
+  let pendingViewerId: PlayerId | null = null;
   let season: number | null = initial.season ?? null;
   let lastSyncedAt: number | null = initial.lastSyncedAt ?? null;
   let apiKey: string | null = initial.apiKey ?? null;
@@ -39,6 +40,13 @@ export const createMemoryPreferences = (
     },
     clearViewerId: () => {
       viewerId = null;
+    },
+    getPendingViewerId: () => pendingViewerId,
+    setPendingViewerId: (id) => {
+      pendingViewerId = id;
+    },
+    clearPendingViewerId: () => {
+      pendingViewerId = null;
     },
     getSeason: () => season,
     setSeason: (next) => {
