@@ -12,6 +12,7 @@
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
+import { BackHandler } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { err, ok, type AccountError, type AccountGateway } from '@/core/common';
@@ -297,6 +298,44 @@ describe('AccountSetupScreen', () => {
         fireEvent.press(screen.getByTestId('account-setup-skip'));
       });
 
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('the back button', () => {
+    type BackPressHandler = Parameters<typeof BackHandler.addEventListener>[1];
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('is swallowed while the recovery code is on screen', async () => {
+      // The handlers the screen has registered and not yet removed.
+      const handlers: BackPressHandler[] = [];
+      jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+        handlers.push(handler);
+        return {
+          remove: () => {
+            handlers.splice(handlers.indexOf(handler), 1);
+          },
+        };
+      });
+      await mount(gatewayThat());
+      expect(handlers).toHaveLength(0);
+
+      await act(async () => {
+        submit();
+      });
+      await screen.findByTestId('account-setup-recovery');
+
+      // Consumed: the handler answers true, so nothing closes.
+      expect(handlers.map((handler) => handler({} as Parameters<BackPressHandler>[0]))).toEqual([
+        true,
+      ]);
+
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('account-setup-continue'));
+      });
       expect(onDone).toHaveBeenCalledTimes(1);
     });
   });

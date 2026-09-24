@@ -118,7 +118,9 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
 Confirmed by the owner on a device: first account + manual sync, automatic migrations, and the
 "who am I" fix (ADR-0037). **Being verified:** the periodic background sync. **Still open:** the
 end-to-end contract test for a stat above `Int32.MAX` (ROADMAP Phase 5 exit criteria); deleting a
-synced player (ADR-0036, decision 3); backups of the Postgres volume; a backend test runner.
+synced player (ADR-0036, decision 3); a backend test runner. **Postgres backups are queued, not
+open:** the owner relies on Coolify's backups for now; a `pg_dump` sidecar with an off-site copy
+is the plan if that changes.
 
 The setup gate can now be skipped — "Continue offline" (ADR-0038). A skipped device is unpaired
 but not gated, `syncRoster` is a no-op for it, and `/me` offers "Connect to server", which opens

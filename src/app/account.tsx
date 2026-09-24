@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useCallback } from 'react';
 
 import { AccountSetupScreen } from '@/features/accountSetup';
@@ -19,5 +19,12 @@ export default function AccountRoute() {
     else router.replace('/');
   }, [router]);
 
-  return <AccountSetupScreen onDone={leave} />;
+  // No swipe-back on iOS, for the reason the screen blocks Android's back button while the
+  // recovery code is up. The screen's own buttons are the ways out.
+  return (
+    <>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <AccountSetupScreen onDone={leave} />
+    </>
+  );
 }

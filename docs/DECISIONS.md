@@ -2284,6 +2284,8 @@ closing the screen over it would lose the only view of its recovery code.
 **Consequences.**
 
 - The latch in `ArenaGate` is unchanged. Skipping calls `onDone` like the other two exits.
-- On `/account` the recovery code is shown on a screen the user can leave with the system back
-  button, which the gate never allowed. The key is already stored at that point, so the device stays
-  paired, but a code not written down is lost for good.
+- While the recovery code is on screen, Android's back button is swallowed (`BackHandler`), on the
+  gate and on `/account` alike, and `/account` has no swipe-back. On the gate, back would have
+  closed the app over the code; on `/account` it would have popped the route. The key is already
+  stored at that point, so nothing would ever bring the code back. "I have written it down" is the
+  one way out.

@@ -18,7 +18,8 @@
  * alone is taller than a phone.
  */
 
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, BackHandler, ScrollView, StyleSheet, View } from 'react-native';
 
 import {
   ArenaButton,
@@ -59,6 +60,17 @@ export function AccountSetupScreen({ onDone }: AccountSetupScreenProps) {
   const { state, code, onChangeCode, actionLabel, onSubmit, onContinue, onSkip } = useAccountSetup({
     onDone,
   });
+
+  // While the secrets are up, Android's back button does nothing. On the gate it would close
+  // the app, and on `/account` it would pop the route — either way over the only time the
+  // recovery code is ever shown, with the key already stored so nothing brings the screen
+  // back. "I have written it down" stays the one way out.
+  const showingSecrets = state.kind === 'created';
+  useEffect(() => {
+    if (!showingSecrets) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => subscription.remove();
+  }, [showingSecrets]);
 
   return (
     <ScreenScaffold>
