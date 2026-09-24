@@ -34,7 +34,7 @@ module.exports = {
    *    `core/ocr`) import modules
    *    plain Node cannot resolve. That is *why* each is deliberately thin, and each says so
    *    in its own header;
-   *  - `useViewerId.ts` and `useNeedsAccount.ts` are React hooks and `core/design-system` is
+   *  - `useViewerId.ts`, `useNeedsAccount.ts` and `useCanLinkAccount.ts` are React hooks and `core/design-system` is
    *    components, so all of them belong to the native project;
    *  - `core/testing` is the fakes, and coverage of a fake measures nothing;
    *  - barrels and `.d.ts` carry no statements.
@@ -50,6 +50,7 @@ module.exports = {
     '!src/core/data/backgroundSync.ts',
     '!src/core/data/expoBackupFile.ts',
     '!src/core/data/expoLiveData.ts',
+    '!src/core/data/useCanLinkAccount.ts',
     '!src/core/data/useNeedsAccount.ts',
     '!src/core/data/useViewerId.ts',
     '!src/core/prefs/mmkvPreferences.ts',

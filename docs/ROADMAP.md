@@ -769,7 +769,13 @@ that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, whic
 - A contract test asserts a stat value above `Int32.MAX` survives the full
   JSON → Zod → SQLite → domain → UI path unchanged, **and** that a value above
   `Number.MAX_SAFE_INTEGER` is rejected at parse time rather than silently rounded. These are the
-  §2.1 regression guards, and the second is the one this platform actually needs.
+  §2.1 regression guards, and the second is the one this platform actually needs. **Met.**
+  `src/features/player/statContract.test.tsx` sends the body as raw JSON text through the real
+  `RemoteRosterSource`, into SQLite, and reads the digits off `PlayerDetailScreen` (up to
+  `MAX_SAFE_INTEGER` itself); `2^53 + 1` is refused and the stored ladder is untouched. Probed: it
+  fails with a 32-bit narrowing in the SQLite mapper, and with the safe-integer rule removed from
+  the DTO. Removing `.safe()` alone is **not** a break — Zod 4's `.int()` already refuses unsafe
+  integers.
 - The `features/` diff for this phase is empty **of changes the swap forced**. Read as written this
   is now literally false — `features/accountSetup` is new (ADR-0035's fifth addendum) — and the
   distinction is the one that was always meant: no existing feature had to change to move the roster

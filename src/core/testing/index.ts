@@ -15,6 +15,7 @@ import path from 'node:path';
 import { createRosterRepository, type RosterRepository, type UseLiveData } from '../data';
 import type { AccountGateway, RosterSink, RosterSource } from '../common';
 import { refoldPlayerNames, type ArenaDatabase } from '../db';
+import { RemoteRosterSource } from '../network';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 
 const MIGRATIONS_FOLDER = path.resolve(__dirname, '..', 'db', 'migrations');
@@ -124,6 +125,35 @@ export const createTestRepository = (
   const build = (from: RosterSource | undefined = source) =>
     createRosterRepository({ db, source: from, sink, gateway, preferences });
   return { repository: build(), preferences, restart: build };
+};
+
+/**
+ * The real `RemoteRosterSource`, answered by a server that sends exactly `body` — the raw
+ * text, not an object. That distinction is the point: a number above
+ * `Number.MAX_SAFE_INTEGER` can only be written as text, because a JS literal would already
+ * have been rounded before any code under test saw it. `JSON.parse` does that rounding in
+ * the app, so it does it here too, in the same place `Response.json()` would.
+ *
+ * Replaces `fetch` for the process until `restore` runs; call it in `afterEach`.
+ */
+export interface WireSource {
+  source: RosterSource;
+  restore(): void;
+}
+
+export const serveRosterJson = (body: string): WireSource => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => ({
+    ok: true,
+    status: 200,
+    json: async () => JSON.parse(body) as unknown,
+  })) as unknown as typeof fetch;
+  return {
+    source: new RemoteRosterSource('https://arena.test', 'test-key'),
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
 };
 
 export type { ArenaPreferences };
