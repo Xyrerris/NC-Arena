@@ -41,5 +41,6 @@ export {
   type BackgroundSyncOutcome,
   type BackgroundSyncPolicy,
 } from './syncMutation';
+export { useCanLinkAccount } from './useCanLinkAccount';
 export { useNeedsAccount } from './useNeedsAccount';
 export { useViewerId } from './useViewerId';

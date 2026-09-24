@@ -1,3 +1,7 @@
+import { useRouter } from 'expo-router';
+import { useCallback } from 'react';
+
+import { AccountConnectPrompt } from '@/features/accountSetup';
 import { ViewerScreen } from '@/features/playerForm';
 import { RosterBackupControls } from '@/features/rosterBackup';
 
@@ -17,5 +21,20 @@ import { RosterBackupControls } from '@/features/rosterBackup';
  * live in different directories, and nothing here is a player id.
  */
 export default function ViewerRoute() {
-  return <ViewerScreen footer={<RosterBackupControls />} />;
+  const router = useRouter();
+  // Offered only while the device is unpaired, which after ADR-0038 is a state the user can
+  // choose — so the way back to an account lives here, beside the other "this device's copy"
+  // controls.
+  const connect = useCallback(() => router.push('/account'), [router]);
+
+  return (
+    <ViewerScreen
+      footer={
+        <>
+          <AccountConnectPrompt onConnect={connect} />
+          <RosterBackupControls />
+        </>
+      }
+    />
+  );
 }

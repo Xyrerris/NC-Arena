@@ -30,6 +30,8 @@ export interface AccountSetupController {
   onSubmit: () => void;
   /** Acknowledges the secrets. The only way out of the `created` state. */
   onContinue: () => void;
+  /** Stays offline and closes the gate without an account (ADR-0038). */
+  onSkip: () => void;
 }
 
 export const useAccountSetup = ({ onDone }: AccountSetupOptions): AccountSetupController => {
@@ -91,6 +93,14 @@ export const useAccountSetup = ({ onDone }: AccountSetupOptions): AccountSetupCo
 
   const onChangeCode = useCallback((next: string) => setCode(next), []);
 
+  const onSkip = useCallback(() => {
+    // Not while a request is in flight: it may be about to mint an account, and closing the
+    // gate over it would drop the one screen that shows its recovery code.
+    if (working.current) return;
+    repository.skipAccountSetup();
+    onDone();
+  }, [onDone, repository]);
+
   return useMemo(
     () => ({
       state,
@@ -99,7 +109,8 @@ export const useAccountSetup = ({ onDone }: AccountSetupOptions): AccountSetupCo
       actionLabel: actionLabel(code),
       onSubmit,
       onContinue: onDone,
+      onSkip,
     }),
-    [code, onChangeCode, onDone, onSubmit, state],
+    [code, onChangeCode, onDone, onSkip, onSubmit, state],
   );
 };

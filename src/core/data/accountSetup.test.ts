@@ -64,6 +64,41 @@ describe('the setup gate seam', () => {
     });
   });
 
+  describe('skipping setup (ADR-0038)', () => {
+    it('lets the gate stay closed across a restart, and keeps pairing available', () => {
+      const { repository, restart } = createTestRepository(database.db, undefined, gatewayThat());
+
+      repository.skipAccountSetup();
+
+      expect(repository.needsAccount()).toBe(false);
+      expect(restart().needsAccount()).toBe(false);
+      // Not paired, so the "You" screen still offers to connect.
+      expect(repository.canLinkAccount()).toBe(true);
+    });
+
+    it('stops offering to connect once the device is paired', async () => {
+      const { repository } = createTestRepository(database.db, undefined, gatewayThat());
+      repository.skipAccountSetup();
+
+      await repository.linkAccount('some-code');
+
+      expect(repository.canLinkAccount()).toBe(false);
+    });
+
+    it('offers nothing in a build with no backend', () => {
+      const { repository } = createTestRepository(database.db);
+
+      expect(repository.canLinkAccount()).toBe(false);
+    });
+
+    it('makes a sync a quiet no-op while unpaired, rather than a refused request', async () => {
+      const { repository } = createTestRepository(database.db, undefined, gatewayThat());
+      repository.skipAccountSetup();
+
+      expect((await repository.syncRoster()).ok).toBe(true);
+    });
+  });
+
   describe('createAccount', () => {
     it('stores the key and hands both secrets back for the screen to show once', async () => {
       const { repository, preferences } = createTestRepository(

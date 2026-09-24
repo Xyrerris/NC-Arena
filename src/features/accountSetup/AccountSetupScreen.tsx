@@ -41,6 +41,8 @@ import {
   RECOVERY_CODE_LABEL,
   SECRETS_TITLE,
   SECRETS_WARNING,
+  SKIP_HINT,
+  SKIP_LABEL,
   TITLE,
 } from './accountSetupUiState';
 import { useAccountSetup } from './useAccountSetup';
@@ -54,7 +56,7 @@ export interface AccountSetupScreenProps {
 }
 
 export function AccountSetupScreen({ onDone }: AccountSetupScreenProps) {
-  const { state, code, onChangeCode, actionLabel, onSubmit, onContinue } = useAccountSetup({
+  const { state, code, onChangeCode, actionLabel, onSubmit, onContinue, onSkip } = useAccountSetup({
     onDone,
   });
 
@@ -77,6 +79,7 @@ export function AccountSetupScreen({ onDone }: AccountSetupScreenProps) {
             onChangeCode={onChangeCode}
             actionLabel={actionLabel}
             onSubmit={onSubmit}
+            onSkip={onSkip}
             busy={state.kind === 'working'}
             error={state.kind === 'asking' ? state.error : null}
           />
@@ -91,11 +94,12 @@ interface AskProps {
   onChangeCode: (next: string) => void;
   actionLabel: string;
   onSubmit: () => void;
+  onSkip: () => void;
   busy: boolean;
   error: string | null;
 }
 
-function Ask({ code, onChangeCode, actionLabel, onSubmit, busy, error }: AskProps) {
+function Ask({ code, onChangeCode, actionLabel, onSubmit, onSkip, busy, error }: AskProps) {
   return (
     <>
       <ArenaText variant="displaySmall" tone="primary">
@@ -132,6 +136,18 @@ function Ask({ code, onChangeCode, actionLabel, onSubmit, busy, error }: AskProp
       />
 
       {busy ? <ActivityIndicator color={color.accent} testID="account-setup-busy" /> : null}
+
+      <ArenaButton
+        label={SKIP_LABEL}
+        variant="secondary"
+        onPress={onSkip}
+        disabled={busy}
+        fill
+        testID="account-setup-skip"
+      />
+      <ArenaText variant="bodyCaption" tone="subtle">
+        {SKIP_HINT}
+      </ArenaText>
     </>
   );
 }

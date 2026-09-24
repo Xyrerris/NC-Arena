@@ -40,6 +40,23 @@ export const LINK_LABEL = 'Link this device';
 export const actionLabel = (code: string): string =>
   code.trim() === '' ? CREATE_LABEL : LINK_LABEL;
 
+/**
+ * The way past the gate without an account (ADR-0038). For a first launch with no signal or a
+ * server that is down, and for a user who never wants the roster to leave the phone. The hint
+ * says it is reversible, because a choice that sounds permanent is one people refuse to make.
+ */
+export const SKIP_LABEL = 'Continue offline';
+export const SKIP_HINT =
+  'Keep this roster on this device only. You can connect it to the server later from the ' +
+  'You screen — nothing you add meanwhile is lost.';
+
+/** What the "You" screen says while this device is unpaired (ADR-0038). */
+export const OFFLINE_TITLE = 'Offline only';
+export const OFFLINE_NOTE =
+  'This roster is not synced. Connect it to create an account or join one with a recovery ' +
+  'code; the players on this device are sent up with the first sync.';
+export const CONNECT_LABEL = 'Connect to server';
+
 /** The failures, as sentences. One per `AccountFailure`, so the switch below stays total. */
 export const failureMessage = (reason: AccountFailure): string => {
   switch (reason) {

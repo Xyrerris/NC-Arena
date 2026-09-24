@@ -266,4 +266,38 @@ describe('AccountSetupScreen', () => {
       expect(linkAccount).toHaveBeenNthCalledWith(2, 'right-code');
     });
   });
+
+  describe('continuing offline (ADR-0038)', () => {
+    it('closes the gate without an account, and remembers the choice', async () => {
+      const repository = await mount(gatewayThat());
+
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('account-setup-skip'));
+      });
+
+      expect(onDone).toHaveBeenCalledTimes(1);
+      expect(repository.needsAccount()).toBe(false);
+      expect(repository.canLinkAccount()).toBe(true);
+    });
+
+    it('is the way out when the server cannot be reached', async () => {
+      const offline: AccountError = { reason: 'OFFLINE', message: 'no network' };
+      await mount(
+        gatewayThat({
+          createAccount: async () => err(offline),
+          linkAccount: async () => err(offline),
+        }),
+      );
+
+      await act(async () => {
+        submit();
+      });
+      await screen.findByTestId('account-setup-error');
+      await act(async () => {
+        fireEvent.press(screen.getByTestId('account-setup-skip'));
+      });
+
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+  });
 });

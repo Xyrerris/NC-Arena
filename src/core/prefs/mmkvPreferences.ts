@@ -83,4 +83,7 @@ export const mmkvPreferences: ArenaPreferences = {
   clearApiKey: () => {
     storage.remove(PREF_KEYS.apiKey);
   },
+
+  getSetupSkipped: () => storage.getBoolean(PREF_KEYS.setupSkipped) === true,
+  setSetupSkipped: () => storage.set(PREF_KEYS.setupSkipped, true),
 };

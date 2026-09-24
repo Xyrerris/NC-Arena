@@ -2257,3 +2257,33 @@ viewer whose row no longer exists is dropped, and the snapshot's is used.
   sync. A device that picked nothing follows the server.
 - Two devices picking different viewers between syncs: the one that syncs last wins.
 - Removing the viewer's row clears the pending choice together with the preference.
+
+## ADR-0038 — The setup gate can be skipped, and the device paired later
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5 · **Amends:** ADR-0035's fifth addendum
+
+**Context.** With a backend configured, a first launch showed the setup screen and nothing else
+until the device was paired. With no signal or with the server down, both actions fail, and the
+user was stuck on that screen with no way into the app. The owner also wants the roster to be
+usable offline only, by choice.
+
+**Decision.** The setup screen has a second action, "Continue offline". It stores `setupSkipped` in
+the preferences and closes the gate. `needsAccount` is now _backend, no key, and not skipped_, so
+the gate does not come back on the next launch. A new `canLinkAccount` (_backend and no key_) is
+what the "You" screen reads: while it is true, `/me` shows "Connect to server", which opens the same
+setup screen at the `/account` route. Pairing there sends the hand-entered players up with the
+first sync, as pairing always has.
+
+While unpaired, `syncRoster` returns ok without a request. Every request would be refused as
+unauthenticated, and the roster on screen is already everything there is. The same holds for the
+periodic task.
+
+Skipping is refused while a request is in flight. That request may be about to mint an account, and
+closing the screen over it would lose the only view of its recovery code.
+
+**Consequences.**
+
+- The latch in `ArenaGate` is unchanged. Skipping calls `onDone` like the other two exits.
+- On `/account` the recovery code is shown on a screen the user can leave with the system back
+  button, which the gate never allowed. The key is already stored at that point, so the device stays
+  paired, but a code not written down is lost for good.

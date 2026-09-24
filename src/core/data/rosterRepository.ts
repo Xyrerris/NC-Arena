@@ -414,6 +414,10 @@ export const createRosterRepository = ({
     // Nothing upstream: fall back to `refresh`, which answers the same way for the same
     // reason rather than reporting a failure at a roster that is working.
     if (sink === undefined || source === undefined) return refresh();
+    // A backend, but this device is not paired to it — the user chose to stay offline
+    // (ADR-0038). Every request would be refused as unauthenticated, and the roster on screen
+    // is already everything there is, so there is nothing to do and nothing to report.
+    if (gateway !== undefined && preferences.getApiKey() === null) return ok(undefined);
 
     const pendingViewer = preferences.getPendingViewerId();
     const { push, pushedEdits } = collectPush();
@@ -813,7 +817,25 @@ export const createRosterRepository = ({
      * Read it through `useNeedsAccount` rather than calling it in a render, for the reason
      * `getViewerId` says: it is a subscription, not a value.
      */
-    needsAccount: (): boolean => gateway !== undefined && preferences.getApiKey() === null,
+    needsAccount: (): boolean =>
+      gateway !== undefined && preferences.getApiKey() === null && !preferences.getSetupSkipped(),
+
+    /**
+     * Whether this device could still be paired: a backend exists and no key is stored. True
+     * after the user skipped setup (ADR-0038), which is what the "You" screen reads to offer
+     * connecting later.
+     */
+    canLinkAccount: (): boolean => gateway !== undefined && preferences.getApiKey() === null,
+
+    /**
+     * Keeps this ladder offline and lets the gate close without an account (ADR-0038). For a
+     * server that cannot be reached at first launch as much as for a user who never wants
+     * one; either way pairing stays available from the "You" screen.
+     */
+    skipAccountSetup: (): void => {
+      preferences.setSetupSkipped();
+      notifyAccountChanged();
+    },
 
     /** `useSyncExternalStore`'s half of the pair. Returns the unsubscribe. */
     subscribeAccount: (listener: () => void): (() => void) => {

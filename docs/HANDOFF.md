@@ -103,13 +103,26 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
 - ~~**Turn the URL on.**~~ **Done for EAS builds.** The service has a Let's Encrypt certificate
   (Coolify, 2026-09-23; plain HTTP now redirects to HTTPS), and `eas.json` carries the `https://`
   URL in every profile — no cleartext allowance was needed. Locally it is on only where a
-  `.env.local` sets it (git-ignored, so once per machine). What is not yet seen: a first account
-  created and a first sync completed against the live service from a device.
+  `.env.local` sets it (git-ignored, so once per machine). **Seen on a device
+  (2026-09-24):** a first account created and a manual pull-to-refresh sync completed against the
+  live service.
 - ~~**Run the migrations on every redeploy, automatically.**~~ **Done.** The backend's `Dockerfile`
   `CMD` is `node dist/db/migrate.js && exec node dist/index.js`: every container start applies what
   is new, then serves. A failed migration keeps the server from starting and the container
   restarts; that is deliberate — a server on a schema it does not match answers 500 anyway, and a
-  stopped one says why in its logs. Not yet seen on the live deploy.
+  stopped one says why in its logs. **Seen on the live deploy (2026-09-24):** the migration message
+  is in the container log.
+
+## Status as of 2026-09-24
+
+Confirmed by the owner on a device: first account + manual sync, automatic migrations, and the
+"who am I" fix (ADR-0037). **Being verified:** the periodic background sync. **Still open:** the
+end-to-end contract test for a stat above `Int32.MAX` (ROADMAP Phase 5 exit criteria); deleting a
+synced player (ADR-0036, decision 3); backups of the Postgres volume; a backend test runner.
+
+The setup gate can now be skipped — "Continue offline" (ADR-0038). A skipped device is unpaired
+but not gated, `syncRoster` is a no-op for it, and `/me` offers "Connect to server", which opens
+the same screen at `/account`.
 
 ## Things that will cost you a day if you rediscover them
 

@@ -24,6 +24,7 @@ export const createMemoryPreferences = (
   let season: number | null = initial.season ?? null;
   let lastSyncedAt: number | null = initial.lastSyncedAt ?? null;
   let apiKey: string | null = initial.apiKey ?? null;
+  let setupSkipped = false;
 
   return {
     getShortUnit: () => shortUnit,
@@ -65,6 +66,10 @@ export const createMemoryPreferences = (
     },
     clearApiKey: () => {
       apiKey = null;
+    },
+    getSetupSkipped: () => setupSkipped,
+    setSetupSkipped: () => {
+      setupSkipped = true;
     },
   };
 };

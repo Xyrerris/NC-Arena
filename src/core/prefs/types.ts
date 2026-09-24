@@ -90,6 +90,14 @@ export interface ArenaPreferences {
    * as never having paired, and only one of the two should send the user back to setup.
    */
   clearApiKey(): void;
+
+  /**
+   * The user chose to keep this ladder on this device only, and to skip the setup gate
+   * (ADR-0038). It does not stop them pairing later from the "You" screen; it only stops the
+   * gate standing in front of the roster on every launch.
+   */
+  getSetupSkipped(): boolean;
+  setSetupSkipped(): void;
 }
 
 export const DEFAULT_SHORT_UNIT: ShortUnit = 'BILLIONS';
@@ -103,4 +111,5 @@ export const PREF_KEYS = {
   season: 'pref.season',
   lastSyncedAt: 'pref.lastSyncedAt',
   apiKey: 'pref.apiKey',
+  setupSkipped: 'pref.setupSkipped',
 } as const;

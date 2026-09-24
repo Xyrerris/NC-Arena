@@ -2,11 +2,12 @@
  * The setup gate (ADR-0035, decision 2) — how a device gets an API key before anything can
  * reach the backend with one.
  *
- * Rendered by `src/app/_layout.tsx` rather than by a route of its own: it is not somewhere
- * the user navigates to, it is what there is instead of the app until it is done, and a
- * route would put it in a back stack it must not be possible to leave.
+ * Rendered by `src/app/_layout.tsx` in front of the app on a first launch. After the user
+ * skipped it (ADR-0038) it is also reachable from the "You" screen, through
+ * `AccountConnectPrompt` and the `/account` route.
  */
 
+export { AccountConnectPrompt, type AccountConnectPromptProps } from './AccountConnectPrompt';
 export { AccountSetupScreen, type AccountSetupScreenProps } from './AccountSetupScreen';
 export {
   API_KEY_LABEL,
@@ -20,6 +21,8 @@ export {
   RECOVERY_CODE_LABEL,
   SECRETS_TITLE,
   SECRETS_WARNING,
+  SKIP_HINT,
+  SKIP_LABEL,
   TITLE,
   actionLabel,
   failureMessage,
