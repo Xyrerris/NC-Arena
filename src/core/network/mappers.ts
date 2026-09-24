@@ -110,6 +110,7 @@ export const rosterPushToDto = (push: RosterPush): RosterSyncRequest => ({
   newPlayers: push.newPlayers.map(newPlayerToDto),
   editedPlayers: push.editedPlayers.map(playerEditToDto),
   headToHead: push.headToHead.map(headToHeadToDto),
+  deletedPlayers: [...push.deletedPlayers],
 });
 
 /**

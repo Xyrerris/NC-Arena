@@ -47,11 +47,15 @@ export interface RosterSource {
  *
  * `editedPlayers` are rows the server already owns, changed here. Their `id` is a server id, so
  * it is not a `clientId` of anything.
+ *
+ * `deletedPlayers` are server ids removed here (ADR-0039). A `LOCAL` row that is removed never
+ * reached the server, so it has nothing to say.
  */
 export interface RosterPush {
   newPlayers: readonly Player[];
   editedPlayers: readonly Player[];
   headToHead: readonly HeadToHead[];
+  deletedPlayers: readonly PlayerId[];
 }
 
 /**

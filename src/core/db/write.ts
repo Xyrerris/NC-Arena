@@ -22,7 +22,7 @@
  *    nothing about is not an instruction to forget.
  */
 
-import { and, asc, desc, eq, gt, isNotNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, ne, or, sql } from 'drizzle-orm';
 
 import type { RosterSnapshot } from '../common';
 import {
@@ -37,7 +37,7 @@ import {
   type PlayerId,
   type StoredPlayer,
 } from '../model';
-import { headToHead, players } from './schema';
+import { deletedPlayers, headToHead, players } from './schema';
 import type { HeadToHeadRow, PlayerRow } from './schema';
 import type { ArenaDatabase } from './queries';
 
@@ -85,6 +85,25 @@ const rowById = (tx: ArenaDatabase, id: PlayerId): PlayerRow | undefined =>
  * `replaceRoster` would mean silently dropping a record the snapshot never mentioned.
  */
 const pairing = (viewerId: string, opponentId: string): string => `${viewerId}\u0000${opponentId}`;
+
+/**
+ * A snapshot with the players this device has removed taken out of it (ADR-0039), and the
+ * ranks closed up behind them so the ladder is still one contiguous 1..N list. Records naming
+ * a removed player go with it.
+ */
+const withoutDeleted = (snapshot: RosterSnapshot, removed: ReadonlySet<string>): RosterSnapshot => {
+  if (removed.size === 0) return snapshot;
+  return {
+    ...snapshot,
+    players: snapshot.players
+      .filter((player) => !removed.has(player.id))
+      .sort((left, right) => left.rank - right.rank)
+      .map((player, index) => ({ ...player, rank: index + 1 })),
+    headToHead: snapshot.headToHead.filter(
+      (record) => !removed.has(record.viewerId) && !removed.has(record.opponentId),
+    ),
+  };
+};
 
 const highestRank = (tx: ArenaDatabase): number =>
   tx.select({ rank: players.rank }).from(players).orderBy(desc(players.rank)).limit(1).all()[0]
@@ -148,14 +167,35 @@ const highestRank = (tx: ArenaDatabase): number =>
  * all because this is a plain pull — keeps its own stats over the snapshot's, and keeps its
  * stamp so the next sync pushes it. The snapshot still decides its rank and whether it
  * exists at all.
+ *
+ * **`pushedDeletes` is the same idea for a removed player** (ADR-0039). A tombstone the push
+ * carried is settled and cleared: the server has applied it, or refused it for a reason the
+ * snapshot now shows (the account's viewer is never deleted), and either way the snapshot is
+ * the truth. A tombstone the push did *not* carry is still pending, and the snapshot's copy of
+ * that player is left out rather than brought back.
  */
 export const replaceRoster = (
   db: ArenaDatabase,
-  snapshot: RosterSnapshot,
+  incoming: RosterSnapshot,
   adopted: ReadonlyMap<string, string> = new Map(),
   pushedEdits: ReadonlyMap<string, number> = new Map(),
+  pushedDeletes: ReadonlySet<string> = new Set(),
 ): void => {
   db.transaction((tx) => {
+    if (pushedDeletes.size > 0) {
+      tx.delete(deletedPlayers)
+        .where(inArray(deletedPlayers.id, [...pushedDeletes]))
+        .run();
+    }
+    const stillDeleted = new Set(
+      tx
+        .select()
+        .from(deletedPlayers)
+        .all()
+        .map((row) => row.id),
+    );
+    const snapshot = withoutDeleted(incoming, stillDeleted);
+
     const claimed = new Set<string>(snapshot.players.map((player) => player.id));
     /** A local id the server has now issued a real one for, or the id unchanged. */
     const settled = (id: string): string => adopted.get(id) ?? id;
@@ -300,6 +340,9 @@ export interface RosterRestore {
  */
 export const restoreRoster = (db: ArenaDatabase, restore: RosterRestore): void => {
   db.transaction((tx) => {
+    // A restore says what the ladder is. A removal still waiting to be pushed would otherwise
+    // hide a player the file has just brought back.
+    tx.delete(deletedPlayers).run();
     // Same order as `replaceRoster`, for the same per-connection-pragma reason.
     tx.delete(headToHead).run();
     tx.delete(players).run();
@@ -403,16 +446,23 @@ export const updatePlayerRow = (
   });
 
 /**
- * Removes a hand-entered player and closes the gap in the ranking.
+ * Removes a player and closes the gap in the ranking. Returns false when the id is unknown.
+ *
+ * A synced row leaves a tombstone behind (ADR-0039), which is what the next sync pushes and
+ * what keeps a pull from bringing the player back meanwhile. A hand-entered row needs none:
+ * the server never heard of it.
  *
  * Only the ranks *below* the removed one move, which is a single UPDATE that cannot read a
  * value it is halfway through rewriting — the failure a `SET rank = (SELECT count(*) …)`
  * renumber walks straight into, silently and only on some rows.
  */
-export const deleteLocalPlayer = (db: ArenaDatabase, id: PlayerId): boolean =>
+export const deletePlayerRow = (db: ArenaDatabase, id: PlayerId): boolean =>
   db.transaction((tx) => {
     const row = rowById(tx, id);
-    if (row === undefined || row.origin !== 'LOCAL') return false;
+    if (row === undefined) return false;
+    if (row.origin === 'REMOTE') {
+      tx.insert(deletedPlayers).values({ id }).onConflictDoNothing().run();
+    }
 
     // Explicit rather than left to the FK cascade, for the same per-connection-pragma
     // reason `replaceRoster` gives.

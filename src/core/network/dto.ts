@@ -110,6 +110,7 @@ export const rosterSyncRequestSchema = z.object({
   newPlayers: z.array(newPlayerDtoSchema).max(500),
   editedPlayers: z.array(playerEditDtoSchema).max(500),
   headToHead: z.array(headToHeadDtoSchema).max(2000),
+  deletedPlayers: z.array(z.uuid()).max(500),
 });
 export type RosterSyncRequest = z.infer<typeof rosterSyncRequestSchema>;
 

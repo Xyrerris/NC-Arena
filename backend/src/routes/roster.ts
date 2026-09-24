@@ -51,9 +51,11 @@ export const rosterRoutes: FastifyPluginAsyncZod = async (app) => {
       const account = await requireAccount(req);
       const { assignedIds } = await applyRosterSync({
         accountId: account.id,
+        viewerId: account.viewerId,
         newPlayers: req.body.newPlayers,
         editedPlayers: req.body.editedPlayers,
         headToHead: req.body.headToHead,
+        deletedPlayers: req.body.deletedPlayers,
       });
       const snapshot = await loadSnapshot(account);
       return { snapshot, assignedIds };

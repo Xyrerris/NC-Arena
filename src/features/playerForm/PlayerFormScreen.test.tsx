@@ -348,12 +348,19 @@ describe('PlayerFormScreen — editing a player', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
-  it('edits a synced player too, but offers no Remove for them (ADR-0036)', async () => {
+  it('edits and offers to remove a synced player too (ADR-0036, ADR-0039)', async () => {
     await renderEdit(asPlayerId('p-b'));
 
     await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Brann'));
     expect(screen.queryByTestId('form-unavailable')).toBeNull();
-    // A sync cannot tell the server a row is gone, so a removed synced player would return.
+    expect(screen.getByTestId('form-delete')).toBeTruthy();
+  });
+
+  it('offers no Remove on the synced player who is you', async () => {
+    // The fixture's viewer, a synced row: the account needs it on every device.
+    await renderEdit(asPlayerId('p-a'));
+
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Aurel'));
     expect(screen.queryByTestId('form-delete')).toBeNull();
   });
 

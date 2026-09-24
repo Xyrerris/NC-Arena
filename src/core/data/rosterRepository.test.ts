@@ -15,7 +15,7 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 
 import { err, isOk, ok, type RosterSnapshot, type RosterSource } from '../common';
-import { headToHead, players, refoldPlayerNames } from '../db';
+import { deletedPlayers, headToHead, players, refoldPlayerNames } from '../db';
 import {
   asPlayerId,
   type HeadToHead,
@@ -502,9 +502,28 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
     expect(live.map(live.query.all())?.origin).toBe('REMOTE');
   });
 
-  it('refuses to remove a synced player', () => {
-    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(false);
+  it('removes a synced player, and remembers the removal for the next sync (ADR-0039)', () => {
+    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(true);
+
+    expect(repo.playerCount()).toBe(4);
+    expect(ranksOf(repo)).toEqual([1, 2, 3, 4]);
+    expect(handle.db.select().from(deletedPlayers).all()).toEqual([{ id: 'p-b' }]);
+  });
+
+  it('leaves no tombstone for a hand-entered player, which the server never saw', () => {
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(handle.db.select().from(deletedPlayers).all()).toEqual([]);
+  });
+
+  it('refuses to remove the synced player who is you', () => {
+    // The fixture's viewer is `p-a`, a synced row: the account's viewer on every device.
+    const refused = repo.deletePlayer(asPlayerId('p-a'));
+
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toContain('Pick another avatar');
     expect(repo.playerCount()).toBe(5);
+    expect(handle.db.select().from(deletedPlayers).all()).toEqual([]);
   });
 
   it('closes the gap in the ranking when a player is removed', () => {
@@ -558,12 +577,10 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
   });
 
   it('leaves the preference standing when the removal is refused', () => {
-    expect(repo.setViewerId(localId).ok).toBe(true);
+    // The synced viewer: refused (ADR-0039).
+    expect(repo.deletePlayer(asPlayerId('p-a')).ok).toBe(false);
 
-    // A synced row: not this device's to remove (ADR-0020).
-    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(false);
-
-    expect(repo.getViewerId()).toBe(localId);
+    expect(repo.getViewerId()).toBe('p-a');
   });
 
   it('returns a failure rather than throwing for an id that was already removed', () => {

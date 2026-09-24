@@ -115,13 +115,14 @@ describe('headToHeadToDto', () => {
 });
 
 describe('rosterPushToDto', () => {
-  it('maps each of the three lists with its own mapper', () => {
+  it('maps each of the lists with its own mapper', () => {
     const player = playerFromDto(dtoPlayer);
 
     const request = rosterPushToDto({
       newPlayers: [player],
       editedPlayers: [player],
       headToHead: [headToHeadFromDto(dtoHeadToHead)],
+      deletedPlayers: [player.id],
     });
 
     // The same player on both lists leaves as two different shapes — which is the whole point
@@ -131,13 +132,18 @@ describe('rosterPushToDto', () => {
     expect(request.editedPlayers[0]).toHaveProperty('id', player.id);
     expect(request.editedPlayers[0]).not.toHaveProperty('clientId');
     expect(request.headToHead).toEqual([dtoHeadToHead]);
+    // A removal travels as the bare server id (ADR-0039).
+    expect(request.deletedPlayers).toEqual([player.id]);
   });
 
-  it('maps an empty push to three empty lists rather than to nothing', () => {
-    expect(rosterPushToDto({ newPlayers: [], editedPlayers: [], headToHead: [] })).toEqual({
+  it('maps an empty push to empty lists rather than to nothing', () => {
+    expect(
+      rosterPushToDto({ newPlayers: [], editedPlayers: [], headToHead: [], deletedPlayers: [] }),
+    ).toEqual({
       newPlayers: [],
       editedPlayers: [],
       headToHead: [],
+      deletedPlayers: [],
     });
   });
 });

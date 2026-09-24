@@ -50,9 +50,18 @@ describe('RemoteRosterSource.fetchRoster', () => {
 
   it('fails when the account has no viewer set yet, rather than fabricating one', async () => {
     global.fetch = jest.fn().mockResolvedValue(
-      new Response(JSON.stringify({ season: 41, viewerId: null, players: [], headToHead: [] }), {
-        status: 200,
-      }),
+      new Response(
+        JSON.stringify({
+          season: 41,
+          viewerId: null,
+          players: [],
+          headToHead: [],
+          deletedPlayers: [],
+        }),
+        {
+          status: 200,
+        },
+      ),
     ) as unknown as typeof fetch;
 
     const result = await new RemoteRosterSource('https://api.example.com', 'key').fetchRoster();
@@ -102,8 +111,18 @@ describe('RemoteRosterSource.pushRoster', () => {
   });
 
   const localPlayer: Player = { ...validPlayer, id: asPlayerId('local-1') };
-  const onePush: RosterPush = { newPlayers: [localPlayer], editedPlayers: [], headToHead: [] };
-  const emptyPush: RosterPush = { newPlayers: [], editedPlayers: [], headToHead: [] };
+  const onePush: RosterPush = {
+    newPlayers: [localPlayer],
+    editedPlayers: [],
+    headToHead: [],
+    deletedPlayers: [],
+  };
+  const emptyPush: RosterPush = {
+    newPlayers: [],
+    editedPlayers: [],
+    headToHead: [],
+    deletedPlayers: [],
+  };
 
   /** Records what was sent, so a test can assert the body without reaching into mock.calls. */
   const respondWith = (body: unknown, status = 200) => {
@@ -117,7 +136,7 @@ describe('RemoteRosterSource.pushRoster', () => {
   };
 
   const okResponse = (viewerId: string | null) => ({
-    snapshot: { season: 41, viewerId, players: [validPlayer], headToHead: [] },
+    snapshot: { season: 41, viewerId, players: [validPlayer], headToHead: [], deletedPlayers: [] },
     assignedIds: { 'local-1': validPlayer.id },
   });
 
@@ -203,7 +222,9 @@ describe('RemoteRosterSource.pushRoster', () => {
   });
 
   it('fails when the response does not match the contract', async () => {
-    respondWith({ snapshot: { season: 41, viewerId: null, players: [], headToHead: [] } });
+    respondWith({
+      snapshot: { season: 41, viewerId: null, players: [], headToHead: [], deletedPlayers: [] },
+    });
 
     const result = await new RemoteRosterSource('https://api.example.com', 'key').pushRoster(
       emptyPush,

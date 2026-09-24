@@ -150,7 +150,7 @@ describe('playerEditDtoSchema', () => {
 });
 
 describe('rosterSyncRequestSchema', () => {
-  const emptyPush = { newPlayers: [], editedPlayers: [], headToHead: [] };
+  const emptyPush = { newPlayers: [], editedPlayers: [], headToHead: [], deletedPlayers: [] };
 
   it('accepts a push with nothing in it', () => {
     expect(rosterSyncRequestSchema.safeParse(emptyPush).success).toBe(true);
@@ -188,7 +188,13 @@ describe('rosterSyncRequestSchema', () => {
 });
 
 describe('rosterSyncResponseSchema', () => {
-  const snapshot = { season: 41, viewerId: null, players: [validPlayer], headToHead: [] };
+  const snapshot = {
+    season: 41,
+    viewerId: null,
+    players: [validPlayer],
+    headToHead: [],
+    deletedPlayers: [],
+  };
 
   it('accepts a snapshot plus the clientId -> server id map', () => {
     const parsed = rosterSyncResponseSchema.safeParse({

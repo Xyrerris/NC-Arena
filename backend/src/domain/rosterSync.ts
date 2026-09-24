@@ -7,7 +7,16 @@
  *  2. Every `editedPlayers` row overwrites the server's copy of a row this account already
  *     owns. Two devices editing the same row between syncs is decided by whichever sync lands
  *     second — no per-field merge (ADR-0035, decision 3's "Rejected — CRDTs").
- *  3. Every `headToHead` row is upserted by its `(account, viewer, opponent)` key.
+ *  3. Every `deletedPlayers` id is removed with its records, and the ranks below it close up
+ *     (ADR-0039). The account's current viewer is skipped: the account would be left with a
+ *     viewer pointing at nothing, and every device's next pull would fail on it.
+ *  4. Every `headToHead` row is upserted by its `(account, viewer, opponent)` key — only when
+ *     both ends are players this account still holds.
+ *
+ * **A row that is gone is not an error.** Another device may have deleted a player this one
+ * edited or played against since its last sync. Refusing the push for that would fail every
+ * sync this device ever made again, with nothing on screen able to fix it; so an edit to a
+ * missing row, a record naming one, and a delete of one are all skipped.
  *
  * Returns the fresh snapshot so the caller can hand it straight back — the client applies it
  * with `replaceRoster` exactly as a pull would (ARCHITECTURE.md §7).
@@ -22,19 +31,21 @@
  * into the same answer rather than a conflict.
  */
 
-import { and, eq, inArray, max } from 'drizzle-orm';
+import { and, eq, gt, inArray, max, or, sql } from 'drizzle-orm';
 
 import type { HeadToHeadDto, NewPlayerDto, PlayerEditDto } from '../schemas/player.js';
 import { db } from '../db/client.js';
 import { headToHead, players } from '../db/schema.js';
-import { notFound } from './errors.js';
 import { foldPlayerName } from './foldPlayerName.js';
 
 export interface RosterSyncInput {
   accountId: string;
+  /** The account's viewer as the request found it — the one row a delete may not take. */
+  viewerId: string | null;
   newPlayers: readonly NewPlayerDto[];
   editedPlayers: readonly PlayerEditDto[];
   headToHead: readonly HeadToHeadDto[];
+  deletedPlayers: readonly string[];
 }
 
 export const applyRosterSync = async (
@@ -117,8 +128,12 @@ export const applyRosterSync = async (
       assignedIds[draft.clientId] = raced.id;
     }
 
+    const deleting = new Set(input.deletedPlayers.filter((id) => id !== input.viewerId));
+
     for (const edit of input.editedPlayers) {
-      const [updated] = await tx
+      // Deleted in this same push: the delete is the later intent.
+      if (deleting.has(edit.id)) continue;
+      await tx
         .update(players)
         .set({
           name: edit.name,
@@ -135,14 +150,46 @@ export const applyRosterSync = async (
           spd: edit.spd,
           updatedAt: new Date(),
         })
-        .where(and(eq(players.id, edit.id), eq(players.accountId, input.accountId)))
-        .returning({ id: players.id });
-      if (!updated) {
-        throw notFound(`No player ${edit.id} on this account.`);
-      }
+        .where(and(eq(players.id, edit.id), eq(players.accountId, input.accountId)));
     }
 
+    for (const id of deleting) {
+      const [removed] = await tx
+        .delete(players)
+        .where(and(eq(players.id, id), eq(players.accountId, input.accountId)))
+        .returning({ rank: players.rank });
+      // Already gone — a replay, or another device got there first.
+      if (!removed) continue;
+      // The FK cascade would take these too; explicit, so the rule does not live in DDL alone.
+      await tx
+        .delete(headToHead)
+        .where(
+          and(
+            eq(headToHead.accountId, input.accountId),
+            or(eq(headToHead.viewerId, id), eq(headToHead.opponentId, id)),
+          ),
+        );
+      // Close the gap. One row at a time, so each delete sees the ranks the last one left.
+      await tx
+        .update(players)
+        .set({ rank: sql`${players.rank} - 1` })
+        .where(and(eq(players.accountId, input.accountId), gt(players.rank, removed.rank)));
+    }
+
+    // Records only between players this account holds after the writes above. Without the
+    // filter a record naming a deleted row fails the foreign key and the whole push with it —
+    // and a record naming another account's player would be accepted.
+    const held = new Set(
+      (
+        await tx
+          .select({ id: players.id })
+          .from(players)
+          .where(eq(players.accountId, input.accountId))
+      ).map((row) => row.id),
+    );
+
     for (const record of input.headToHead) {
+      if (!held.has(record.viewerId) || !held.has(record.opponentId)) continue;
       await tx
         .insert(headToHead)
         .values({

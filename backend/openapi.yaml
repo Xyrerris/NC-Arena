@@ -225,6 +225,16 @@ components:
           type: array
           maxItems: 2000
           items: { $ref: '#/components/schemas/HeadToHead' }
+        deletedPlayers:
+          description: >-
+            Server ids of players removed on the device (ADR-0039). Optional, defaults to empty,
+            so a client that predates it keeps working. An id this account does not hold is
+            ignored rather than refused, which keeps a replay idempotent. The account's current
+            viewer is never deleted this way; that id is ignored too, and comes back on the
+            next pull.
+          type: array
+          maxItems: 500
+          items: { type: string, format: uuid }
     RosterSyncResponse:
       type: object
       required: [snapshot, assignedIds]

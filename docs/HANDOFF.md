@@ -118,8 +118,9 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
 Confirmed by the owner on a device: first account + manual sync, automatic migrations, and the
 "who am I" fix (ADR-0037). **Being verified:** the periodic background sync. The end-to-end
 contract test for a stat above `Int32.MAX` is in (`src/features/player/statContract.test.tsx`).
-**Still open:** deleting a
-synced player (ADR-0036, decision 3); a backend test runner. **Postgres backups are queued, not
+Removing a synced
+player now works across devices (ADR-0039) — **the backend must be redeployed before an APK
+carrying it ships.** **Still open:** a backend test runner. **Postgres backups are queued, not
 open:** the owner relies on Coolify's backups for now; a `pg_dump` sidecar with an off-site copy
 is the plan if that changes.
 
@@ -167,8 +168,8 @@ the same screen at `/account`.
 - **Every row is editable on every device (ADR-0036)**; `editedPlayers` carries the synced rows
   with an `edited_at` stamp. The stamp is what keeps a pull or an in-flight sync from undoing an
   edit the server has not seen yet — `rosterSync.test.ts`'s "an edit to a synced row" block fails if
-  `replaceRoster` stops honouring it. Removing a synced player is still refused: the wire has no
-  delete.
+  `replaceRoster` stops honouring it. A removal works the same way through the `deleted_players`
+  tombstones (ADR-0039); only the synced viewer cannot be removed.
 - **`backend/` is a second, independent package.** Its own `package.json` and `tsconfig.json`, and
   `npm run verify` at the root does **not** touch it. Run `npm run typecheck` and `npm run build`
   inside `backend/` yourself. It has no test runner at all — the backend's behaviour was verified by

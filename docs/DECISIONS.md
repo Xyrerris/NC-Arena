@@ -2220,7 +2220,8 @@ answer arrives was pushed, so the snapshot carries it and the stamp clears. A ro
 the request was in flight has a newer stamp and stays pending, so neither a slow sync nor a plain
 pull can undo an edit.
 
-**Decision 3 — removal stays `LOCAL`-only, and the form no longer offers it on a synced row.** The
+**Decision 3 — removal stays `LOCAL`-only, and the form no longer offers it on a synced row.**
+_Superseded by ADR-0039._ The
 wire has no way to say a row is gone, so a removed synced player would be back after the next pull.
 Deleting across devices needs a `deletedPlayers` field on `POST /v1/roster/sync` and a tombstone on
 the device until it is pushed — a backend change, deliberately not made here.
@@ -2289,3 +2290,50 @@ closing the screen over it would lose the only view of its recovery code.
   closed the app over the code; on `/account` it would have popped the route. The key is already
   stored at that point, so nothing would ever bring the code back. "I have written it down" is the
   one way out.
+
+## ADR-0039 — Removing a synced player removes it on every device
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5 · **Supersedes:** ADR-0036 decision 3
+
+**Context.** After ADR-0036 every device could edit every player but remove only the ones it had
+created, because `POST /v1/roster/sync` had no way to say a row was gone: a removed synced player
+came back on the next pull.
+
+**Decision 1 — the push carries `deletedPlayers`, a list of server ids.** The server removes each
+one with its records and closes the rank gap behind it. The field defaults to empty, so a client
+that predates it still parses. An id the account does not hold is skipped, which keeps a replay
+idempotent and keeps one account from touching another's rows.
+
+**Decision 2 — the account's viewer is never removed.** The server skips that id, and the device
+refuses it first, with a sentence, and offers no Remove on that row. Removing it would leave the
+account's `viewerId` pointing at nothing, and every other device's next sync would fail on it. A
+_hand-entered_ viewer can still be removed as before (4.10.4): the server has never heard of it.
+
+**Decision 3 — the device keeps a tombstone until the server has answered.** Table
+`deleted_players` (migration `0005`). `deletePlayerRow` writes one for a `REMOTE` row, `collectPush`
+sends them, and `replaceRoster` clears the ones the push carried and leaves out of any snapshot the
+players still pending, closing the ranks behind them. It is the pattern ADR-0036 used for edits. A
+tombstone the server declined, because that player had become the viewer elsewhere, is cleared
+anyway, and the player comes back with the snapshot. The server's answer is the truth once the
+push has been made. A restore clears every tombstone: the file says what the ladder is.
+
+**Decision 4 — a missing row no longer fails a push.** An edit to a row another device removed, a
+record naming one, and a repeated delete are all skipped. Before this, an edit to a missing row
+answered 404 and failed that sync, and every sync after it, with nothing on screen able to fix it.
+Records are also filtered to players the account holds, which closes a hole where a record naming
+another account's player was accepted.
+
+**Consequences.**
+
+- **Deploy the backend before shipping the APK.** An old server's Zod schema strips unknown keys,
+  so it would drop `deletedPlayers` without an error. The device would then clear its tombstones
+  and the players would come back.
+- Removing a player on one device while another edits it: the removal wins, and the edit is
+  skipped.
+- Picking a new viewer and removing the old one before a sync: the push runs before the viewer is
+  seated, so the server still sees the old viewer, skips the removal, and the player comes back.
+  Removing it again after that sync works.
+- Verified against the real backend on PGlite (Postgres in WebAssembly), since there is no Postgres
+  on the development machine: removal with records and rank closure, the viewer skipped, replay
+  idempotence, an older client's body, an edit to a missing row, and an attempt from another
+  account. The script lived outside the repository. The backend still has no test runner.

@@ -295,9 +295,8 @@ export type PlayerFormUiState =
       /** Non-null only when a scan has matched a player already on the ladder (ADR-0031). */
       importNotice: ImportNotice | null;
       /**
-       * Whether Remove is offered. Only for a player added on this device: a sync cannot tell
-       * the server a row is gone, so a removed synced player would be back after the next
-       * pull (ADR-0036). Editing has no such limit.
+       * Whether Remove is offered. For every player except a synced one who is you, which the
+       * account needs as its viewer on every device (ADR-0039).
        */
       canDelete: boolean;
     };

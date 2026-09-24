@@ -293,7 +293,9 @@ export const usePlayerForm = ({
       isSaving,
       scan,
       importNotice: notice,
-      canDelete: mode.kind === 'edit' && origin === 'LOCAL',
+      // Every player but the synced one who is you: that row is the account's viewer on every
+      // device, and the server refuses to remove it (ADR-0039).
+      canDelete: mode.kind === 'edit' && !(origin === 'REMOTE' && viewerId === mode.id),
     };
   }, [
     errors,
@@ -308,6 +310,7 @@ export const usePlayerForm = ({
     scan,
     seeded,
     values,
+    viewerId,
   ]);
 
   return { state, onEvent };

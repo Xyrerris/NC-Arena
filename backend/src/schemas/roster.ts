@@ -21,6 +21,8 @@ export const rosterSyncRequestSchema = z.object({
   newPlayers: z.array(newPlayerDtoSchema).max(500),
   editedPlayers: z.array(playerEditDtoSchema).max(500),
   headToHead: z.array(headToHeadDtoSchema).max(2000),
+  /** Server ids removed on the device (ADR-0039). Defaulted, so an older client still parses. */
+  deletedPlayers: z.array(z.uuid()).max(500).default([]),
 });
 export type RosterSyncRequest = z.infer<typeof rosterSyncRequestSchema>;
 

@@ -11,4 +11,4 @@ export const DATABASE_NAME = 'arena.db';
  * asserts the two agree, so the number cannot drift behind a migration that was added and
  * forgotten — which is the failure that would let a backup claim a schema it was not written at.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;

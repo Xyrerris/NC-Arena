@@ -101,6 +101,18 @@ export const headToHead = sqliteTable(
   ],
 );
 
+/**
+ * Synced players removed on this device that the server has not been told about yet
+ * (ADR-0039). A tombstone, not a flag on `players`: the row itself is gone from every screen
+ * and query the moment it is removed, and only the id is left to push.
+ *
+ * Kept until a sync that carried the id is answered. Until then `replaceRoster` will not let
+ * a snapshot put the player back.
+ */
+export const deletedPlayers = sqliteTable('deleted_players', {
+  id: text('id').primaryKey(),
+});
+
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerInsert = typeof players.$inferInsert;
 export type HeadToHeadRow = typeof headToHead.$inferSelect;

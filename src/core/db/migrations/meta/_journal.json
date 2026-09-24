@@ -36,6 +36,13 @@
       "when": 1790241710621,
       "tag": "0004_remote_edits",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790254979837,
+      "tag": "0005_deleted_players",
+      "breakpoints": true
     }
   ]
 }

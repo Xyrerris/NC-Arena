@@ -12,7 +12,7 @@
 
 export { DATABASE_NAME, SCHEMA_VERSION } from './constants';
 
-export { headToHead, players } from './schema';
+export { deletedPlayers, headToHead, players } from './schema';
 export type { HeadToHeadInsert, HeadToHeadRow, PlayerInsert, PlayerRow } from './schema';
 export { toHeadToHead, toPlayer } from './mappers';
 export {
@@ -30,7 +30,7 @@ export {
   type RosterRow,
 } from './queries';
 export {
-  deleteLocalPlayer,
+  deletePlayerRow,
   findPlayerByIdentity,
   insertLocalPlayer,
   isNameTaken,

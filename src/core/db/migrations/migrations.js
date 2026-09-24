@@ -6,6 +6,7 @@ import m0001 from './0001_round_brood.sql';
 import m0002 from './0002_player_profile.sql';
 import m0003 from './0003_folded_player_name.sql';
 import m0004 from './0004_remote_edits.sql';
+import m0005 from './0005_deleted_players.sql';
 
   export default {
     journal,
@@ -14,7 +15,8 @@ import m0004 from './0004_remote_edits.sql';
 m0001,
 m0002,
 m0003,
-m0004
+m0004,
+m0005
     }
   }
   

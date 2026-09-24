@@ -25,7 +25,8 @@ import {
   SCHEMA_VERSION,
   allHeadToHeadQuery,
   allPlayersQuery,
-  deleteLocalPlayer,
+  deletePlayerRow,
+  deletedPlayers,
   findPlayerByIdentity,
   headToHeadCountQuery,
   insertLocalPlayer,
@@ -165,12 +166,13 @@ const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
 /**
- * One message for "no such player" and for "that player is not yours to remove". Editing is
- * open to every row since ADR-0036, because an edit to a synced row is pushed like any other
- * change. Removing is not: the sync has no way to tell the server a row is gone, so the next
- * pull would put a synced player straight back (ADR-0020).
+ * Why a synced player who is you cannot be removed (ADR-0039). The account has one viewer,
+ * shared by every device, and removing that row would leave every one of them pointing at
+ * nothing — so the server refuses it, and the device says so first instead of removing a row
+ * the next pull would put back.
  */
-const NOT_YOURS = 'Only players you added on this device can be removed.';
+const CANNOT_REMOVE_VIEWER =
+  'This player is you on every device of this account. Pick another avatar before removing them.';
 
 /** `setViewerId` picks an existing row; it never creates one (ADR-0022). */
 const NO_SUCH_PLAYER = 'That player is not on the roster.';
@@ -313,8 +315,9 @@ export const createRosterRepository = ({
     snapshot: RosterSnapshot,
     adopted?: ReadonlyMap<PlayerId, PlayerId>,
     pushedEdits?: ReadonlyMap<string, number>,
+    pushedDeletes?: ReadonlySet<string>,
   ): void => {
-    replaceRoster(db, snapshot, adopted, pushedEdits);
+    replaceRoster(db, snapshot, adopted, pushedEdits, pushedDeletes);
     // A viewer picked here and not yet seated upstream wins over the snapshot's, exactly as
     // a pending row edit does (ADR-0037) — otherwise a pull puts back the player the user
     // just stopped being. It follows the id rewrite, and is dropped if its row is gone.
@@ -372,12 +375,21 @@ export const createRosterRepository = ({
    * that adopts them, when the id it needs exists. It is not lost in the meantime: it stays in
    * SQLite, and `replaceRoster` carries it across the transition under the adopted id.
    */
-  const collectPush = (): { push: RosterPush; pushedEdits: ReadonlyMap<string, number> } => {
+  const collectPush = (): {
+    push: RosterPush;
+    pushedEdits: ReadonlyMap<string, number>;
+    pushedDeletes: ReadonlySet<string>;
+  } => {
     const rows = allPlayersQuery(db).all();
     const known = new Set<string>(
       rows.filter((row) => row.origin === 'REMOTE').map((row) => row.id),
     );
     const edited = rows.filter((row) => row.origin === 'REMOTE' && row.editedAt !== null);
+    const removed = db
+      .select()
+      .from(deletedPlayers)
+      .all()
+      .map((row) => asPlayerId(row.id));
 
     return {
       push: {
@@ -387,8 +399,10 @@ export const createRosterRepository = ({
           .all()
           .map(toHeadToHead)
           .filter((record) => known.has(record.viewerId) && known.has(record.opponentId)),
+        deletedPlayers: removed,
       },
       pushedEdits: new Map(edited.map((row) => [row.id, row.editedAt ?? 0])),
+      pushedDeletes: new Set(removed),
     };
   };
 
@@ -420,7 +434,7 @@ export const createRosterRepository = ({
     if (gateway !== undefined && preferences.getApiKey() === null) return ok(undefined);
 
     const pendingViewer = preferences.getPendingViewerId();
-    const { push, pushedEdits } = collectPush();
+    const { push, pushedEdits, pushedDeletes } = collectPush();
     const pushed = await sink.pushRoster(push);
     if (!pushed.ok) return pushed;
     const adopted = pushed.value.assignedIds;
@@ -449,7 +463,7 @@ export const createRosterRepository = ({
     if (snapshot === null) return ok(undefined);
 
     try {
-      write(snapshot, adopted, pushedEdits);
+      write(snapshot, adopted, pushedEdits, pushedDeletes);
       // Seated, so no longer pending — unless the user picked someone else while the sync
       // was in flight, in which case that newer choice is the next sync's to send.
       if (
@@ -721,17 +735,25 @@ export const createRosterRepository = ({
         : updatePlayer(asPlayerId(existing.id), draft);
     },
 
-    /** Removes a player this device added, closing the gap in the ranking behind them. */
+    /**
+     * Removes a player, closing the gap in the ranking behind them. A synced player is removed
+     * on every device of the account by the next sync (ADR-0039) — except the one who is you
+     * there, which is refused.
+     */
     deletePlayer: (id: PlayerId): Result<void> => {
       try {
-        if (!deleteLocalPlayer(db, id)) return err(new Error(NOT_YOURS));
+        const row = playerQuery(db, id).all()[0];
+        if (row?.origin === 'REMOTE' && preferences.getViewerId() === id) {
+          return err(new Error(CANNOT_REMOVE_VIEWER));
+        }
+        if (!deletePlayerRow(db, id)) return err(new Error(NO_SUCH_PLAYER));
 
         // Removing the row the preference names leaves the preference behind, pointing at
         // nothing. The app degrades correctly — `/me` says "Pick another" — but the roster
         // loses its hero card with nothing on screen saying why, which is the silent-empty
         // failure ADR-0021 removed elsewhere.
         //
-        // Cleared here rather than in `deleteLocalPlayer`, because `core/db` does not know
+        // Cleared here rather than in `deletePlayerRow`, because `core/db` does not know
         // preferences exist (ARCHITECTURE.md §4) and this repository is the one place that
         // knows this id is also a subscription key.
         // `preferences.getViewerId()` rather than `viewerId()`: the question is whether the

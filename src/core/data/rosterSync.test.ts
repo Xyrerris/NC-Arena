@@ -17,7 +17,7 @@ import {
   type RosterSnapshot,
   type RosterSource,
 } from '../common';
-import { headToHead, players } from '../db';
+import { deletedPlayers, headToHead, players } from '../db';
 import { asPlayerId, type Player, type PlayerDraft, type PlayerId } from '../model';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 import { createTestDatabase, type TestDatabase } from '../testing';
@@ -563,5 +563,134 @@ describe('syncRoster — choosing a different viewer', () => {
     // Another device changed it; this one follows.
     expect(spy.seated).toEqual([]);
     expect(preferences.getViewerId()).toBe(SERVER_A);
+  });
+});
+
+/**
+ * ADR-0039: removing a synced player removes it on every device. The removal has to reach the
+ * server, a pull that lands first may not bring the player back, and once the server has
+ * answered the device forgets it ever had to say so.
+ */
+describe('syncRoster — removing a synced player', () => {
+  const SERVER_C = '9b2e8f1a-3c4d-4e5f-8a6b-7c8d9e0f1a2b';
+  let handle: TestDatabase;
+
+  /** Three synced rows; A is the viewer, and has a record against C. */
+  const ladder: RosterSnapshot = {
+    season: 41,
+    viewerId: asPlayerId(SERVER_A),
+    players: [
+      remotePlayer(SERVER_A, 'Nyx', 1),
+      remotePlayer(SERVER_B, 'Orrin', 2),
+      remotePlayer(SERVER_C, 'Pell', 3),
+    ],
+    headToHead: [
+      {
+        viewerId: asPlayerId(SERVER_A),
+        opponentId: asPlayerId(SERVER_B),
+        wins: 2,
+        losses: 1,
+      },
+    ],
+  };
+
+  const withoutB: RosterSnapshot = {
+    ...ladder,
+    players: [remotePlayer(SERVER_A, 'Nyx', 1), remotePlayer(SERVER_C, 'Pell', 2)],
+    headToHead: [],
+  };
+
+  const rows = () =>
+    handle.db
+      .select()
+      .from(players)
+      .all()
+      .sort((left, right) => left.rank - right.rank)
+      .map((row) => [row.id, row.rank]);
+
+  const tombstones = () =>
+    handle.db
+      .select()
+      .from(deletedPlayers)
+      .all()
+      .map((row) => row.id);
+
+  beforeEach(async () => {
+    handle = createTestDatabase();
+    // Land the ladder the way a device would, through a pull.
+    const seed = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([ladder]),
+      preferences: createMemoryPreferences(),
+    });
+    await seed.refresh();
+  });
+
+  afterEach(() => {
+    handle.close();
+  });
+
+  it('pushes the removal, and forgets it once the server has answered', async () => {
+    const spy = createSpySink(() => ok({ snapshot: withoutB, assignedIds: new Map() }));
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([]),
+      sink: spy.sink,
+      preferences: createMemoryPreferences({ viewerId: asPlayerId(SERVER_A) }),
+    });
+
+    expect(repo.deletePlayer(asPlayerId(SERVER_B)).ok).toBe(true);
+    expect((await repo.syncRoster()).ok).toBe(true);
+
+    expect(spy.pushes[0]?.deletedPlayers).toEqual([SERVER_B]);
+    expect(rows()).toEqual([
+      [SERVER_A, 1],
+      [SERVER_C, 2],
+    ]);
+    expect(tombstones()).toEqual([]);
+  });
+
+  it('is not undone by a pull that lands before the removal was pushed', async () => {
+    // No sink: a plain pull, whose snapshot still holds B and a record against B.
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([ladder]),
+      preferences: createMemoryPreferences({ viewerId: asPlayerId(SERVER_A) }),
+    });
+    repo.deletePlayer(asPlayerId(SERVER_B));
+
+    expect((await repo.syncRoster()).ok).toBe(true);
+
+    // B stays gone, C closes the gap, and the record against B does not come back with it.
+    expect(rows()).toEqual([
+      [SERVER_A, 1],
+      [SERVER_C, 2],
+    ]);
+    expect(handle.db.select().from(headToHead).all()).toEqual([]);
+    expect(tombstones()).toEqual([SERVER_B]);
+  });
+
+  it('lets the player back when the server kept them after all', async () => {
+    // The server declined the removal — B had become the account's viewer on another device
+    // — so its answer still holds B. That answer is the truth once the push has been made.
+    const spy = createSpySink(() =>
+      ok({ snapshot: { ...ladder, viewerId: asPlayerId(SERVER_B) }, assignedIds: new Map() }),
+    );
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([]),
+      sink: spy.sink,
+      preferences: createMemoryPreferences({ viewerId: asPlayerId(SERVER_A) }),
+    });
+    repo.deletePlayer(asPlayerId(SERVER_B));
+
+    await repo.syncRoster();
+
+    expect(rows()).toEqual([
+      [SERVER_A, 1],
+      [SERVER_B, 2],
+      [SERVER_C, 3],
+    ]);
+    expect(tombstones()).toEqual([]);
   });
 });
