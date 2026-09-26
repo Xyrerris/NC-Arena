@@ -1,6 +1,6 @@
 # Handoff — Phase 5, mid-flight
 
-**As of 2026-09-23.** Branch: `claude/backend-data-management-w98hph` (see CLAUDE.md — all work goes
+**As of 2026-09-27.** Branch: `claude/backend-data-management-w98hph` (see CLAUDE.md — all work goes
 there until the owner says otherwise).
 
 This file says where Phase 5 stopped and which decisions are already made, so the next session
@@ -11,7 +11,10 @@ DECISIONS.md, which carry the reasoning; this is the map.
 
 The backend is **built, deployed and verified**. It runs on the owner's OVH VPS through Coolify as a
 Docker Compose resource with `backend/` as its base directory. The owner has confirmed `/health`,
-the TLS certificate, the migrations and account creation against the live service.
+the TLS certificate, the migrations and account creation against the live service. **Coolify
+deploys automatically from `claude/backend-data-management-w98hph`** (confirmed by the owner,
+2026-09-27): a push to this branch _is_ a backend deploy, migrations included. Treat a push that
+touches `backend/` accordingly.
 
 The client can do the **whole round trip** — pull, push, adopt the ids the server assigns, set the
 viewer — and the **setup gate is now the one part of it wired to a screen**: with a URL configured,
@@ -77,7 +80,8 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   it** — there was no such gesture anywhere in the app, and the error screen's TRY AGAIN was the
   only thing that could fire a sync. `lastSyncedAt` sits beside `season` in `core/prefs`, stamped
   where a snapshot is _applied_ rather than where a request succeeded.
-- ~~**The periodic refresh.**~~ **Done, not yet seen running on a device.** The task is
+- ~~**The periodic refresh.**~~ **Done, and seen running headless on the emulator (2026-09-27).**
+  The task is
   `core/data/backgroundSync.ts`; its body is `runBackgroundSync` in `core/data/syncMutation.ts`,
   proven in Node. Three things about it will bite whoever touches it:
   - **It is defined from the entry, not from a route.** `package.json`'s `main` is now `index.ts`,
@@ -96,9 +100,21 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
     Registered from `_layout.tsx` once the database is ready, and **unregistered** when the build
     has no URL.
 
-  What is not proven: that WorkManager actually fires it on the emulator. In a debug build,
-  `BackgroundTask.triggerTaskWorkerForTestingAsync()` runs it on demand — that is the check to do
-  once the URL is on.
+  - **The library is patched (ADR-0040).** In a process WorkManager had just started headless,
+    `expo-background-task` cancelled its own running worker whenever the previous run was still
+    in the unique-work chain, so after the first run no cold wake ever synced.
+    `patches/expo-background-task+57.0.16.patch` fixes `getWorkerInfo`, and `package.json`'s
+    `expo.autolinking.android.buildFromSource` is **what makes the patch count**: without it
+    Gradle links Expo's precompiled AAR and ignores the patched source. Drop both together once
+    upstream fixes it.
+
+  **How it was checked**, and how to check it again, on a debug build with the URL on:
+  `adb shell cmd jobscheduler run -f com.ncarena.arenascout <job id>`, where the id is the
+  `JOB #u0a…/<n>` line for `SystemJobService` in `adb shell dumpsys jobscheduler`. Look for
+  `TaskService: Finished task 'arena-roster-sync'` in logcat and a new "Updated just now". For the
+  cold case, `am kill` the backgrounded app and force the job **twice**. The first run only
+  starts the process, and WorkManager reschedules everything under a new id, because `am kill`
+  looks like a force-stop to it. The second run is the headless one.
 
 - ~~**Turn the URL on.**~~ **Done for EAS builds.** The service has a Let's Encrypt certificate
   (Coolify, 2026-09-23; plain HTTP now redirects to HTTPS), and `eas.json` carries the `https://`
@@ -113,16 +129,27 @@ Roughly in dependency order. All of it is above the data layer; none of it needs
   stopped one says why in its logs. **Seen on the live deploy (2026-09-24):** the migration message
   is in the container log.
 
-## Status as of 2026-09-24
+## Status as of 2026-09-27
 
 Confirmed by the owner on a device: first account + manual sync, automatic migrations, and the
-"who am I" fix (ADR-0037). **Being verified:** the periodic background sync. The end-to-end
-contract test for a stat above `Int32.MAX` is in (`src/features/player/statContract.test.tsx`).
-Removing a synced
-player now works across devices (ADR-0039) — **the backend must be redeployed before an APK
-carrying it ships.** **Still open:** a backend test runner. **Postgres backups are queued, not
-open:** the owner relies on Coolify's backups for now; a `pg_dump` sidecar with an off-site copy
-is the plan if that changes.
+"who am I" fix (ADR-0037). The end-to-end contract test for a stat above `Int32.MAX` is in
+(`src/features/player/statContract.test.tsx`). Removing a synced player works across devices
+(ADR-0039). The backend that carries it is live, because Coolify deploys this branch on every push.
+The periodic background sync is **seen running headless** on the emulator, after the library fix
+in ADR-0040. It has not yet run on the owner's phone, which needs an EAS build carrying the patch.
+The imported screenshot is now deleted even when the Photo Picker answers (`916d660`, ADR-0026
+amendment), and `check:projects` runs on Windows and in worktrees (`4bd4284`).
+
+**Still open, in order:**
+
+1. **A backend test runner.** `backend/` has none, and the root `npm run verify` does not touch it.
+   ADR-0039 was verified by a PGlite script that lived outside the repository.
+2. **The exit criterion "the app functions fully offline on previously synced data".** It is the
+   one Phase 5 criterion ROADMAP.md does not yet mark **Met**, and it needs a test or a recorded
+   airplane-mode check.
+
+**Postgres backups are queued, not open:** the owner relies on Coolify's backups for now; a
+`pg_dump` sidecar with an off-site copy is the plan if that changes.
 
 The setup gate can now be skipped — "Continue offline" (ADR-0038). A skipped device is unpaired
 but not gated, `syncRoster` is a no-op for it, and `/me` offers "Connect to server", which opens
@@ -180,10 +207,17 @@ the same screen at `/account`.
 
 ## Operational
 
+- **A push to `claude/backend-data-management-w98hph` deploys the backend.** Coolify watches the
+  branch and rebuilds on every push, so a contract change reaches the live server with its
+  commit. An APK that needs a new server field can ship once that commit is pushed and the deploy
+  is green. There is no longer a manual redeploy step.
 - Migrations apply themselves on every container start (see the `Dockerfile`). Running
   `node dist/db/migrate.js` from the `app` container's console still works and is idempotent. Not
   `npm run db:migrate` — `tsx` is not in the production image and `src/` is not copied into it.
 - **`0001_client_id.sql` is applied to the live database** — the owner ran it from the container's
   terminal on 2026-09-23. The live schema now matches `applyRosterSync`.
-- Nothing backs up the Postgres volume. The `recoveryCode` shown at account creation is the only way
-  a second device ever joins that account.
+- The Postgres volume is backed up only by Coolify's own backups, which the owner relies on for
+  now (see the status section). The `recoveryCode` shown at account creation is the only way a
+  second device ever joins that account.
+- **`patch-package` runs on `postinstall`.** If `npm install` warns that a patch was written for a
+  different version of `expo-background-task`, read ADR-0040 before accepting the upgrade.

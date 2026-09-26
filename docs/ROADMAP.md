@@ -754,7 +754,8 @@ that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, whic
   in.** The periodic task (`core/data/backgroundSync.ts`) runs the pull's own mutation on the same
   client, so it queues behind a pull rather than racing it and shows the same badge; it retries
   twice where a pull retries never, and it is defined from the app's entry (`index.ts`) because a
-  headless run evaluates no route. Not yet seen firing on a device.
+  headless run evaluates no route. Seen firing headless on the emulator (2026-09-27), once
+  `expo-background-task` was patched so a cold wake no longer cancels its own worker (ADR-0040).
 - Conflict/staleness policy: last-write-wins from server, with a visible "updated N ago". **The
   label is in**, from a `lastSyncedAt` preference stamped where a snapshot is applied; it ticks
   itself and renders nothing at all before a first sync or after a restore, rather than guessing.

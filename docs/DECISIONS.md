@@ -2366,3 +2366,44 @@ another account's player was accepted.
   on the development machine: removal with records and rank closure, the viewer skipped, replay
   idempotence, an older client's body, an edit to a missing row, and an attempt from another
   account. The script lived outside the repository. The backend still has no test runner.
+
+## ADR-0040 — `expo-background-task` is patched, and built from source
+
+**Date:** 2026-09-27 · **Status:** accepted · **Phase:** 5
+
+**Context.** The periodic sync was checked on the emulator by forcing its WorkManager job with
+`adb shell cmd jobscheduler run -f`. A run in a process that already held the task worked. A run in
+a process WorkManager had just started headless, which is the case the task exists for, cancelled
+itself before the sync finished, and rescheduled the next run 60 minutes later. `lastSyncedAt`
+confirmed it: that run wrote nothing.
+
+The cause is in `expo-background-task` 57.0.16, and 57.0.20 still has it. Each run appends its
+successor to one unique-work chain, so the chain can still hold the previous run as `SUCCEEDED` in
+front of the live one. `BackgroundTaskScheduler.getWorkerInfo` reads `firstOrNull()`, finds the
+finished run, and misses the one that is `RUNNING`. The guard against re-registration therefore
+does not fire, and the `REPLACE` enqueue cancels the worker that is running. After a device's first
+background run, every cold wake would do this until WorkManager prunes the finished entry.
+
+**Decision 1 — patch the library with `patch-package`.** `patches/expo-background-task+57.0.16.patch`
+makes `getWorkerInfo` return the first unfinished entry, or the last one if every entry is
+finished. `postinstall` applies it, locally and on EAS.
+
+**Decision 2 — build the module from source.** Expo ships the module as a precompiled AAR in
+`local-maven-repo`, and Gradle links that AAR, not the patched source. A patch alone therefore
+changes nothing in the APK. `package.json`'s `expo.autolinking.android.buildFromSource` lists
+`expo-background-task` so the source is compiled. This was the first rebuild's mistake: the patch
+was applied, the AAR was linked, and the bug reproduced unchanged.
+
+**Consequences.**
+
+- **Remove both when upstream fixes it.** When an `expo-background-task` upgrade changes
+  `getWorkerInfo`, `patch-package` warns on install about the new version, and fails if the patch
+  no longer applies. Delete the patch and the
+  `buildFromSource` entry together.
+- Verified on the `Galaxy_S22_Ultra` AVD with a debug build: a run after a successful one, in a
+  process with no activity, logs "Worker is already scheduled, skipping cancel-and-replace", then
+  "Task successfully finished", and stamps `lastSyncedAt`.
+- A testing trap that is not this bug: `adb shell am kill` records the exit as `USER_REQUESTED`,
+  which WorkManager treats as a force-stop. It reschedules every job on the next start, so a job
+  forced into a killed process disappears ("Job didn't exist in JobStore"). Force the job **again**
+  once the process is up: that second run is the cold headless case.
