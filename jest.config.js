@@ -76,7 +76,12 @@ module.exports = {
       // contrast assertions are pure arithmetic and belong in the fast project, while the
       // components need a renderer. A `.test.ts` in this project may not import
       // react-native, which is the convention the extension encodes.
-      testMatch: ['<rootDir>/src/core/**/*.test.ts'],
+      //
+      // `**/src/…`, not `<rootDir>/src/…`, in both projects: on Windows Jest turns the root's
+      // backslashes into slashes *except* before a regex character, so a checkout under a
+      // dot-directory (`.claude\worktrees\…`) became the glob `…\.claude/…`, which matches
+      // nothing and every run ended in "No tests found". `node_modules` is ignored by default.
+      testMatch: ['**/src/core/**/*.test.ts'],
       transform: {
         '^.+\\.tsx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
       },
@@ -93,9 +98,9 @@ module.exports = {
       // missing one. The extension already encodes the split the two projects care about,
       // so the folder list has no second job to do.
       testMatch: [
-        '<rootDir>/src/app/**/*.test.tsx',
-        '<rootDir>/src/features/**/*.test.tsx',
-        '<rootDir>/src/core/**/*.test.tsx',
+        '**/src/app/**/*.test.tsx',
+        '**/src/features/**/*.test.tsx',
+        '**/src/core/**/*.test.tsx',
       ],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
