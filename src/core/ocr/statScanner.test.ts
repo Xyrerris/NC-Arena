@@ -7,14 +7,15 @@
  */
 
 import { err, ok, type Result } from '../common';
-import type { ImageSource, PickedImage, TextRecogniser } from './ports';
+import type { ImageSource, OriginalPicture, PickedImage, TextRecogniser } from './ports';
 import { createStatScanner } from './statScanner';
 import type { ScannedLine } from './statSheet';
 
 const URI = 'file:///cache/scan.png';
 const ASSET_ID = 'content://media/external/images/media/12345';
+const ORIGINAL = { kind: 'ASSET', assetId: ASSET_ID } as const;
 
-const PICKED: PickedImage = { uri: URI, assetId: ASSET_ID };
+const PICKED: PickedImage = { uri: URI, original: ORIGINAL };
 
 const SHEET: ScannedLine[] = [
   { text: 'Lv.488 Deus #a984', frame: { left: 700, top: 58, right: 922, bottom: 92 } },
@@ -29,7 +30,7 @@ const SHEET: ScannedLine[] = [
  */
 interface FakeSource extends ImageSource {
   readonly copiesDropped: string[];
-  readonly originalsDeleted: string[];
+  readonly originalsDeleted: OriginalPicture[];
 }
 
 const sourceThat = (
@@ -37,7 +38,7 @@ const sourceThat = (
   onDeleteOriginal: () => Result<void> = () => ok(undefined),
 ): FakeSource => {
   const copiesDropped: string[] = [];
-  const originalsDeleted: string[] = [];
+  const originalsDeleted: OriginalPicture[] = [];
   return {
     name: 'fake-source',
     copiesDropped,
@@ -47,9 +48,9 @@ const sourceThat = (
       copiesDropped.push(uri);
       return ok(undefined);
     },
-    discardOriginal: async (assetId) => {
+    discardOriginal: async (original) => {
       const outcome = onDeleteOriginal();
-      if (outcome.ok) originalsDeleted.push(assetId);
+      if (outcome.ok) originalsDeleted.push(original);
       return outcome;
     },
   };
@@ -175,7 +176,7 @@ describe('createStatScanner - what happens to the screenshot', () => {
 
     const result = await reading(source).scan();
 
-    expect(source.originalsDeleted).toEqual([ASSET_ID]);
+    expect(source.originalsDeleted).toEqual([ORIGINAL]);
     expect(source.copiesDropped).toEqual([URI]);
     expect(result.ok && result.value?.screenshot).toBe('DELETED');
   });
@@ -218,10 +219,27 @@ describe('createStatScanner - what happens to the screenshot', () => {
     expect(source.copiesDropped).toEqual([]);
   });
 
-  it('reports COPY_ONLY when the library never named the original', async () => {
-    // The user browsed the filesystem directly, or granted access to selected photos only.
-    // There is nothing to delete and the note has to say the picture is still there.
-    const source = sourceThat(ok({ uri: URI, assetId: null }));
+  it('hands a fingerprinted original to the library to find and delete', async () => {
+    // The system Photo Picker names no library row; the file name and size are all there is,
+    // and resolving them is the adapter's job. The scanner's is to not stop at "no id".
+    const fingerprint = {
+      kind: 'FINGERPRINT',
+      fileName: 'Screenshot_1.jpg',
+      width: 3088,
+      height: 1440,
+    } as const;
+    const source = sourceThat(ok({ uri: URI, original: fingerprint }));
+
+    const result = await reading(source).scan();
+
+    expect(source.originalsDeleted).toEqual([fingerprint]);
+    expect(result.ok && result.value?.screenshot).toBe('DELETED');
+  });
+
+  it('reports COPY_ONLY when nothing named the original', async () => {
+    // The picker reported neither an id nor a file name. There is nothing to delete and
+    // the note has to say the picture is still there.
+    const source = sourceThat(ok({ uri: URI, original: null }));
 
     const result = await reading(source).scan();
 

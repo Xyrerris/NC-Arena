@@ -13,17 +13,20 @@
 
 import { File } from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
-import { Asset, requestPermissionsAsync } from 'expo-media-library';
+import { Asset, AssetField, MediaType, Query, requestPermissionsAsync } from 'expo-media-library';
 import { Platform } from 'react-native';
 
 import { err, ok, type Result } from '../common';
-import type { ImageSource, PickedImage } from './ports';
+import { findOriginal } from './originalLookup';
+import type { ImageSource, OriginalPicture, PickedImage } from './ports';
 
 const NO_PERMISSION =
   'Arena Scout needs access to your photos to read a screenshot. Grant it in Settings, or ' +
   'type the stats in by hand.';
 
 const NO_DELETE_PERMISSION = 'Arena Scout was not allowed to remove the screenshot.';
+
+const NOT_FOUND = 'Arena Scout could not find the screenshot in your photos.';
 
 const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
@@ -48,6 +51,51 @@ const toMediaLibraryId = (pickerAssetId: string): string => {
     : `ph://${pickerAssetId}`;
 };
 
+/**
+ * How `discardOriginal` will find the picture the user tapped.
+ *
+ * The library's id when the picker reported one. Otherwise the file name and pixel size the
+ * picker read from the source — the case on every current Android device, whatever `legacy`
+ * asks for, because the system Photo Picker answers and its URIs name no library row. (Its
+ * file name is not the real one either: see `findOriginal`.) Null only when neither survived,
+ * and `null` rather than a throw is the point: a screenshot nobody can name is still perfectly
+ * readable, it just cannot be tidied away.
+ */
+const originalOf = (asset: ImagePicker.ImagePickerAsset): OriginalPicture | null => {
+  if (asset.assetId) return { kind: 'ASSET', assetId: asset.assetId };
+  if (!asset.fileName || asset.width <= 0 || asset.height <= 0) return null;
+  return {
+    kind: 'FINGERPRINT',
+    fileName: asset.fileName,
+    width: asset.width,
+    height: asset.height,
+  };
+};
+
+/**
+ * The library's id for a fingerprinted picture, or null when it cannot be told apart.
+ *
+ * Only rows near the picture's size are fetched, which on a phone full of photos is a handful
+ * rather than thousands; which of them is the picture, if any, is `findOriginal`'s call.
+ */
+const lookUp = async (
+  picture: Extract<OriginalPicture, { kind: 'FINGERPRINT' }>,
+): Promise<string | null> => {
+  // A range rather than `within([w, h])`: on Android `within` rejects plain numbers — its
+  // list-of-either argument does not convert — while the single-value comparisons do. The
+  // range admits both orientations, and `findOriginal` checks the exact pair.
+  const short = Math.min(picture.width, picture.height);
+  const long = Math.max(picture.width, picture.height);
+  const rows = await new Query()
+    .eq(AssetField.MEDIA_TYPE, MediaType.IMAGE)
+    .gte(AssetField.WIDTH, short)
+    .lte(AssetField.WIDTH, long)
+    .gte(AssetField.HEIGHT, short)
+    .lte(AssetField.HEIGHT, long)
+    .exeForMetadata();
+  return findOriginal(rows, picture);
+};
+
 export const expoImageSource: ImageSource = {
   name: 'expo-image-picker',
 
@@ -60,11 +108,10 @@ export const expoImageSource: ImageSource = {
         mediaTypes: ['images'],
         allowsEditing: false,
         allowsMultipleSelection: false,
-        // Android's modern Photo Picker (the default) hands back a `content://media/picker/…`
-        // URI that carries no MediaStore id, so `discardOriginal` below would never have
-        // anything to delete. `legacy` routes through the document provider instead, whose
-        // URI does resolve to an id — the reason `requestMediaLibraryPermissionsAsync` above
-        // exists at all, since the modern picker needs no permission.
+        // Asks for the document provider, whose URI resolves to a library id. It is a request,
+        // not a guarantee: on current Android the system Photo Picker answers this intent
+        // too, and its URIs name no library row — which is why `pick` also records a
+        // fingerprint for `discardOriginal` to search by (see `originalOf`).
         legacy: true,
         // No re-encode. Recognition accuracy on a screenshot's small, thin numerals falls
         // off with JPEG artefacts, and there is nothing to save: the file is read once and
@@ -80,12 +127,7 @@ export const expoImageSource: ImageSource = {
       // message about the picture rather than about the picker.
       if (asset === undefined) return err(new Error('The picker returned no image.'));
 
-      // `assetId` is the library's own id for the picture the user tapped, and it is the
-      // only thing that makes deleting the original possible. It is absent when the user
-      // browsed the filesystem directly or granted access to selected photos only, and
-      // `??` rather than a throw is the point: a screenshot with no id is still perfectly
-      // readable, it just cannot be tidied away afterwards.
-      return ok({ uri: asset.uri, assetId: asset.assetId ?? null });
+      return ok({ uri: asset.uri, original: originalOf(asset) });
     } catch (cause) {
       return err(toError(cause));
     }
@@ -104,31 +146,33 @@ export const expoImageSource: ImageSource = {
   },
 
   /**
-   * KNOWN BROKEN on device, 2026-08-26 — the screenshot survives every time (ADR-0026).
-   *
-   * Two causes were found and fixed and the outcome did not change, so a third is still out
-   * there and this is parked rather than solved. Do not read the code below as working: the
-   * last thing confirmed about it is that it does not.
-   *
-   * The note the form prints says where to resume. `COPY_ONLY` means `assetId` was null and
-   * this function was never called — suspect a stale JS bundle, since both fixes are JS-only
-   * and an installed release APK carries its own. `KEPT` means the delete really was
-   * attempted, and the question moves to the permission or to what `delete()` threw.
+   * On device this was broken until 2026-09-26: the picker came back from the system Photo
+   * Picker with no `assetId`, so the scan reported `COPY_ONLY` and the screenshot stayed.
+   * A fingerprinted picture is now looked up in the library first (ADR-0026, amended).
    */
-  discardOriginal: async (assetId: string): Promise<Result<void>> => {
+  discardOriginal: async (original: OriginalPicture): Promise<Result<void>> => {
     try {
-      // Write access is asked for **here** rather than beside the read permission at pick
-      // time. Deleting only ever happens after a scan that worked, so a user whose
-      // screenshot could not be read is never asked to hand over the right to delete it —
-      // and a permission requested next to the act it is for is one the user can actually
-      // reason about.
-      const permission = await requestPermissionsAsync(true);
+      // Asked for **here** rather than beside the picker, for ADR-0026's reason: deleting
+      // only ever happens after a scan that worked, so a user whose screenshot could not be
+      // read is never asked for anything — and a permission requested next to the act it is
+      // for is one the user can reason about.
+      //
+      // An id needs no read access: from API 30 the system's own delete dialog is the gate.
+      // A fingerprint does, because finding the row means reading the library; "Select
+      // photos" is enough if the user selects the screenshot.
+      const permission =
+        original.kind === 'ASSET'
+          ? await requestPermissionsAsync(true)
+          : await requestPermissionsAsync(false, ['photo']);
       if (!permission.granted) return err(new Error(NO_DELETE_PERMISSION));
+
+      const id = original.kind === 'ASSET' ? original.assetId : await lookUp(original);
+      if (id === null) return err(new Error(NOT_FOUND));
 
       // Android shows its own confirmation for this from API 30 on, and the user may say
       // no. That rejects the promise, which becomes a `KEPT` outcome upstream — a refusal
       // the form reports, not a failure it hides.
-      await new Asset(toMediaLibraryId(assetId)).delete();
+      await new Asset(toMediaLibraryId(id)).delete();
       return ok(undefined);
     } catch (cause) {
       return err(toError(cause));

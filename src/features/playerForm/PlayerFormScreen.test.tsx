@@ -18,7 +18,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { err, isOk, ok, type Result, type RosterSnapshot, type RosterSource } from '@/core/common';
 import { ArenaDataProvider, type RosterRepository } from '@/core/data';
 import { asPlayerId, type Player, type PlayerId } from '@/core/model';
-import { createStatScanner, type ScannedLine, type StatScanner } from '@/core/ocr';
+import {
+  createStatScanner,
+  type OriginalPicture,
+  type ScannedLine,
+  type StatScanner,
+} from '@/core/ocr';
 import {
   createStubLiveData,
   createTestDatabase,
@@ -416,7 +421,10 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     { text: 'SPD 1014675713', frame: { left: 1398, top: 556, right: 1610, bottom: 590 } },
   ];
 
-  const ASSET_ID = 'content://media/external/images/media/12345';
+  const ORIGINAL: OriginalPicture = {
+    kind: 'ASSET',
+    assetId: 'content://media/external/images/media/12345',
+  };
 
   /**
    * A photo library that hands over one screenshot and remembers what it was told to
@@ -424,17 +432,17 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
    * sentence in the note (ADR-0026).
    */
   const libraryHolding = (
-    assetId: string | null,
+    original: OriginalPicture | null,
     onDelete: () => Result<void> = () => ok(undefined),
   ) => {
-    const deleted: string[] = [];
+    const deleted: OriginalPicture[] = [];
     return {
       deleted,
       source: {
         name: 'fake',
-        pick: async () => ok({ uri: 'file:///cache/scan.png', assetId }),
+        pick: async () => ok({ uri: 'file:///cache/scan.png', original }),
         discardCopy: async () => ok(undefined),
-        discardOriginal: async (id: string) => {
+        discardOriginal: async (id: OriginalPicture) => {
           const outcome = onDelete();
           if (outcome.ok) deleted.push(id);
           return outcome;
@@ -443,7 +451,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     };
   };
 
-  const scannerReading = (lines: ScannedLine[], library = libraryHolding(ASSET_ID)): StatScanner =>
+  const scannerReading = (lines: ScannedLine[], library = libraryHolding(ORIGINAL)): StatScanner =>
     createStatScanner({
       source: library.source,
       recogniser: { name: 'fake', recognise: async () => ok(lines) },
@@ -680,7 +688,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
   });
 
   it('confirms the load and reports the screenshot gone, once it is', async () => {
-    const library = libraryHolding(ASSET_ID);
+    const library = libraryHolding(ORIGINAL);
     await renderScanning(scannerReading(SHEET, library));
 
     fireEvent.press(screen.getByTestId('form-scan-button'));
@@ -690,13 +698,13 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
       'Stats loaded — every field was read. The screenshot has been deleted.',
     );
     // The note is not taken at its word: the library says it happened.
-    expect(library.deleted).toEqual([ASSET_ID]);
+    expect(library.deleted).toEqual([ORIGINAL]);
   });
 
   it('says the screenshot survived when the deletion was refused', async () => {
     // The stats are good and the picture is still there. Reporting the first without the
     // second would be the app claiming something it did not do.
-    const library = libraryHolding(ASSET_ID, () => err(new Error('The user said no.')));
+    const library = libraryHolding(ORIGINAL, () => err(new Error('The user said no.')));
     await renderScanning(scannerReading(SHEET, library));
 
     fireEvent.press(screen.getByTestId('form-scan-button'));
@@ -708,7 +716,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
   });
 
   it('keeps the screenshot when the scan found nothing to load', async () => {
-    const library = libraryHolding(ASSET_ID);
+    const library = libraryHolding(ORIGINAL);
     const scanner = createStatScanner({
       source: library.source,
       recogniser: {

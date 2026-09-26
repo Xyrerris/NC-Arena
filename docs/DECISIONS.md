@@ -1250,6 +1250,9 @@ for all three.
 - **Still unproven on device.** Both new packages are native, so as with ADR-0024 nothing in CI
   exercises the permission prompt or the system delete dialog.
 
+**Fixed on device, 2026-09-26 — see "The third cause" below.** The account of the first two causes
+is kept as it was written, because the third one is what they were both missing.
+
 **Known defect — deletion does not work on device (open, 2026-08-26).** Decision 3 is implemented and
 passes against the fake, and it does not happen on a real phone: the screenshot always survives. Two
 causes were found and fixed, the outcome did not change, so a third is still out there. Parked, not
@@ -1271,6 +1274,32 @@ The three-outcome note from Decision 5 is the diagnostic to read next: `COPY_ONL
 still null, so `legacy` is not in effect — suspect a stale JS bundle in an installed release APK.
 `KEPT` means the delete was attempted and refused or threw. Both fixes are JS-only, so the device has
 to be running a freshly built bundle before anything that note says is worth acting on.
+
+**The third cause — `legacy: true` is a request the system does not honour (fixed, 2026-09-26).**
+Reproduced on the project's emulator (API 36) with a live Metro bundle: the note said `COPY_ONLY`.
+`legacy` makes `expo-image-picker` send `ACTION_GET_CONTENT`, and on current Android that intent is
+answered by the system Photo Picker too (`PhotopickerGetContentActivity` outranks DocumentsUI), so the
+URI was a picker URI again and `assetId` was null — exactly the first cause, through a different door.
+There is no picker option that gets around it.
+
+What the Photo Picker result does carry is a file name and a pixel size. `PickedImage.assetId`
+became `original: OriginalPicture | null` — the library id when there is one, a `FINGERPRINT`
+otherwise — and `discardOriginal` finds the fingerprinted row in MediaStore before deleting it:
+
+- **The name is not the real one.** The Photo Picker reports `33.jpg`: its item id, which for a photo
+  on the device is the MediaStore row id. `findOriginal` (`src/core/ocr/originalLookup.ts`) accepts
+  either the real name or that digits-only form, and **also requires the same pixel size and exactly
+  one matching row**. An id alone is never trusted: if the picker's ids ever stopped being the
+  library's, the size check is what keeps an unrelated photo from being deleted.
+- **Finding the row needs read access**, which the id path never did. It is asked for inside
+  `discardOriginal`, so Decision 4 holds: only after a scan that produced stats. "Select photos" is
+  enough if the user selects the screenshot; a refusal is a `KEPT`.
+- **`Query.within` rejects plain numbers on Android** (its list-of-either argument does not convert),
+  so the size filter is a `gte`/`lte` range and `findOriginal` checks the exact pair.
+
+Verified end to end on the emulator: scan, read-permission prompt, the system's "delete this photo?"
+dialog showing the right screenshot, the note "The screenshot has been deleted.", and the row gone
+from MediaStore.
 
 ---
 
