@@ -15,7 +15,7 @@
  */
 
 export { deviceStatScanner } from './deviceStatScanner';
-export type { ImageSource, PickedImage, TextRecogniser } from './ports';
+export type { ImageSource, OriginalPicture, PickedImage, TextRecogniser } from './ports';
 export {
   createStatScanner,
   type ScreenshotOutcome,
