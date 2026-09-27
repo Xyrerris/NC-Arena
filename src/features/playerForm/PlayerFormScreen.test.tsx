@@ -267,14 +267,18 @@ describe('PlayerFormScreen — adding a player', () => {
     await waitFor(() => expect(screen.queryByTestId('form-field-name-error')).toBeNull());
   });
 
-  it('refuses a name already on the ladder, and says which field', async () => {
+  it('updates the player a typed name and code already name, instead of adding them twice', async () => {
+    // ADR-0042: `name + game code` is the key, typed or scanned alike.
     await renderCreate();
     await type('name', 'aUrEl');
+    await type('gameCode', '#A1');
 
+    expect(await screen.findByTestId('form-import-notice')).toBeTruthy();
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
     fireEvent.press(screen.getByTestId('form-submit'));
 
-    await waitFor(() => expect(screen.getByTestId('form-field-name-error')).toBeTruthy());
-    expect(namesInRoster(repository)).toEqual(['Aurel', 'Brann']);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(namesInRoster(repository)).toEqual(['aUrEl', 'Brann']);
   });
 
   it('leaves without writing when cancelled', async () => {
@@ -583,9 +587,8 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     );
   });
 
-  it('still refuses a name already on the ladder under a different code', async () => {
-    // Same name, a code that is not the screenshot's. The pair does not match, so this is
-    // an ordinary duplicate and the user is told so rather than silently overwriting Deus.
+  it('adds a namesake under a different code, rather than overwriting them', async () => {
+    // Same name, a code that is not the screenshot's: a different player (ADR-0042).
     const before = repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'zz99' });
     expect(before.ok).toBe(true);
 
@@ -594,9 +597,8 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Deus'));
     fireEvent.press(screen.getByTestId('form-submit'));
 
-    await waitFor(() => expect(screen.getByTestId('form-field-name-error')).toBeTruthy());
-    expect(namesInRoster(repository).filter((name) => name === 'Deus')).toHaveLength(1);
-    expect(mockReplace).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(namesInRoster(repository).filter((name) => name === 'Deus')).toHaveLength(2);
   });
 
   it('rewrites a synced player rather than adding a second row (ADR-0036)', async () => {
@@ -667,15 +669,15 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
   });
 
-  it('offers no notice on a hand-typed name, where a collision is still a rejection', async () => {
+  it('gives the same notice on a hand-typed match, which Save updates just the same', async () => {
     expect(repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'a984' }).ok).toBe(true);
 
     await renderScanning(scannerReading(SHEET));
     await type('name', 'Deus');
     await type('gameCode', 'a984');
 
-    expect(screen.queryByTestId('form-import-notice')).toBeNull();
-    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
+    expect(await screen.findByTestId('form-import-notice')).toBeTruthy();
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
   });
 
   it('names the fields it could not read, so a partial scan does not look complete', async () => {

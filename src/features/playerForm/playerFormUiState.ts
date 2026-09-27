@@ -250,10 +250,10 @@ export const scanNote = (
 };
 
 /**
- * What Save is about to do, when a screenshot has matched somebody already on the ladder
- * (ADR-0031).
+ * What Save is about to do, when the form's `name + game code` matches somebody already on
+ * the ladder (ADR-0031, ADR-0042).
  *
- * It exists because the import's one surprising move — pressing *Add player* and rewriting
+ * It exists because a create's one surprising move — pressing *Add player* and rewriting
  * a player instead — happens after the screen has already navigated away, so an
  * after-the-fact confirmation has nowhere to appear. Said **before** the press it is also
  * the more useful sentence: the user can still change the name or the code, or cancel.
@@ -265,7 +265,7 @@ export interface ImportNotice {
   message: string;
 }
 
-/** `null` when the scanned pair matches nobody — Save adds a player and needs no warning. */
+/** `null` when the pair matches nobody — Save adds a player and needs no warning. */
 export const importNotice = (match: ImportMatch | null): ImportNotice | null => {
   if (match === null) return null;
   const who = `${match.player.name}${match.player.gameCode === '' ? '' : ` ${gameCodeLabel(match.player.gameCode)}`}`;
@@ -292,7 +292,7 @@ export type PlayerFormUiState =
       /** True between pressing Save and the write returning. Blocks a double submit. */
       isSaving: boolean;
       scan: StatScanUiState;
-      /** Non-null only when a scan has matched a player already on the ladder (ADR-0031). */
+      /** Non-null only when a create's `name + game code` matches a player already on the ladder. */
       importNotice: ImportNotice | null;
       /**
        * Whether Remove is offered. For every player except a synced one who is you, which the

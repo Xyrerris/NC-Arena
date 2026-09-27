@@ -439,15 +439,23 @@ describe('rosterRepository — adding a player by hand', () => {
     expect(repo.playerCount()).toBe(before);
   });
 
-  it('refuses a name already on the ladder, case-insensitively', () => {
+  it('updates the player its name and code already name, case-insensitively (ADR-0042)', () => {
     const repo = repositoryOn(handle);
-    // The roster's own search is case-insensitive, so two players it cannot tell apart are
-    // two the user cannot either.
-    const result = repo.createPlayer(localDraft('aUrEl'));
+    // `name + game code` is the key: typing a player who is already there rewrites them
+    // rather than adding them twice. Aurel is `p-a`, code `a1`, in the fixture.
+    const result = repo.createPlayer({ ...localDraft('aUrEl'), gameCode: '#A1', score: 7 });
 
-    expect(result.ok).toBe(false);
-    expect(!result.ok && result.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(isOk(result) && result.value.id).toBe('p-a');
+    expect(isOk(result) && result.value.score).toBe(7);
     expect(repo.playerCount()).toBe(4);
+  });
+
+  it('adds a namesake under a different code, because the name alone is not the key', () => {
+    const repo = repositoryOn(handle);
+    const result = repo.createPlayer(localDraft('Aurel'));
+
+    expect(result.ok).toBe(true);
+    expect(repo.playerCount()).toBe(5);
   });
 
   it('marks the row as local, and leaves synced rows alone', () => {
@@ -483,6 +491,30 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
     const result = repo.updatePlayer(localId, { ...localDraft('Nyx'), combatPower: 9_999 });
 
     expect(isOk(result) && result.value.combatPower).toBe(9_999);
+  });
+
+  it('saves an edit to a synced player who has a namesake under another code', () => {
+    // The defect behind ADR-0042: the guard compared names alone, so a synced player whose
+    // name another row shared could never be saved, however little the edit changed.
+    expect(repo.createPlayer(localDraft('Brann')).ok).toBe(true);
+
+    const result = repo.updatePlayer(asPlayerId('p-b'), {
+      ...localDraft('Brann'),
+      gameCode: 'a2',
+      combatPower: 1,
+    });
+
+    expect(isOk(result) && result.value.combatPower).toBe(1);
+  });
+
+  it("refuses an edit that moves a player onto another player's name and code", () => {
+    // Two rows under one key would be the duplicate the key exists to prevent, and which of
+    // them to keep is not something a Save press can decide.
+    const result = repo.updatePlayer(localId, { ...localDraft('Brann'), gameCode: 'a2' });
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(!result.ok && result.error.message).toBe('Brann #a2 is already on the ladder.');
   });
 
   it('lets a player keep their own name across an edit', () => {
@@ -590,7 +622,8 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
 });
 
 /**
- * ADR-0031: a screenshot import of somebody already on the ladder updates them.
+ * ADR-0031, ADR-0042: creating somebody already on the ladder — typed or scanned — updates
+ * them.
  *
  * The pair is the whole rule, so every case below moves exactly one half of it — same name
  * and same code, same name and a different code, a different name and the same code.
@@ -612,7 +645,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   afterEach(() => handle.close());
 
   it('adds the player when name and code match nobody', () => {
-    const imported = repo.importPlayer({ ...localDraft('Deus'), gameCode: 'a984' });
+    const imported = repo.createPlayer({ ...localDraft('Deus'), gameCode: 'a984' });
 
     expect(imported.ok).toBe(true);
     expect(repo.playerCount()).toBe(6);
@@ -620,7 +653,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   });
 
   it('rewrites the existing player when name and code both match', () => {
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
 
     expect(isOk(imported) && imported.value.id).toBe(localId);
     expect(isOk(imported) && imported.value.combatPower).toBe(9_999);
@@ -632,7 +665,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
     const before = repo.observePlayer(localId);
     expect(before.map(before.query.all())?.player.rank).toBe(5);
 
-    repo.importPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
+    repo.createPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
 
     const after = repo.observePlayer(localId);
     expect(after.map(after.query.all())?.player.rank).toBe(5);
@@ -640,31 +673,29 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   });
 
   it('matches the name case-insensitively, as every other name check does', () => {
-    const imported = repo.importPlayer({ ...localDraft('nYx'), combatPower: 7 });
+    const imported = repo.createPlayer({ ...localDraft('nYx'), combatPower: 7 });
 
     expect(isOk(imported) && imported.value.id).toBe(localId);
     expect(repo.playerCount()).toBe(5);
   });
 
   it('matches a code however it was written, because storage normalises it', () => {
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), gameCode: ' #AB12 ' });
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), gameCode: ' #AB12 ' });
 
     expect(isOk(imported) && imported.value.id).toBe(localId);
     expect(repo.playerCount()).toBe(5);
   });
 
-  it('refuses a same-name import under a different code, rather than overwriting', () => {
-    // A different code is a different player, and the ladder does not hold two of one
-    // name — so this is the ordinary duplicate rejection, said in the ordinary way.
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), gameCode: 'zz99' });
+  it('adds a same-name player under a different code, rather than overwriting', () => {
+    // A different code is a different player (ADR-0042).
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), gameCode: 'zz99' });
 
-    expect(imported.ok).toBe(false);
-    expect(!imported.ok && imported.error).toBeInstanceOf(PlayerDraftRejected);
-    expect(repo.playerCount()).toBe(5);
+    expect(isOk(imported) && imported.value.id).not.toBe(localId);
+    expect(repo.playerCount()).toBe(6);
   });
 
   it('adds rather than rewrites when the code matches but the name does not', () => {
-    const imported = repo.importPlayer(localDraft('Orrin'));
+    const imported = repo.createPlayer(localDraft('Orrin'));
 
     expect(imported.ok).toBe(true);
     expect(repo.playerCount()).toBe(6);
@@ -673,7 +704,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   it('rewrites a synced player, rather than adding a second row for them', () => {
     // `p-b` is REMOTE, and its code is `a2` (see the fixture). Since ADR-0036 the match is
     // rewritten like a hand-entered one, and pushed as an edit by the next sync.
-    const imported = repo.importPlayer({ ...localDraft('Brann'), gameCode: 'a2', score: 77 });
+    const imported = repo.createPlayer({ ...localDraft('Brann'), gameCode: 'a2', score: 77 });
 
     expect(imported.ok).toBe(true);
     if (imported.ok) expect(imported.value.id).toBe('p-b');
@@ -700,7 +731,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   });
 
   it('still validates the draft it is about to write', () => {
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), atk: -1 });
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), atk: -1 });
 
     expect(imported.ok).toBe(false);
     expect(!imported.ok && imported.error).toBeInstanceOf(PlayerDraftRejected);
@@ -742,17 +773,16 @@ describe('rosterRepository — names outside ASCII', () => {
     expect(namesOf(repo, 'RANK', 'är')).toEqual(['ÄRA']);
   });
 
-  it('refuses a second player whose name differs only by case', () => {
+  it('adds no second player whose name differs only by case', () => {
     const duplicate = repo.createPlayer(localDraft('ära'));
 
-    expect(duplicate.ok).toBe(false);
-    expect(!duplicate.ok && duplicate.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(duplicate.ok).toBe(true);
     expect(repo.playerCount()).toBe(5);
   });
 
   it('updates the player a screenshot matches instead of adding a second row', () => {
     // ADR-0031's whole promise, which non-ASCII names were quietly exempt from.
-    const imported = repo.importPlayer({ ...localDraft('ära'), combatPower: 9_999 });
+    const imported = repo.createPlayer({ ...localDraft('ära'), combatPower: 9_999 });
 
     expect(isOk(imported) && imported.value.combatPower).toBe(9_999);
     expect(repo.playerCount()).toBe(5);
@@ -769,8 +799,10 @@ describe('rosterRepository — names outside ASCII', () => {
     const created = repo.createPlayer(localDraft(composed));
     expect(created.ok).toBe(true);
 
-    expect(repo.createPlayer(localDraft(decomposed)).ok).toBe(false);
-    expect(namesOf(repo, 'RANK', decomposed)).toEqual([composed]);
+    // Same key, so the second create rewrites the first row instead of adding one.
+    expect(repo.createPlayer(localDraft(decomposed)).ok).toBe(true);
+    expect(repo.playerCount()).toBe(6);
+    expect(namesOf(repo, 'RANK', composed)).toHaveLength(1);
   });
 
   it('still tells two genuinely different names apart', () => {

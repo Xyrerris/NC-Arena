@@ -30,7 +30,7 @@ import {
   findPlayerByIdentity,
   headToHeadCountQuery,
   insertLocalPlayer,
-  isNameTaken,
+  isIdentityTaken,
   playerCountQuery,
   playerDetailQuery,
   playerQuery,
@@ -49,7 +49,9 @@ import {
 } from '../db';
 import {
   asPlayerId,
+  gameCodeLabel,
   isPlayerDraftValid,
+  normaliseGameCode,
   normalisePlayerName,
   validatePlayerDraft,
   type HeadToHead,
@@ -575,33 +577,44 @@ export const createRosterRepository = ({
 
   /**
    * Everything that can be wrong with a draft before it is written, as one nullable
-   * rejection. `exceptId` is the row being edited, so saving a player without renaming
-   * them is not a collision with themselves.
+   * rejection. `exceptId` is the row being edited, so saving a player without changing their
+   * `name + game code` key is not a collision with themselves (ADR-0042).
    */
   const rejectionFor = (draft: PlayerDraft, exceptId?: PlayerId): PlayerDraftRejected | null => {
     const errors = validatePlayerDraft(draft);
     if (!isPlayerDraftValid(errors)) return new PlayerDraftRejected(errors);
-    if (isNameTaken(db, draft.name, exceptId)) {
+    if (isIdentityTaken(db, draft.name, draft.gameCode, exceptId)) {
+      const code = gameCodeLabel(normaliseGameCode(draft.gameCode));
       return new PlayerDraftRejected({
-        name: `${normalisePlayerName(draft.name)} is already on the ladder.`,
+        name: `${normalisePlayerName(draft.name)}${code === '' ? '' : ` ${code}`} is already on the ladder.`,
       });
     }
     return null;
   };
 
   /**
-   * Adds a player by hand, offline (ADR-0020).
+   * Adds a player — or, when the draft's `name + game code` already names a row, rewrites
+   * that row instead (ADR-0042). The pair is the key a player is known by, so a second row
+   * under it would be the duplicate, not a new player; whether the draft was typed or read
+   * off a screenshot makes no difference to that.
+   *
+   * The whole draft is written, not merged field by field: the form showed every value
+   * before Save was pressed, so a stat the user left alone is one they confirmed.
    *
    * Validation runs here rather than only in the form, because this is the boundary the
-   * data actually crosses — a second entry point (a deep link, a future import, Phase 5's
-   * sync) must not be able to write a row the form would have refused. The form calls the
-   * same `validatePlayerDraft`, so the two cannot drift.
-   *
-   * The name check is a *query*, not a unique index, on purpose: uniqueness is a rule
-   * about what this device lets the user create, and a remote ladder that ships two
-   * players with one name is the server's business, not a reason to fail a migration.
+   * data actually crosses — a second entry point must not be able to write a row the form
+   * would have refused.
    */
   const createPlayer = (draft: PlayerDraft): Result<Player> => {
+    let existing: PlayerRow | undefined;
+    try {
+      existing = findPlayerByIdentity(db, draft.name, draft.gameCode);
+    } catch (cause) {
+      return err(toError(cause));
+    }
+    // Either origin is rewritten (ADR-0036); a synced match is pushed by the next sync.
+    if (existing !== undefined) return updatePlayer(asPlayerId(existing.id), draft);
+
     const rejection = rejectionFor(draft);
     if (rejection !== null) return err(rejection);
     try {
@@ -687,52 +700,18 @@ export const createRosterRepository = ({
     importSnapshot,
 
     /**
-     * Which player an import would write to, if any — the same `name + game code` pair
-     * `importPlayer` matches on, asked *before* the write so the form can say what Save is
-     * about to do (ADR-0031).
+     * Which player `createPlayer` would rewrite, if any — the same `name + game code` pair
+     * it matches on, asked *before* the write so the form can say what Save is about to do
+     * (ADR-0031, ADR-0042).
      *
      * A one-off read like `playerCount`, not an observer. It is re-read whenever the name
      * or the code in the form changes, which is the only thing that can change the answer
      * from this screen — and a subscription re-keyed on every keystroke would cost more
      * than the query it is avoiding.
-     *
-     * `origin` comes back with the player so a caller can say where the match came from;
-     * since ADR-0036 Save rewrites either kind.
      */
     findImportMatch: (name: string, gameCode: string): ImportMatch | null => {
       const row = findPlayerByIdentity(db, name, gameCode);
       return row === undefined ? null : { player: toPlayer(row), origin: row.origin };
-    },
-
-    /**
-     * Writes a player read off a screenshot: an **update** when the draft's name and game
-     * code together match a row already on the ladder, an insert when they match nothing
-     * (ADR-0031).
-     *
-     * Separate from `createPlayer` rather than folded into it, because the two answer
-     * different questions. "Add this player I am typing" should still collide with a name
-     * already on the ladder — that rejection is how a user finds out they are entering
-     * somebody twice. "Import this screenshot" has a picture of *which* player it is, and
-     * the pair is specific enough to say so: a second row would be the duplicate, not the
-     * thing that prevents one.
-     *
-     * The whole draft is written, not merged field by field. A screenshot shows the
-     * profile as it is now, so a stat it did not read is one the user has just confirmed
-     * in the form before pressing Save — and a merge would leave yesterday's HP beside
-     * today's ATK with nothing on screen saying which is which.
-     */
-    importPlayer: (draft: PlayerDraft): Result<Player> => {
-      let existing: PlayerRow | undefined;
-      try {
-        existing = findPlayerByIdentity(db, draft.name, draft.gameCode);
-      } catch (cause) {
-        return err(toError(cause));
-      }
-      // Either kind of match is rewritten (ADR-0036). Falling back to an insert would add a
-      // second row for a player the ladder plainly already holds.
-      return existing === undefined
-        ? createPlayer(draft)
-        : updatePlayer(asPlayerId(existing.id), draft);
     },
 
     /**

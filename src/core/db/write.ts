@@ -255,7 +255,10 @@ export const replaceRoster = (
               // be the same defect wearing a different hat.
               nameFolded: foldPlayerName(player.name),
               level: player.level,
-              gameCode: player.gameCode,
+              // Normalised on arrival like the name is folded: the pair is the key every
+              // lookup compares (ADR-0042), and a code stored as `#A984` would be a synced
+              // player that a typed `a984` could never find.
+              gameCode: normaliseGameCode(player.gameCode),
               rank: player.rank,
               combatPower: player.combatPower,
               score: player.score,
@@ -552,24 +555,35 @@ export const recordMatchResult = (
   });
 
 /**
- * Is this name already on the ladder? Case-insensitively, because the roster's own search
- * is: two players the search cannot tell apart are two the user cannot either.
+ * Does another row already hold this `name + game code` pair — the key a player is known by
+ * on this device (ADR-0042)?
  *
- * The comparison is an equality on `name_folded`, not `lower()` on `name`. Folding the
- * needle in JavaScript and the column in SQL is what made this guard silently useless for
- * any name outside ASCII — it answered "no" to a name identical to one already stored
- * (ADR-0032).
+ * The name alone is not a key: it is a display string that two players with different codes
+ * may share, and the synced ladder routinely ships such pairs. Guarding the name alone is what
+ * made saving an edit to a synced player fail against a namesake the user never touched.
  *
- * `exceptId` is what keeps "save a player without renaming them" from colliding with
+ * Both sides are folded the way `findPlayerByIdentity` folds them — the name into
+ * `name_folded` (ADR-0032), the code through `normaliseGameCode` — so this guard and the
+ * lookup that turns a create into an update can never disagree about who is who.
+ *
+ * `exceptId` is what keeps "save a player without changing their key" from colliding with
  * itself.
  */
-export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId): boolean => {
-  const sameName = eq(players.nameFolded, foldPlayerName(name));
+export const isIdentityTaken = (
+  db: ArenaDatabase,
+  name: string,
+  gameCode: string,
+  exceptId?: PlayerId,
+): boolean => {
+  const samePair = and(
+    eq(players.nameFolded, foldPlayerName(name)),
+    eq(players.gameCode, normaliseGameCode(gameCode)),
+  );
   return (
     db
       .select({ id: players.id })
       .from(players)
-      .where(exceptId === undefined ? sameName : and(sameName, ne(players.id, exceptId)))
+      .where(exceptId === undefined ? samePair : and(samePair, ne(players.id, exceptId)))
       .limit(1)
       .all().length > 0
   );
@@ -578,9 +592,9 @@ export const isNameTaken = (db: ArenaDatabase, name: string, exceptId?: PlayerId
 /**
  * The row a name and a game code point at *together*, if the ladder holds one.
  *
- * This is the screenshot import's notion of "the same player" (ADR-0031), and it is
- * deliberately a **pair**. The name alone is what `isNameTaken` already guards, and it is
- * not an identity: it is a display string the user is free to reuse if the codes differ.
+ * This is the device's notion of "the same player" (ADR-0031, ADR-0042), and it is
+ * deliberately a **pair**. The name alone is not an identity: it is a display string the
+ * user is free to reuse if the codes differ.
  * The code alone is not one either — it is optional, so half the ladder can share the
  * empty string.
  *

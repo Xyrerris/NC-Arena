@@ -33,7 +33,7 @@ export {
   deletePlayerRow,
   findPlayerByIdentity,
   insertLocalPlayer,
-  isNameTaken,
+  isIdentityTaken,
   recordMatchResult,
   refoldPlayerNames,
   replaceRoster,

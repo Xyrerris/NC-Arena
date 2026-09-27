@@ -2446,3 +2446,32 @@ command in a separate `backend` job with its own lockfile.
   Drizzle's `mode: 'number'`, not that parser.
 - Tests live in `backend/test/`, outside `tsconfig.json`'s `rootDir`, so `npm run build` and the
   Docker image never contain them. `tsconfig.test.json` typechecks them.
+
+## ADR-0042 — A player is keyed by `name + game code`, and creating an existing key updates it
+
+**Status:** accepted, 2026-09-27. Owner's request. Supersedes ADR-0031 decision 2.
+
+**Context.** Two defects with one cause. The guard behind every save, `isNameTaken`, compared the
+name alone. The synced ladder can hold two players with one name — the server has never enforced
+it — so editing such a synced player was refused ("already on the ladder") however little the edit
+changed. Meanwhile a hand-typed create of a player already on the ladder was refused rather than
+updating them; only a screenshot import did that (ADR-0031).
+
+**Decision.** The key is the pair `name + game code`, compared the way `findPlayerByIdentity`
+already compared it: the name through `name_folded` (ADR-0032), the code through
+`normaliseGameCode`.
+
+- `isNameTaken` becomes `isIdentityTaken(db, name, gameCode, exceptId?)`. A namesake under a
+  different code is a different player and no longer blocks anything.
+- `createPlayer` updates the row its pair already names — either origin, as ADR-0036 allows — and
+  inserts only when the pair is new. `importPlayer` is gone: typed and scanned creates are one path.
+- The form's "Saving updates that player" notice and the UPDATE PLAYER label now show for any create
+  whose pair matches, not only after a scan.
+- An **edit** that moves a player onto another row's pair is refused, naming the pair. Which row to
+  keep is not something a Save press can decide.
+- A synced row's game code is normalised on arrival, like its name is folded, so a server value
+  like `#A984` is still found by a typed `a984`.
+
+**Consequences.** Two players with the same name and no code are one player. The key is enforced on
+the device only; the backend still accepts duplicate pairs, and two rows that already share a pair
+(e.g. created on two devices before a sync) stay two rows until one is removed.
