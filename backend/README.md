@@ -23,6 +23,17 @@ npm run dev                    # http://localhost:3000, reloads on save
 
 `GET /health` returns `{ "ok": true }` once the service is up.
 
+## Tests
+
+```sh
+npm test          # Vitest, against PGlite — no Postgres or Docker needed
+npm run verify    # typecheck (source + tests), tests, build — what CI runs
+```
+
+Each file under `test/` swaps `src/db/client.ts` for an in-process PGlite built from the committed
+migrations, then drives the real routes through `fastify.inject` (ADR-0041). The root
+`npm run verify` runs this too, via `verify:backend`.
+
 Schema changes: edit `src/db/schema.ts`, then `npm run db:generate` to have drizzle-kit diff and
 write the next `src/db/migrations/NNNN_*.sql` — commit the generated SQL, the same discipline
 `src/core/db/migrations/` already follows on the client. Generation does **not** need a reachable

@@ -58,6 +58,33 @@ jobs:
       # surfaces at native build time and gets diagnosed by hand.
       - name: Expo doctor
         run: npx expo-doctor
+
+  # backend/ is a second, independent package (ADR-0035) with its own lockfile, so it gets its
+  # own install and its own job. `npm run verify` there typechecks source and tests, runs the
+  # Vitest suites against PGlite — a real Postgres in-process, built from the committed
+  # migrations — and builds dist/ the way the Dockerfile does (ADR-0041).
+  backend:
+    name: Backend typecheck, tests, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # Same reason as the verify job: the lockfile is written by npm 11.
+      - name: Match the npm that writes the lockfile
+        run: npm install -g npm@11
+
+      - run: npm ci
+
+      - run: npm run verify
 # Not here yet, and deliberately so:
 #
 #   * EAS Build of the development profile — needs an EXPO_TOKEN repository secret and an

@@ -1,0 +1,7 @@
+{
+  // Typechecks the tests beside the source. Kept apart from tsconfig.json because that one's
+  // `rootDir: src` is what `npm run build` compiles into dist/, and tests must not ship.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "rootDir": ".", "noEmit": true },
+  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+}

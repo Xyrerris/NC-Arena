@@ -142,8 +142,8 @@ amendment), and `check:projects` runs on Windows and in worktrees (`4bd4284`).
 
 **Still open, in order:**
 
-1. **A backend test runner.** `backend/` has none, and the root `npm run verify` does not touch it.
-   ADR-0039 was verified by a PGlite script that lived outside the repository.
+1. ~~**A backend test runner.**~~ **Done (ADR-0041).** Vitest against PGlite, in `backend/test/`;
+   the root `verify` runs it, and CI has a `backend` job.
 2. **The exit criterion "the app functions fully offline on previously synced data".** It is the
    one Phase 5 criterion ROADMAP.md does not yet mark **Met**, and it needs a test or a recorded
    airplane-mode check.
@@ -197,10 +197,11 @@ the same screen at `/account`.
   edit the server has not seen yet — `rosterSync.test.ts`'s "an edit to a synced row" block fails if
   `replaceRoster` stops honouring it. A removal works the same way through the `deleted_players`
   tombstones (ADR-0039); only the synced viewer cannot be removed.
-- **`backend/` is a second, independent package.** Its own `package.json` and `tsconfig.json`, and
-  `npm run verify` at the root does **not** touch it. Run `npm run typecheck` and `npm run build`
-  inside `backend/` yourself. It has no test runner at all — the backend's behaviour was verified by
-  driving a real Postgres by hand, which is a gap somebody should close.
+- **`backend/` is a second, independent package.** Its own `package.json`, `tsconfig.json` and
+  lockfile. The root `npm run verify` now ends with `verify:backend` (typecheck, Vitest, build), so
+  **run `npm install` inside `backend/` once per machine** or root `verify` fails there. The tests
+  mock `src/db/client.ts` with PGlite built from the committed migrations (ADR-0041): a new
+  migration is exercised by the suite the moment it is committed.
 - **`npm run db:generate` needs no database**, and diffs against `migrations/meta/*_snapshot.json`.
   The baseline snapshot exists now; before `a63c4bd` it did not, and generation silently re-emitted
   the whole schema as the next migration.

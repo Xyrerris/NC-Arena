@@ -21,7 +21,8 @@
     "doctor": "npx expo-doctor",
     "eas-build-pre-install": "npm install -g npm@11",
     "postinstall": "patch-package",
-    "verify": "npm run typecheck && npm run lint && npm run check:rules && npm run format && npm test && npm run test:coverage"
+    "verify": "npm run typecheck && npm run lint && npm run check:rules && npm run format && npm test && npm run test:coverage && npm run verify:backend",
+    "verify:backend": "npm --prefix backend run verify"
   },
   "dependencies": {
     "@infinitered/react-native-mlkit-text-recognition": "^5.0.1",

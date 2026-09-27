@@ -2407,3 +2407,42 @@ was applied, the AAR was linked, and the bug reproduced unchanged.
   which WorkManager treats as a force-stop. It reschedules every job on the next start, so a job
   forced into a killed process disappears ("Job didn't exist in JobStore"). Force the job **again**
   once the process is up: that second run is the cold headless case.
+
+## ADR-0041 — The backend is tested with Vitest against PGlite
+
+**Date:** 2026-09-27 · **Status:** accepted · **Phase:** 5
+
+**Context.** `backend/` had no test runner, and the root `npm run verify` did not touch it. ADR-0039
+was verified by a PGlite script kept outside the repository, so nothing stopped a later change from
+undoing what that script checked. The development machine has no Postgres, and CI should not need
+one either.
+
+**Decision 1 — Vitest, not Jest.** The backend is native ESM with NodeNext `.js` specifiers and
+top-level `await`. Vitest runs that as written. The root's Jest would need a second transform and
+module-mapping setup for one package it shares nothing with (ADR-0035 keeps the two apart).
+
+**Decision 2 — a real Postgres, in-process: PGlite.** Each test file replaces `src/db/client.ts`
+with `test/support/pgliteClient.ts` (`vi.mock`). That module boots PGlite and applies the
+**committed migrations**, not `schema.ts`, because the migrations are what production runs and
+`0000_init.sql` is hand-written. The routes, auth and `applyRosterSync` run unchanged through
+`fastify.inject`. Nothing in `src/` changed to allow it.
+
+**Decision 3 — part of `verify`, and its own CI job.** `backend/`'s `npm run verify` runs the
+typecheck (source and tests), `vitest run` and `tsc` build. The root `verify` now ends with
+`verify:backend`, so **a machine needs `npm install` inside `backend/` once**. CI runs the same
+command in a separate `backend` job with its own lockfile.
+
+**Consequences.**
+
+- 33 tests: accounts, linking, the bearer check, the viewer, and every rule in `rosterSync.ts`'s
+  header (ranks, idempotent replay, edits, ADR-0039 removals, head-to-head scoping, a stat above
+  `Int32.MAX`, a stat past `MAX_SAFE_INTEGER` refused).
+- The suite was checked by breaking the code. Five mutations of `rosterSync.ts` each failed at
+  least one test: replay idempotence, rank closure, the viewer skip, the held-players filter, and
+  the account scope on edits.
+- **What it cannot prove.** PGlite is one connection, so the concurrent-push race that the unique
+  index on `(account_id, client_id)` handles is not exercised. The `pg` driver and its `int8`
+  parser in `client.ts` are also replaced, so the big-stat test proves the column type and
+  Drizzle's `mode: 'number'`, not that parser.
+- Tests live in `backend/test/`, outside `tsconfig.json`'s `rootDir`, so `npm run build` and the
+  Docker image never contain them. `tsconfig.test.json` typechecks them.
