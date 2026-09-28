@@ -144,9 +144,11 @@ amendment), and `check:projects` runs on Windows and in worktrees (`4bd4284`).
 
 1. ~~**A backend test runner.**~~ **Done (ADR-0041).** Vitest against PGlite, in `backend/test/`;
    the root `verify` runs it, and CI has a `backend` job.
-2. **The exit criterion "the app functions fully offline on previously synced data".** It is the
-   one Phase 5 criterion ROADMAP.md does not yet mark **Met**, and it needs a test or a recorded
-   airplane-mode check.
+2. ~~**The exit criterion "the app functions fully offline on previously synced data".**~~
+   **Met (2026-09-28)** by `src/core/data/offline.test.ts`, which counts every request the
+   repository makes once `fetch` fails as it does in airplane mode. No device airplane-mode run
+   was recorded. The one gap it leaves is a sync with no timeout on a network that never
+   answers (ROADMAP.md, Phase 5 exit criteria).
 
 **Postgres backups are queued, not open:** the owner relies on Coolify's backups for now; a
 `pg_dump` sidecar with an off-site copy is the plan if that changes.
