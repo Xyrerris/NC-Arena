@@ -4,6 +4,11 @@ design/
 
 node_modules/
 .expo/
+
+# Claude Code's per-machine permissions. Git-ignored, and rewritten in Claude Code's own
+# layout every time a permission is approved, so checking its style only turns a local
+# `npm run verify` red on a file CI never sees.
+.claude/settings.local.json
 dist/
 android/
 ios/
