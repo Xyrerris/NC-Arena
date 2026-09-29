@@ -43,7 +43,7 @@ export type {
   RosterSyncResponse,
 } from './dto';
 
-export { offlineError, parseApiError } from './errors';
+export { offlineError, parseApiError, timeoutError } from './errors';
 export type { NetworkError, NetworkErrorCode } from './errors';
 
 export {
@@ -57,8 +57,8 @@ export {
   rosterSnapshotFromDto,
 } from './mappers';
 
-export { HttpClient } from './httpClient';
-export type { ApiKeySource } from './httpClient';
+export { DEFAULT_TIMEOUT_MS, HttpClient } from './httpClient';
+export type { ApiKeySource, HttpClientOptions } from './httpClient';
 
 export { RemoteAccountGateway } from './remoteAccountGateway';
 export { RemoteRosterSource } from './remoteRosterSource';

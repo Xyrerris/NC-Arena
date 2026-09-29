@@ -16,7 +16,7 @@
 
 import { createRosterRepository, type RosterRepository } from './rosterRepository';
 import { asPlayerId, type PlayerDraft } from '../model';
-import { RemoteAccountGateway, RemoteRosterSource } from '../network';
+import { DEFAULT_TIMEOUT_MS, RemoteAccountGateway, RemoteRosterSource } from '../network';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 import { createTestDatabase, type TestDatabase } from '../testing';
 
@@ -69,6 +69,11 @@ const draft = (name: string, gameCode: string): PlayerDraft => ({
 
 interface FakeNetwork {
   online: boolean;
+  /**
+   * Connected but mute: the request is accepted and never answered — a captive portal, a Wi-Fi
+   * with no uplink. Airplane mode fails at once; this is the case that used to hang.
+   */
+  silent: boolean;
   /** Every request the app made, online or not, as `METHOD path`. */
   requests: string[];
   /** The last body `POST /v1/roster/sync` was sent. */
@@ -101,11 +106,18 @@ describe('offline on previously synced data (ROADMAP.md Phase 5 exit criterion)'
   beforeEach(async () => {
     handle = createTestDatabase();
     preferences = createMemoryPreferences({ apiKey: 'paired-device-key' });
-    network = { online: true, requests: [], lastPush: null };
+    network = { online: true, silent: false, requests: [], lastPush: null };
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = String(input).replace(BASE_URL, '');
       network.requests.push(`${init?.method ?? 'GET'} ${path}`);
+      if (network.silent) {
+        return new Promise((_resolve, reject) =>
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          ),
+        );
+      }
       // React Native's fetch rejects with exactly this TypeError when there is no route.
       if (!network.online) throw new TypeError('Network request failed');
 
@@ -195,6 +207,36 @@ describe('offline on previously synced data (ROADMAP.md Phase 5 exit criterion)'
     // "Updated N ago" keeps telling the truth: nothing new was applied.
     expect(repository.getLastSyncedAt()).toBe(syncedAt);
     expect(network.requests).toEqual(['POST /v1/roster/sync']);
+  });
+
+  it('ends a sync against a server that never answers, so the next one can run', async () => {
+    jest.useFakeTimers();
+    try {
+      const repository = launch();
+      repository.createPlayer(draft('Quill', 'q17'));
+      const before = names(repository);
+      network.online = true;
+      network.silent = true;
+
+      const hung = repository.syncRoster();
+      await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
+      const result = await hung;
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error.message).toContain('OFFLINE — The server did not answer within 20 s.');
+      }
+      expect(names(repository)).toEqual(before);
+
+      // Settled, not merely abandoned: the network comes back and the very next sync lands.
+      network.silent = false;
+      expect((await repository.syncRoster()).ok).toBe(true);
+      expect(network.lastPush).toMatchObject({
+        newPlayers: [expect.objectContaining({ name: 'Quill' })],
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('pushes everything done offline on the first sync back online', async () => {

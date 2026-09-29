@@ -1,4 +1,4 @@
-import { HttpClient } from './httpClient';
+import { DEFAULT_TIMEOUT_MS, HttpClient } from './httpClient';
 
 describe('HttpClient', () => {
   const originalFetch = global.fetch;
@@ -73,6 +73,108 @@ describe('HttpClient', () => {
       ok: false,
       error: { code: 'OFFLINE', message: 'network request failed' },
     });
+  });
+});
+
+describe('HttpClient — the deadline', () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    global.fetch = originalFetch;
+  });
+
+  /** A server that accepts the connection and never answers — but honours an abort, as real fetch does. */
+  const silentServer = () => {
+    const signals: AbortSignal[] = [];
+    global.fetch = jest.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          const signal = init.signal as AbortSignal;
+          signals.push(signal);
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          );
+        }),
+    ) as unknown as typeof fetch;
+    return signals;
+  };
+
+  const TIMED_OUT = {
+    ok: false,
+    error: { code: 'OFFLINE', message: 'The server did not answer within 20 s.' },
+  };
+
+  it('gives up on a server that never answers, as OFFLINE, and aborts the request', async () => {
+    const signals = silentServer();
+
+    const pending = new HttpClient('https://api.example.com', 'key').request('/v1/roster');
+    await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
+
+    await expect(pending).resolves.toEqual(TIMED_OUT);
+    expect(signals[0]?.aborted).toBe(true);
+  });
+
+  it('does not give up a moment early', async () => {
+    silentServer();
+    let settled = false;
+
+    void new HttpClient('https://api.example.com', 'key').request('/v1/roster').then(() => {
+      settled = true;
+    });
+    await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS - 1);
+
+    expect(settled).toBe(false);
+  });
+
+  it('holds the deadline even against a fetch that ignores its signal', async () => {
+    global.fetch = jest.fn(() => new Promise(() => undefined)) as unknown as typeof fetch;
+
+    const pending = new HttpClient('https://api.example.com', 'key').request('/v1/roster');
+    await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
+
+    await expect(pending).resolves.toEqual(TIMED_OUT);
+  });
+
+  it('covers a body that stalls after the headers arrived', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => new Promise(() => undefined),
+    }) as unknown as typeof fetch;
+
+    const pending = new HttpClient('https://api.example.com', 'key').request('/v1/roster');
+    await jest.advanceTimersByTimeAsync(DEFAULT_TIMEOUT_MS);
+
+    await expect(pending).resolves.toEqual(TIMED_OUT);
+  });
+
+  it('takes a shorter deadline when given one', async () => {
+    silentServer();
+
+    const pending = new HttpClient('https://api.example.com', 'key', {
+      timeoutMs: 1_000,
+    }).request('/v1/roster');
+    await jest.advanceTimersByTimeAsync(1_000);
+
+    await expect(pending).resolves.toEqual({
+      ok: false,
+      error: { code: 'OFFLINE', message: 'The server did not answer within 1 s.' },
+    });
+  });
+
+  it('leaves no timer behind once a request has answered', async () => {
+    global.fetch = jest
+      .fn()
+      .mockResolvedValue(new Response('{}', { status: 200 })) as unknown as typeof fetch;
+
+    await new HttpClient('https://api.example.com', 'key').request('/v1/roster');
+
+    expect(jest.getTimerCount()).toBe(0);
   });
 });
 

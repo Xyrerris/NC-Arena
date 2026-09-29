@@ -10,7 +10,10 @@ export type NetworkErrorCode =
   | ApiErrorDto['error']['code']
   /** The response body was not `{ error: { code, message } }` at all — not a contract failure. */
   | 'MALFORMED_RESPONSE'
-  /** `fetch` itself rejected — offline, DNS, TLS, a dropped connection. */
+  /**
+   * `fetch` itself rejected — offline, DNS, TLS, a dropped connection — or the server did not
+   * answer before `HttpClient`'s deadline.
+   */
   | 'OFFLINE';
 
 export interface NetworkError {
@@ -21,6 +24,12 @@ export interface NetworkError {
 export const offlineError = (cause: unknown): NetworkError => ({
   code: 'OFFLINE',
   message: cause instanceof Error ? cause.message : 'The network request failed.',
+});
+
+/** A request that got no answer in time. `OFFLINE` because, to the user, it is the same. */
+export const timeoutError = (timeoutMs: number): NetworkError => ({
+  code: 'OFFLINE',
+  message: `The server did not answer within ${Math.round(timeoutMs / 1000)} s.`,
 });
 
 /**

@@ -147,8 +147,8 @@ amendment), and `check:projects` runs on Windows and in worktrees (`4bd4284`).
 2. ~~**The exit criterion "the app functions fully offline on previously synced data".**~~
    **Met (2026-09-28)** by `src/core/data/offline.test.ts`, which counts every request the
    repository makes once `fetch` fails as it does in airplane mode. No device airplane-mode run
-   was recorded. The one gap it leaves is a sync with no timeout on a network that never
-   answers (ROADMAP.md, Phase 5 exit criteria).
+   was recorded. The gap it first left — a request with no deadline on a network that never
+   answers — is closed: `HttpClient` ends every request after 20 s as `OFFLINE`.
 
 **Postgres backups are queued, not open:** the owner relies on Coolify's backups for now; a
 `pg_dump` sidecar with an off-site copy is the plan if that changes.

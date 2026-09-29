@@ -771,9 +771,12 @@ that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, whic
   runs with zero requests, a sync fails as a `Result` without moving the ladder or
   `lastSyncedAt`, and the first sync back online pushes all of it. Probed: a write that quietly
   calls the source first, and a gate that ignores the stored key, each fail it. OCR is ML Kit's
-  bundled model and the fonts are bundled, so neither needs a download. Not covered: a network
-  that accepts the connection and never answers — `HttpClient` sets no timeout, so a sync there
-  spins the badge until the OS gives up, with the ladder still usable underneath.
+  bundled model and the fonts are bundled, so neither needs a download. A network that accepts
+  the connection and never answers (captive portal, Wi-Fi with no uplink) is covered too:
+  `HttpClient` gives every request a 20 s deadline, headers and body alike, and ends it as
+  `OFFLINE`, so a sync there fails like airplane mode instead of spinning the badge and queueing
+  every later sync behind it. Asserted in `httpClient.test.ts` ("the deadline") and end to end
+  in `offline.test.ts`; probed by removing the deadline, which fails both.
 - Airplane-mode → refresh shows a recoverable error, never a crash or a blank screen. **Met.** A
   failed sync is a banner with its own retry over a ladder that stays entirely readable; only an
   unreadable _query_ reaches the `error` state. Asserted in
