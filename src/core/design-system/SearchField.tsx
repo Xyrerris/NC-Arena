@@ -7,6 +7,7 @@ import { StyleSheet, TextInput, View } from 'react-native';
 
 import { color, layout, radius, space } from './tokens';
 import { FONTS_BUNDLED } from './fontAssets';
+import { designStrings } from './strings';
 import { fontAssetName, typeScale } from './typography';
 
 export interface SearchFieldProps {
@@ -22,8 +23,8 @@ const spec = typeScale.bodyMedium;
 export function SearchField({
   value,
   onChangeText,
-  placeholder = 'Search players',
-  accessibilityLabel = 'Search players by name',
+  placeholder = designStrings.searchField.placeholder,
+  accessibilityLabel = designStrings.searchField.a11y,
   testID,
 }: SearchFieldProps) {
   return (
