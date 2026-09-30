@@ -109,6 +109,14 @@ module.exports = {
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
       },
+      // jest-expo's own list plus `@shopify/flash-list`, which ships ES modules from 2.3 on.
+      // The list is copied rather than extended because Jest replaces the preset's array
+      // instead of merging it: drop an entry here and that package stops being transformed.
+      transformIgnorePatterns: [
+        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list))',
+        '/node_modules/react-native-reanimated/plugin/',
+        '/node_modules/@react-native/babel-preset/',
+      ],
     },
   ],
 };

@@ -318,13 +318,6 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
             // sync would have become unreachable.
             refreshing={state.header.isSyncing}
             onRefresh={onRetry}
-            // Off. FlashList v2 turns it on by default, and with it every row above the
-            // viewport that measures differently from its estimate — a row with a record
-            // badge is taller than one without — nudges the scroll offset to hold the
-            // visible row still. Scrolling up and down accumulates those nudges until the
-            // first row no longer sits at the top, leaving a blank band above it. Nothing
-            // here needs the anchoring: rows are appended at the bottom, never prepended.
-            maintainVisibleContentPosition={NO_ANCHORING}
             keyExtractor={(row) => row.id}
             renderItem={({ item }) => (
               <RosterRow row={item} onPress={onOpenPlayer} onRecord={onRecord} />
@@ -375,9 +368,6 @@ function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () =>
 
 /** Stable identity, so an empty list is not a new prop on every render. */
 const NO_ROWS: readonly RosterRowUi[] = [];
-
-/** See the `maintainVisibleContentPosition` note on the list. */
-const NO_ANCHORING = { disabled: true } as const;
 
 const styles = StyleSheet.create({
   header: {
