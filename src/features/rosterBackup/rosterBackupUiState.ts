@@ -11,6 +11,8 @@ import type { RosterBackupSummary } from '@/core/data';
 
 export const EXPORT_LABEL = 'Export roster';
 export const IMPORT_LABEL = 'Import roster';
+export const EXPORT_A11Y = 'Export the roster to a file you can keep';
+export const IMPORT_A11Y = 'Replace this roster with one from a file';
 
 export const SECTION_TITLE = 'This roster lives only here';
 
