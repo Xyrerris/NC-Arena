@@ -3,6 +3,12 @@ import { StyleSheet, View } from 'react-native';
 
 import { ArenaText, ScreenScaffold, layout, space } from '@/core/design-system';
 
+// Constants here rather than in a `strings.ts`: every file under `src/app` is a route, so a
+// sibling strings module would become a screen.
+const SCREEN_TITLE = 'Not found';
+const MESSAGE = 'That screen does not exist.';
+const BACK_LABEL = 'Back to the roster';
+
 /**
  * Catch-all for unmatched routes.
  *
@@ -13,15 +19,15 @@ import { ArenaText, ScreenScaffold, layout, space } from '@/core/design-system';
 export default function NotFoundRoute() {
   return (
     <>
-      <Stack.Screen options={{ title: 'Not found' }} />
+      <Stack.Screen options={{ title: SCREEN_TITLE }} />
       <ScreenScaffold>
         <View style={styles.body}>
           <ArenaText variant="displaySmall" tone="primary">
-            That screen does not exist.
+            {MESSAGE}
           </ArenaText>
           <Link href="/" style={styles.link}>
             <ArenaText variant="titleSmall" tone="accent">
-              Back to the roster
+              {BACK_LABEL}
             </ArenaText>
           </Link>
         </View>
