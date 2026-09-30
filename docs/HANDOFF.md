@@ -208,6 +208,18 @@ the same screen at `/account`.
   The baseline snapshot exists now; before `a63c4bd` it did not, and generation silently re-emitted
   the whole schema as the next migration.
 
+## Open — verify Nine Chronicles CP against an active arena round
+
+A spike kept aside in [`docs/research/nc-cp/`](research/nc-cp/README.md) recomputes an avatar's
+combat power from on-chain state (Adventure within 0.0045 % of the game client; Arena and World
+Boss overshoot by 0.38 % and 0.07 %, cause unknown). Nothing in `src/` uses it.
+
+**To do during a later phase, while an arena round is live** (none was on Heimdall or Odin on
+2026-09-30): pull the 9CAPI `arenaLeaderboardHeimdall` list, whose `cp` is the Arena value, run the
+module on a sample of those avatars to validate it, then choose the implementation that does the job
+best — reuse the published CP, recompute on the client, or recompute behind a backend endpoint. The
+README carries the three options and what each costs.
+
 ## Operational
 
 - **A push to `claude/backend-data-management-w98hph` deploys the backend.** Coolify watches the
