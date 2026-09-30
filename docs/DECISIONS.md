@@ -2475,3 +2475,30 @@ already compared it: the name through `name_folded` (ADR-0032), the code through
 **Consequences.** Two players with the same name and no code are one player. The key is enforced on
 the device only; the backend still accepts duplicate pairs, and two rows that already share a pair
 (e.g. created on two devices before a sync) stay two rows until one is removed.
+
+## ADR-0043 — Release builds are minified with R8, and one class is kept by name
+
+**Status:** accepted, 2026-09-30. ROADMAP.md Phase 6, "R8 verified against a release build".
+
+**Context.** The Expo template leaves `android.enableMinifyInReleaseBuilds` off, so until now a
+"release" build was unminified and the R8 question had never been asked. Turned on, a release
+build of this app removed `expo.modules.adapters.react.apploader.RNHeadlessAppLoader`. Nothing in
+the code graph points at it: it is named only as a meta-data string in `expo-modules-core`'s
+manifest and instantiated by reflection when WorkManager wakes the app with no UI. Without it the
+periodic sync (ADR-0040) cannot start on the one path it exists for, and nothing on screen says so
+— `ClassNotFoundException` in logcat and no sync. It was found by listing the 89 classes the merged
+manifest names against R8's `usage.txt`; it was the only one removed.
+
+**Decision.** `app.config.ts` turns on `enableMinifyInReleaseBuilds` and
+`enableShrinkResourcesInReleaseBuilds` through `withGradleProperties`, and appends
+`-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }` to
+`android/app/proguard-rules.pro` through `withDangerousMod`. Both live in the config because
+`android/` is generated and git-ignored; a setting written there would never reach an EAS build.
+
+**Consequences.** Checked on an x86_64 release build with nothing passed on the command line: the
+loader is in `mapping.txt` and not in `usage.txt`, the app starts on the synced ladder, and a
+forced WorkManager job on a killed process logs `Executing task`, `Started headless task` and
+`Finished task 'arena-roster-sync'`, after which the roster reads "Updated just now". **Whoever
+adds a native module that is loaded by reflection or named only in a manifest repeats the
+manifest-against-`usage.txt` check**; R8 fails silently for exactly that kind of class.
+Not measured: an arm64 build, and a run on a physical device.

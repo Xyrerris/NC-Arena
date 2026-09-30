@@ -1,5 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import type { ExpoConfig } from 'expo/config';
-import { AndroidConfig, withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
+import {
+  AndroidConfig,
+  withAndroidManifest,
+  withDangerousMod,
+  withGradleProperties,
+  type ConfigPlugin,
+} from 'expo/config-plugins';
 
 /**
  * Arena Scout — Expo app config.
@@ -128,4 +137,61 @@ const withPickerSurvivingConfigChanges: ConfigPlugin = (expoConfig) =>
     return mod;
   });
 
-export default withPickerSurvivingConfigChanges(config);
+/**
+ * R8 and resource shrinking in release builds (ROADMAP.md Phase 6, "R8 verified against a
+ * release build").
+ *
+ * The template leaves both off, so until now "release" meant an unminified build and the R8
+ * question was never asked. Turning them on is what makes the build the size a user downloads —
+ * and what removed a class the app needs, see `KEEP_RULES`. As gradle properties rather than
+ * edits to `android/app/build.gradle` because `android/` is generated and git-ignored: this is
+ * the only place a setting can live and reach an EAS build.
+ */
+const RELEASE_SHRINKING = {
+  'android.enableMinifyInReleaseBuilds': 'true',
+  'android.enableShrinkResourcesInReleaseBuilds': 'true',
+};
+
+const withShrunkenRelease: ConfigPlugin = (expoConfig) =>
+  withGradleProperties(expoConfig, (mod) => {
+    const keys = new Set(Object.keys(RELEASE_SHRINKING));
+    const others = mod.modResults.filter((item) => item.type !== 'property' || !keys.has(item.key));
+    mod.modResults = [
+      ...others,
+      ...Object.entries(RELEASE_SHRINKING).map(([key, value]) => ({
+        type: 'property' as const,
+        key,
+        value,
+      })),
+    ];
+    return mod;
+  });
+
+/**
+ * What R8 must not remove.
+ *
+ * `RNHeadlessAppLoader` is named only in `expo-modules-core`'s manifest, as a meta-data string,
+ * and instantiated by reflection when WorkManager wakes the app with no UI. Nothing in the
+ * code graph points at it, so R8 removed it, and the periodic sync (ADR-0040) would have died
+ * on the one path it exists for: `ClassNotFoundException` in logcat, no sync, no error on
+ * screen. Found by listing every class the merged manifest names against R8's `usage.txt` —
+ * this was the only one of 89.
+ */
+const KEEP_RULES = ['-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }'];
+
+const withKeepRules: ConfigPlugin = (expoConfig) =>
+  withDangerousMod(expoConfig, [
+    'android',
+    async (mod) => {
+      const file = path.join(mod.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
+      const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+      const missing = KEEP_RULES.filter((rule) => !current.includes(rule));
+      if (missing.length > 0) {
+        const separator = current === '' || current.endsWith('\n') ? '' : '\n';
+        fs.writeFileSync(file, `${current}${separator}\n# Phase 6\n${missing.join('\n')}\n`);
+      }
+      return mod;
+    },
+  ]);
+
+export default withKeepRules(withShrunkenRelease(withPickerSurvivingConfigChanges(config)));
