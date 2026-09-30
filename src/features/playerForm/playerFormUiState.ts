@@ -28,6 +28,8 @@ import {
   type PlayerId,
 } from '@/core/model';
 
+import { playerFormStrings } from './strings';
+
 /**
  * Create, edit the player with this id, or edit **you** (ADR-0022).
  *
@@ -61,35 +63,45 @@ export interface PlayerFormFieldSpec {
  * conversion by hand.
  */
 export const PLAYER_FORM_FIELDS: readonly PlayerFormFieldSpec[] = [
-  { field: 'name', label: 'Name', numeric: false, maxLength: MAX_PLAYER_NAME_LENGTH },
-  { field: 'level', label: 'Level', hint: 'The Lv. beside the name.', numeric: true },
+  {
+    field: 'name',
+    label: playerFormStrings.fieldLabel.name,
+    numeric: false,
+    maxLength: MAX_PLAYER_NAME_LENGTH,
+  },
+  {
+    field: 'level',
+    label: playerFormStrings.fieldLabel.level,
+    hint: playerFormStrings.levelHint,
+    numeric: true,
+  },
   {
     field: 'gameCode',
-    label: 'Game code',
-    hint: 'The #a984 beside the name. Optional — the # is added for you.',
+    label: playerFormStrings.fieldLabel.gameCode,
+    hint: playerFormStrings.gameCodeHint,
     numeric: false,
     maxLength: MAX_GAME_CODE_LENGTH + 1,
   },
-  { field: 'combatPower', label: 'Combat power', numeric: true },
+  { field: 'combatPower', label: playerFormStrings.fieldLabel.combatPower, numeric: true },
   {
     field: 'score',
-    label: 'Score',
+    label: playerFormStrings.fieldLabel.score,
     // The one field a screenshot cannot supply, said out loud: the game's profile panel
     // does not show it, so a scan leaves this box exactly as it found it (ADR-0024).
-    hint: 'Not on the profile screen — type this one in.',
+    hint: playerFormStrings.scoreHint,
     numeric: true,
   },
-  { field: 'hp', label: 'HP', numeric: true },
-  { field: 'atk', label: 'ATK', numeric: true },
-  { field: 'def', label: 'DEF', numeric: true },
+  { field: 'hp', label: playerFormStrings.fieldLabel.hp, numeric: true },
+  { field: 'atk', label: playerFormStrings.fieldLabel.atk, numeric: true },
+  { field: 'def', label: playerFormStrings.fieldLabel.def, numeric: true },
   {
     field: 'critPercent',
-    label: 'Crit %',
-    hint: 'A whole percentage — 113 means 113 %.',
+    label: playerFormStrings.fieldLabel.critPercent,
+    hint: playerFormStrings.critHint,
     numeric: true,
   },
-  { field: 'hit', label: 'HIT', numeric: true },
-  { field: 'spd', label: 'SPD', numeric: true },
+  { field: 'hit', label: playerFormStrings.fieldLabel.hit, numeric: true },
+  { field: 'spd', label: playerFormStrings.fieldLabel.spd, numeric: true },
 ] as const;
 
 /**
@@ -198,16 +210,14 @@ export type StatScanUiState =
   | { kind: 'failed'; message: string };
 
 /** The control that opens the picker. */
-export const SCAN_LABEL = 'Fill from screenshot';
+export const SCAN_LABEL = playerFormStrings.scanLabel;
 
 /**
  * What the control is about to do, said **before** it is pressed — including the deleting,
  * because a picture removed from someone's photo library is not something to mention
  * afterwards (ADR-0026).
  */
-export const SCAN_HINT =
-  'Reads a profile screenshot from your photos and then deletes it. Nothing is saved to ' +
-  'the roster until you press save.';
+export const SCAN_HINT = playerFormStrings.scanHint;
 
 const FIELD_LABELS: Readonly<Record<PlayerDraftField, string>> = Object.fromEntries(
   PLAYER_FORM_FIELDS.map((spec) => [spec.field, spec.label]),
@@ -222,9 +232,9 @@ const FIELD_LABELS: Readonly<Record<PlayerDraftField, string>> = Object.fromEntr
  * person who trusted the promise (ADR-0026).
  */
 const SCREENSHOT_NOTES: Readonly<Record<ScreenshotOutcome, string>> = {
-  DELETED: 'The screenshot has been deleted.',
-  COPY_ONLY: 'The screenshot is still in your photos — this app could not identify it there.',
-  KEPT: 'The screenshot is still in your photos.',
+  DELETED: playerFormStrings.screenshotDeleted,
+  COPY_ONLY: playerFormStrings.screenshotCopyOnly,
+  KEPT: playerFormStrings.screenshotKept,
 };
 
 /**
@@ -243,9 +253,12 @@ export const scanNote = (
 ): string => {
   const loaded =
     missing.length === 0
-      ? 'Stats loaded — every field was read.'
-      : `Stats loaded — ${found.length} of ${found.length + missing.length} fields. ` +
-        `Still to type: ${missing.map((field) => FIELD_LABELS[field]).join(', ')}.`;
+      ? playerFormStrings.scanAllRead
+      : playerFormStrings.scanPartial(
+          found.length,
+          found.length + missing.length,
+          missing.map((field) => FIELD_LABELS[field]).join(', '),
+        );
   return `${loaded} ${SCREENSHOT_NOTES[screenshot]}`;
 };
 
@@ -269,9 +282,7 @@ export interface ImportNotice {
 export const importNotice = (match: ImportMatch | null): ImportNotice | null => {
   if (match === null) return null;
   const who = `${match.player.name}${match.player.gameCode === '' ? '' : ` ${gameCodeLabel(match.player.gameCode)}`}`;
-  return {
-    message: `${who} is already on the ladder. Saving updates that player rather than adding a second row.`,
-  };
+  return { message: playerFormStrings.alreadyOnLadder(who) };
 };
 
 export type PlayerFormUiState =
@@ -308,14 +319,14 @@ export type PlayerFormEvent =
   | { type: 'delete' };
 
 export const formTitle = (mode: PlayerFormMode, name: string): string =>
-  mode.kind === 'create' ? 'New player' : name;
+  mode.kind === 'create' ? playerFormStrings.newPlayer : name;
 
 /**
  * The viewer screen shows the player's name as its title like an edit does, and says whose
  * it is above it (`VIEWER_EYEBROW`). Naming the screen "You" instead would hide the one
  * thing worth confirming — *which* player the app currently believes is you.
  */
-export const VIEWER_EYEBROW = 'YOUR AVATAR';
+export const VIEWER_EYEBROW = playerFormStrings.viewerEyebrow;
 
 /**
  * What the button will do, on the button.
@@ -327,10 +338,10 @@ export const VIEWER_EYEBROW = 'YOUR AVATAR';
 export const submitLabel = (mode: PlayerFormMode, notice: ImportNotice | null = null): string => {
   switch (mode.kind) {
     case 'create':
-      return notice === null ? 'Add player' : 'Update player';
+      return notice === null ? playerFormStrings.addPlayer : playerFormStrings.updatePlayer;
     case 'edit':
-      return 'Save changes';
+      return playerFormStrings.saveChanges;
     case 'viewer':
-      return 'Save my stats';
+      return playerFormStrings.saveMyStats;
   }
 };

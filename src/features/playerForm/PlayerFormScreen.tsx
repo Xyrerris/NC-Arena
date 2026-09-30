@@ -38,6 +38,7 @@ import {
   type PlayerFormUiState,
   type StatScanUiState,
 } from './playerFormUiState';
+import { playerFormStrings } from './strings';
 import { usePlayerForm } from './usePlayerForm';
 
 export interface PlayerFormScreenProps {
@@ -98,14 +99,14 @@ export function PlayerFormScreen({ mode, onChangeViewer, scanner, footer }: Play
   const scan = useCallback(() => onEvent({ type: 'scan' }), [onEvent]);
 
   const confirmDelete = useCallback(() => {
-    Alert.alert(
-      'Remove this player?',
-      'They are removed from this device only, and the ranking closes up behind them.',
-      [
-        { text: 'Keep', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => onEvent({ type: 'delete' }) },
-      ],
-    );
+    Alert.alert(playerFormStrings.confirmRemoveTitle, playerFormStrings.confirmRemoveBody, [
+      { text: playerFormStrings.confirmKeep, style: 'cancel' },
+      {
+        text: playerFormStrings.confirmRemove,
+        style: 'destructive',
+        onPress: () => onEvent({ type: 'delete' }),
+      },
+    ]);
   }, [onEvent]);
 
   return (
@@ -116,10 +117,10 @@ export function PlayerFormScreen({ mode, onChangeViewer, scanner, footer }: Play
       >
         <View style={styles.backRow}>
           <ArenaButton
-            label="Cancel"
+            label={playerFormStrings.cancel}
             variant="secondary"
             onPress={leave}
-            accessibilityLabel="Cancel and go back"
+            accessibilityLabel={playerFormStrings.cancelA11y}
             testID="form-cancel"
           />
 
@@ -130,10 +131,10 @@ export function PlayerFormScreen({ mode, onChangeViewer, scanner, footer }: Play
           */}
           {mode.kind === 'viewer' && onChangeViewer !== undefined ? (
             <ArenaButton
-              label="Not you?"
+              label={playerFormStrings.notYou}
               variant="secondary"
               onPress={onChangeViewer}
-              accessibilityLabel="Choose a different player as your avatar"
+              accessibilityLabel={playerFormStrings.notYouA11y}
               testID="form-change-viewer"
             />
           ) : null}
@@ -169,7 +170,7 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave, footer
       return (
         <View style={styles.centred} testID="form-loading">
           <ArenaText variant="bodySmall" tone="subtle">
-            {'One moment…'}
+            {playerFormStrings.loading}
           </ArenaText>
           {footer}
         </View>
@@ -179,12 +180,16 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave, footer
       return (
         <View style={styles.centred} testID="form-unavailable">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            Not yours to edit
+            {playerFormStrings.unavailableTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="subtle" align="center">
             {state.message}
           </ArenaText>
-          <ArenaButton label="Back to the roster" variant="secondary" onPress={onLeave} />
+          <ArenaButton
+            label={playerFormStrings.backToRoster}
+            variant="secondary"
+            onPress={onLeave}
+          />
           {footer}
         </View>
       );
@@ -270,10 +275,10 @@ function FormBody({ state, onChange, onScan, onSubmit, onDelete, onLeave, footer
 
           {state.canDelete ? (
             <ArenaButton
-              label="Remove player"
+              label={playerFormStrings.removePlayer}
               variant="destructive"
               onPress={onDelete}
-              accessibilityLabel="Remove this player from the roster"
+              accessibilityLabel={playerFormStrings.removePlayerA11y}
               testID="form-delete"
             />
           ) : null}
@@ -299,7 +304,7 @@ function ScanBlock({ state, onScan }: { state: StatScanUiState; onScan: () => vo
         variant="secondary"
         onPress={onScan}
         busy={state.kind === 'scanning'}
-        accessibilityLabel="Fill the form from a screenshot of the game"
+        accessibilityLabel={playerFormStrings.scanA11y}
         fill
         testID="form-scan-button"
       />

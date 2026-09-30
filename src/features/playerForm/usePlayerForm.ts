@@ -40,6 +40,7 @@ import {
   type PlayerFormValues,
   type StatScanUiState,
 } from './playerFormUiState';
+import { playerFormStrings } from './strings';
 
 export interface PlayerFormOptions {
   mode: PlayerFormMode;
@@ -253,9 +254,7 @@ export const usePlayerForm = ({
         return {
           kind: 'unavailable',
           message:
-            mode.kind === 'viewer'
-              ? 'The player you chose as your avatar is no longer on the ladder. Pick another.'
-              : 'That player is no longer on the ladder.',
+            mode.kind === 'viewer' ? playerFormStrings.viewerGone : playerFormStrings.playerGone,
         };
       }
       if (!seeded) return { kind: 'loading' };

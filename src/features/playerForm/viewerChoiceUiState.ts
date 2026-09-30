@@ -15,6 +15,8 @@
 import { statFormatter } from '@/core/common';
 import type { PlayerId, RosterEntry } from '@/core/model';
 
+import { playerFormStrings } from './strings';
+
 export interface ViewerCandidateUi {
   id: PlayerId;
   name: string;
@@ -49,5 +51,9 @@ export const toViewerCandidateUi = (entry: RosterEntry): ViewerCandidateUi => ({
 });
 
 export const candidateLabel = (candidate: ViewerCandidateUi): string =>
-  `${candidate.name}, rank ${Number(candidate.rankLabel)}, combat power ${candidate.combatPowerExact}` +
-  (candidate.isCurrent ? '. This is who you are now.' : '');
+  playerFormStrings.candidateA11y(
+    candidate.name,
+    Number(candidate.rankLabel),
+    candidate.combatPowerExact,
+    candidate.isCurrent,
+  );
