@@ -53,6 +53,36 @@ const NO_TO_FIXED = {
     'contract is tested at. Use divideHalfUp from core/common.',
 };
 
+// ---------------------------------------------------------------------------
+// User-visible words live in a strings module (ROADMAP.md Phase 6)
+// ---------------------------------------------------------------------------
+// Text written straight into JSX is what the externalisation pass removed, and nothing else
+// would notice it coming back. These select the four ways a word reaches the screen from a
+// component: bare JSX text, a string or template literal as a child, and a literal in one of
+// the props that a user or a screen reader reads. `JSXElement >` keeps the child selectors off
+// attribute values such as a template-literal `testID`.
+const LETTERS = '/[A-Za-z]{2,}/';
+const NO_JSX_TEXT = {
+  selector: `JSXText[value=${LETTERS}]`,
+  message:
+    "ROADMAP.md Phase 6: words belong in the feature's strings.ts (or core/design-system/strings.ts), not in JSX.",
+};
+const NO_JSX_LITERAL_CHILD = {
+  selector: `JSXElement > JSXExpressionContainer > Literal[value=${LETTERS}]`,
+  message: 'ROADMAP.md Phase 6: move this string into the strings module.',
+};
+const NO_JSX_TEMPLATE_CHILD = {
+  selector: `JSXElement > JSXExpressionContainer > TemplateLiteral > TemplateElement[value.raw=${LETTERS}]`,
+  message: 'ROADMAP.md Phase 6: move this string into the strings module.',
+};
+const NO_JSX_LITERAL_PROP = {
+  selector:
+    'JSXAttribute[name.name=/^(label|title|placeholder|accessibilityLabel|accessibilityHint)$/]' +
+    ` > Literal[value=${LETTERS}]`,
+  message: 'ROADMAP.md Phase 6: move this string into the strings module.',
+};
+const NO_UI_WORDS = [NO_JSX_TEXT, NO_JSX_LITERAL_CHILD, NO_JSX_TEMPLATE_CHILD, NO_JSX_LITERAL_PROP];
+
 module.exports = defineConfig([
   expoConfig,
   prettier,
@@ -182,7 +212,27 @@ module.exports = defineConfig([
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/core/design-system/**/*'],
+    rules: { 'no-restricted-syntax': ['error', NO_RAW_COLOR, NO_RAW_SPACING, ...NO_UI_WORDS] },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Tests say what a screen says, so they may write it out — but they keep the token rules,
+  // which the block above would otherwise stop applying to them (see the note by NO_RAW_COLOR).
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/**/*.test.{ts,tsx}'],
+    ignores: ['src/core/design-system/**/*'],
     rules: { 'no-restricted-syntax': ['error', NO_RAW_COLOR, NO_RAW_SPACING] },
+  },
+
+  // ---------------------------------------------------------------------------
+  // The design system may write raw colours and spacing, but not words. `Catalogue` is the dev
+  // gallery, whose whole job is to show sample text, and the tests are exempt as above.
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/core/design-system/**/*.tsx'],
+    ignores: ['src/core/design-system/Catalogue.tsx', 'src/core/design-system/**/*.test.tsx'],
+    rules: { 'no-restricted-syntax': ['error', ...NO_UI_WORDS] },
   },
 
   // ---------------------------------------------------------------------------

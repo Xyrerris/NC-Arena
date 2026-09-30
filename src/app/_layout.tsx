@@ -140,11 +140,14 @@ function ArenaStack() {
   );
 }
 
+// A constant here rather than in a `strings.ts`: every file under `src/app` is a route.
+const BOOT_FAILURE_TITLE = 'Arena could not start';
+
 function BootFailure({ message }: { message: string }) {
   return (
     <View style={styles.failure}>
       <ArenaText variant="displaySmall" tone="primary">
-        Arena could not start
+        {BOOT_FAILURE_TITLE}
       </ArenaText>
       <ArenaText variant="bodySmall" tone="negative">
         {message}
