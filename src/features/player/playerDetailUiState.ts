@@ -21,11 +21,13 @@ import {
   type StatKey,
 } from '@/core/model';
 
+import { playerStrings } from './strings';
+
 export type PlayerDetailTab = 'STATS' | 'VS_YOU';
 
 export const DETAIL_TABS: readonly { value: PlayerDetailTab; label: string }[] = [
-  { value: 'STATS', label: 'STATS' },
-  { value: 'VS_YOU', label: 'VS YOU' },
+  { value: 'STATS', label: playerStrings.tabStats },
+  { value: 'VS_YOU', label: playerStrings.tabVersus },
 ] as const;
 
 export interface StatRowUi {
@@ -165,7 +167,7 @@ export const toStatRows = (player: Player, unit: ShortUnit): StatRowUi[] =>
  */
 const identityLabel = (player: Player): string | null => {
   const parts = [
-    player.level > 0 ? `LV. ${player.level}` : null,
+    player.level > 0 ? playerStrings.level(player.level) : null,
     gameCodeLabel(player.gameCode) === '' ? null : gameCodeLabel(player.gameCode),
   ].filter((part): part is string => part !== null);
   return parts.length === 0 ? null : parts.join(' · ');
@@ -173,7 +175,7 @@ const identityLabel = (player: Player): string | null => {
 
 export const toPlayerHeaderUi = (player: Player): PlayerHeaderUi => ({
   name: player.name,
-  rankLabel: `RANK #${String(player.rank).padStart(2, '0')}`,
+  rankLabel: playerStrings.rank(String(player.rank).padStart(2, '0')),
   identityLabel: identityLabel(player),
   combatPowerExact: statFormatter.exact(player.combatPower),
   combatPowerShort: statFormatter.combatPowerShort(player.combatPower),
@@ -195,11 +197,11 @@ export const toHeadToHeadUi = (record: HeadToHead | null, canAdjust: boolean): H
   if (record === null || matches === 0) {
     // No division happens on this path at all, which is how "zero-match opponents do not
     // divide by zero" is guaranteed rather than merely tested (ROADMAP.md Phase 4).
-    return { record: null, note: 'never fought', ...steps };
+    return { record: null, note: playerStrings.neverFought, ...steps };
   }
   return {
     record: { wins: record.wins, losses: record.losses },
-    note: `you won ${record.wins} of ${matches} matches`,
+    note: playerStrings.wonOf(record.wins, matches),
     ...steps,
   };
 };
@@ -242,7 +244,7 @@ export const toCompareRows = (viewer: Player, opponent: Player, unit: ShortUnit)
  */
 export const toVerdict = (rows: readonly CompareRowUi[]): string => {
   const ahead = rows.filter((row) => !row.opponentAhead).length;
-  return `you lead in ${ahead} of ${rows.length} stats · delta shown from your values`;
+  return playerStrings.verdict(ahead, rows.length);
 };
 
 export const toVersusUi = (
@@ -262,4 +264,4 @@ export const toVersusUi = (
 };
 
 /** The Stats tab's footer, quoted from the design. */
-export const STATS_FOOTER = 'exact value left · rounded value right';
+export const STATS_FOOTER = playerStrings.statsFooter;

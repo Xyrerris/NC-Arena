@@ -37,6 +37,7 @@ import {
   type StatRowUi,
   type VersusUi,
 } from './playerDetailUiState';
+import { playerStrings } from './strings';
 import { usePlayerDetail } from './usePlayerDetail';
 
 export interface PlayerDetailScreenProps {
@@ -75,13 +76,13 @@ export function PlayerDetailScreen({ id }: PlayerDetailScreenProps) {
       <View style={styles.backRow}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to the roster"
+          accessibilityLabel={playerStrings.backToRosterA11y}
           onPress={goBack}
           style={styles.back}
           testID="player-back"
         >
           <ArenaText variant="labelStrong" tone="accent">
-            {'← ROSTER'}
+            {playerStrings.backToRoster}
           </ArenaText>
         </Pressable>
 
@@ -91,10 +92,10 @@ export function PlayerDetailScreen({ id }: PlayerDetailScreenProps) {
         */}
         {state.kind === 'ready' ? (
           <ArenaButton
-            label="Edit"
+            label={playerStrings.edit}
             variant="secondary"
             onPress={edit}
-            accessibilityLabel="Edit this player"
+            accessibilityLabel={playerStrings.editA11y}
             testID="player-edit"
           />
         ) : null}
@@ -119,7 +120,7 @@ function DetailBody({ state, onSelectTab, onRetry, onAdjust }: DetailBodyProps) 
         <View style={styles.centred} testID="player-loading">
           <ActivityIndicator color={color.accent} />
           <ArenaText variant="bodySmall" tone="subtle">
-            {'Reading the stat book…'}
+            {playerStrings.loading}
           </ArenaText>
         </View>
       );
@@ -128,11 +129,10 @@ function DetailBody({ state, onSelectTab, onRetry, onAdjust }: DetailBodyProps) 
       return (
         <View style={styles.centred} testID="player-not-found">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            No such player
+            {playerStrings.notFoundTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="subtle" align="center">
-            This link points at someone who is not on the ladder. They may have left the season, or
-            the link may be stale.
+            {playerStrings.notFoundBody}
           </ArenaText>
         </View>
       );
@@ -141,7 +141,7 @@ function DetailBody({ state, onSelectTab, onRetry, onAdjust }: DetailBodyProps) 
       return (
         <View style={styles.centred} testID="player-error">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            The stat book could not be read
+            {playerStrings.errorTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="negative" align="center">
             {state.message}
@@ -149,7 +149,7 @@ function DetailBody({ state, onSelectTab, onRetry, onAdjust }: DetailBodyProps) 
           {state.canRetry ? (
             <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
               <ArenaText variant="labelStrong" tone="accent">
-                TRY AGAIN
+                {playerStrings.tryAgain}
               </ArenaText>
             </Pressable>
           ) : null}
@@ -164,7 +164,7 @@ function DetailBody({ state, onSelectTab, onRetry, onAdjust }: DetailBodyProps) 
             tabs={DETAIL_TABS}
             selected={state.tab}
             onSelect={onSelectTab}
-            accessibilityLabel="Stats or comparison"
+            accessibilityLabel={playerStrings.tabsA11y}
             testID="player-tabs"
           />
           {/*
@@ -207,11 +207,11 @@ function DetailHeader({ header }: { header: PlayerHeaderUi }) {
       )}
       <View
         accessible
-        accessibilityLabel={`Combat power ${header.combatPowerExact}`}
+        accessibilityLabel={playerStrings.combatPowerA11y(header.combatPowerExact)}
         style={styles.power}
       >
         <ArenaText variant="labelNano" tone="subtle">
-          CP
+          {playerStrings.combatPowerAbbr}
         </ArenaText>
         <ArenaText variant="numericHero" tone="accent" style={styles.powerExact}>
           {header.combatPowerExact}
@@ -255,11 +255,10 @@ function VersusTab({ versus, onAdjust }: VersusTabProps) {
     return (
       <View style={styles.tab} testID="player-versus-tab">
         <ArenaText variant="titleMedium" tone="primary">
-          No avatar to compare against
+          {playerStrings.noAvatarTitle}
         </ArenaText>
         <ArenaText variant="bodySmall" tone="subtle">
-          Once the roster knows which player is yours, this tab compares the two of you stat by
-          stat.
+          {playerStrings.noAvatarBody}
         </ArenaText>
       </View>
     );
@@ -270,7 +269,7 @@ function VersusTab({ versus, onAdjust }: VersusTabProps) {
       <View style={styles.h2h} testID="player-head-to-head">
         <View style={styles.h2hText}>
           <ArenaText variant="labelNano" tone="subtle">
-            HEAD TO HEAD
+            {playerStrings.headToHead}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="body">
             {versus.headToHead.note}
@@ -326,14 +325,14 @@ function RecordStepper({
   return (
     <View style={styles.stepper} testID="record-stepper">
       <StepperRow
-        label="WINS"
+        label={playerStrings.winsLabel}
         outcome="WIN"
         value={headToHead.record?.wins ?? 0}
         canRemove={headToHead.canRemoveWin}
         onAdjust={onAdjust}
       />
       <StepperRow
-        label="LOSSES"
+        label={playerStrings.lossesLabel}
         outcome="LOSS"
         value={headToHead.record?.losses ?? 0}
         canRemove={headToHead.canRemoveLoss}
@@ -366,7 +365,7 @@ function StepperRow({
         glyph="−"
         // Spelled out, because "minus" is what a screen reader would otherwise say about a
         // button whose only content is a glyph.
-        label={`Remove a ${noun} against this player`}
+        label={playerStrings.removeA11y(noun)}
         disabled={!canRemove}
         onPress={() => onAdjust(outcome, -1)}
         testID={`record-remove-${outcome}`}
@@ -382,7 +381,7 @@ function StepperRow({
       </ArenaText>
       <StepButton
         glyph="+"
-        label={`Add a ${noun} against this player`}
+        label={playerStrings.addA11y(noun)}
         onPress={() => onAdjust(outcome, 1)}
         testID={`record-add-${outcome}`}
       />
