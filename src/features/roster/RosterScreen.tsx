@@ -41,6 +41,7 @@ import {
   type RosterUiState,
 } from './rosterUiState';
 import { useDebouncedValue } from './useDebouncedValue';
+import { rosterStrings } from './strings';
 import { useRoster } from './useRoster';
 
 export function RosterScreen() {
@@ -116,7 +117,7 @@ function RosterHeader({
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <ArenaText variant="displayMedium" tone="primary" accessibilityRole="header">
-          Arena
+          {rosterStrings.title}
         </ArenaText>
         {header.seasonLabel === null ? null : (
           <ArenaText variant="numericMicro" tone="accent" testID="roster-season">
@@ -155,10 +156,10 @@ function RosterHeader({
           {playerCountLabel(header.totalPlayers)}
         </ArenaText>
         <ArenaButton
-          label="+ New player"
+          label={rosterStrings.addPlayer}
           variant="secondary"
           onPress={onAddPlayer}
-          accessibilityLabel="Add a new player to the roster"
+          accessibilityLabel={rosterStrings.addPlayerA11y}
           testID="roster-add-player"
         />
       </View>
@@ -182,13 +183,13 @@ function RosterHeader({
         numbers moved" are answered on the same screen (ADR-0022).
       */}
       <ArenaButton
-        label={header.viewer === null ? 'Who are you?' : 'Update my stats'}
+        label={header.viewer === null ? rosterStrings.whoAreYou : rosterStrings.updateMyStats}
         variant="secondary"
         onPress={onOpenViewer}
         accessibilityLabel={
           header.viewer === null
-            ? 'Choose which player is your avatar'
-            : `Update your own stats — ${header.viewer.name}`
+            ? rosterStrings.whoAreYouA11y
+            : rosterStrings.updateMyStatsA11y(header.viewer.name)
         }
         testID="roster-viewer"
       />
@@ -225,7 +226,7 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
         <View style={styles.centred} testID="roster-loading">
           <ActivityIndicator color={color.accent} />
           <ArenaText variant="bodySmall" tone="subtle">
-            Reading the ladder…
+            {rosterStrings.loading}
           </ArenaText>
         </View>
       );
@@ -234,7 +235,7 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
       return (
         <View style={styles.centred} testID="roster-error">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            The ladder could not be read
+            {rosterStrings.errorTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="negative" align="center">
             {state.message}
@@ -242,7 +243,7 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
           {state.canRetry ? (
             <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
               <ArenaText variant="labelStrong" tone="accent">
-                TRY AGAIN
+                {rosterStrings.tryAgain}
               </ArenaText>
             </Pressable>
           ) : null}
@@ -297,7 +298,7 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
               </ArenaText>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Try syncing again"
+                accessibilityLabel={rosterStrings.syncRetryA11y}
                 onPress={onRetry}
                 style={styles.syncRetry}
                 testID="roster-sync-retry"
@@ -342,12 +343,10 @@ function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () =>
   return (
     <View style={styles.centred} testID="roster-empty">
       <ArenaText variant="titleMedium" tone="primary" align="center">
-        {needle === '' ? 'No players yet' : 'No player by that name'}
+        {needle === '' ? rosterStrings.emptyRosterTitle : rosterStrings.emptySearchTitle}
       </ArenaText>
       <ArenaText variant="bodySmall" tone="subtle" align="center">
-        {needle === ''
-          ? 'Add the players you want to track. Everything stays on this device.'
-          : `Nothing in the roster matches "${needle}".`}
+        {needle === '' ? rosterStrings.emptyRosterBody : rosterStrings.emptySearchBody(needle)}
       </ArenaText>
       {/*
         Offered only when the roster itself is empty, not when a search missed. "Add a
@@ -356,9 +355,9 @@ function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () =>
       */}
       {needle === '' ? (
         <ArenaButton
-          label="+ New player"
+          label={rosterStrings.addPlayer}
           onPress={onAddPlayer}
-          accessibilityLabel="Add the first player to the roster"
+          accessibilityLabel={rosterStrings.addFirstPlayerA11y}
           testID="roster-empty-add-player"
         />
       ) : null}

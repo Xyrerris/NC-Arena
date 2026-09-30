@@ -15,6 +15,8 @@
 import { statFormatter, timeSince } from '@/core/common';
 import type { MatchOutcome, Player, PlayerId, RosterEntry, RosterSort } from '@/core/model';
 
+import { rosterStrings } from './strings';
+
 /** Wins and losses stay numeric: `RecordBadge` owns how a record reads and announces. */
 export interface RosterRecordUi {
   wins: number;
@@ -145,9 +147,9 @@ export type RosterEvent =
 
 /** Label and order from the prototype's three chips. */
 export const SORT_OPTIONS: readonly { sort: RosterSort; label: string }[] = [
-  { sort: 'RANK', label: 'RANK' },
-  { sort: 'COMBAT_POWER', label: 'CP' },
-  { sort: 'MY_WINS', label: 'MY WINS' },
+  { sort: 'RANK', label: rosterStrings.sortRank },
+  { sort: 'COMBAT_POWER', label: rosterStrings.sortCombatPower },
+  { sort: 'MY_WINS', label: rosterStrings.sortMyWins },
 ] as const;
 
 /**
@@ -156,7 +158,7 @@ export const SORT_OPTIONS: readonly { sort: RosterSort; label: string }[] = [
  * the repository caches it (ADR-0018). Nothing here invents a number.
  */
 export const seasonLabel = (season: number | null): string | null =>
-  season === null ? null : `SEASON ${season}`;
+  season === null ? null : rosterStrings.season(season);
 
 /**
  * The staleness line the roadmap asks for by name ("a visible 'updated N ago'").
@@ -166,10 +168,10 @@ export const seasonLabel = (season: number | null): string | null =>
  * which is worse than no label at all because it reads as a fresh sync.
  */
 export const updatedLabel = (lastSyncedAt: number | null, now: number): string | null =>
-  lastSyncedAt === null ? null : `Updated ${timeSince(lastSyncedAt, now)}`;
+  lastSyncedAt === null ? null : rosterStrings.updated(timeSince(lastSyncedAt, now));
 
-export const SYNCING_LABEL = 'Syncing…';
-export const SYNC_RETRY_LABEL = 'RETRY';
+export const SYNCING_LABEL = rosterStrings.syncing;
+export const SYNC_RETRY_LABEL = rosterStrings.syncRetry;
 
 const rankLabel = (rank: number): string => String(rank).padStart(2, '0');
 
@@ -192,7 +194,7 @@ export const toRosterRowUi = (entry: RosterEntry, hasViewer: boolean): RosterRow
   name: entry.player.name,
   rankLabel: rankLabel(entry.player.rank),
   combatPowerExact: statFormatter.exact(entry.player.combatPower),
-  scoreLabel: `${entry.player.score} pts`,
+  scoreLabel: rosterStrings.score(entry.player.score),
   // The viewer has no head-to-head against themselves, so their own row shows no badge.
   record: entry.isViewer || entry.record === null ? null : entry.record,
   isViewer: entry.isViewer,
@@ -200,5 +202,4 @@ export const toRosterRowUi = (entry: RosterEntry, hasViewer: boolean): RosterRow
   isLocal: entry.origin === 'LOCAL',
 });
 
-export const playerCountLabel = (total: number): string =>
-  `${total} registered ${total === 1 ? 'player' : 'players'}`;
+export const playerCountLabel = (total: number): string => rosterStrings.playerCount(total);
