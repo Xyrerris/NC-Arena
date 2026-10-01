@@ -824,7 +824,15 @@ visual gate, both of which were cheaper on the JVM.
 
 - Cold start < 2.0 s to first meaningful paint on a mid-tier device, measured not felt. The budget
   is looser than the Kotlin plan's 1.5 s for the reasons in ARCHITECTURE.md §11 — if it is missed,
-  the response is to fix the app, not to widen the number again.
+  the response is to fix the app, not to widen the number again. **Met, with two caveats
+  (2026-10-01).** On the owner's physical device, from a release build: `am start -W` `TotalTime`
+  of 434–450 ms averaged over repeated cold starts, and the roster with its rows visible about
+  0.5 s after the tap, timed by hand from a screen recording. That is a third of the budget.
+  **The device model was not recorded, and whether it is mid-tier was not established**, and the
+  by-hand figure carries an error of a tenth of a second or two — so this proves the budget is
+  not close to being missed, not that a mid-tier phone has the margin. `TotalTime` ends at the
+  activity's first frame, so it understates first meaningful paint; the by-hand figure is the one
+  that answers the criterion. Whether the build carried R8 (ADR-0043) was not recorded either.
 - No accessibility scanner errors outstanding.
 - A release build runs correctly end to end. This is where minification and any missing native
   config surface, so it must be an actual run on a device, not a successful build.
