@@ -75,6 +75,19 @@ const CASES = [
     expect: 'reject',
   },
   {
+    name: 'core/collection may not reach the network',
+    file: 'src/core/collection/__boundary_probe.ts',
+    source: "import * as network from '@/core/network';\nexport const probe = network;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'core/network may reach the collection decoder',
+    file: 'src/core/network/__boundary_probe.ts',
+    source:
+      "import { parseUnlockedCollectionIds } from '@/core/collection';\nexport const probe = parseUnlockedCollectionIds;\n",
+    expect: 'allow',
+  },
+  {
     name: 'features/roster may reach the collection rules',
     file: 'src/features/roster/__boundary_probe.ts',
     source:

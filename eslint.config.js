@@ -140,9 +140,12 @@ module.exports = defineConfig([
               allow: to('core-model', 'core-common'),
             },
             { from: { element: { type: 'core-db' } }, allow: to('core-model', 'core-common') },
+            // core/network may read core/collection: the node answers with a Bencodex hex
+            // string, and the decoder that turns it into ids is pure and already tested there.
+            // Copying it would be two decoders to keep in step with one chain (ADR-0044).
             {
               from: { element: { type: 'core-network' } },
-              allow: to('core-model', 'core-common'),
+              allow: to('core-model', 'core-common', 'core-collection'),
             },
             { from: { element: { type: 'core-prefs' } }, allow: to('core-model', 'core-common') },
 

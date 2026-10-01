@@ -13,6 +13,12 @@ export type {
   AccountGateway,
   LinkedAccount,
 } from './accountGateway';
+export type {
+  CollectionError,
+  CollectionFailure,
+  CollectionSource,
+  UnlockedCollections,
+} from './collectionSource';
 export { err, isOk, ok, type Result } from './result';
 export type {
   RosterPush,

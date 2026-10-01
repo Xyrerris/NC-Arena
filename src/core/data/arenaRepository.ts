@@ -30,7 +30,14 @@
 
 import { QueryClient } from '@tanstack/react-query';
 
-import { RemoteAccountGateway, RemoteRosterSource } from '../network';
+import type { CollectionSource } from '../common';
+import {
+  FallbackCollectionSource,
+  MimirCollectionSource,
+  NodeCollectionSource,
+  RemoteAccountGateway,
+  RemoteRosterSource,
+} from '../network';
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
 import { createRosterRepository } from './rosterRepository';
@@ -61,6 +68,18 @@ export const arenaRepository = createRosterRepository({
   gateway: accounts,
   preferences: mmkvPreferences,
 });
+
+/**
+ * Where the unlocked collections are read from (ADR-0044): Mimir first, a plain node behind it.
+ *
+ * Unlike the sources above it is **not** gated by `EXPO_PUBLIC_API_URL`. Both are public chain
+ * services that need no key and know nothing of the backend, so a build with no backend still
+ * has a chain to read — the off switch is about the roster's upstream, not about Nine Chronicles.
+ */
+export const collectionSource: CollectionSource = new FallbackCollectionSource([
+  new MimirCollectionSource(),
+  new NodeCollectionSource(),
+]);
 
 /**
  * TanStack Query's one client, which §4 puts among the providers and §7 explains the job of:
