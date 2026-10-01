@@ -450,6 +450,7 @@ describe('useRoster', () => {
           return Promise.resolve(ok({ snapshot: null, assignedIds: new Map() }));
         },
         setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
       };
       return { pushes, sink };
     };
@@ -490,6 +491,7 @@ describe('useRoster', () => {
         name: 'refusing',
         pushRoster: () => Promise.resolve(err(new Error('backend: OFFLINE — no network'))),
         setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
       };
       const repo = withSink(refusing);
       const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
@@ -521,6 +523,7 @@ describe('useRoster', () => {
           return ok({ snapshot: null, assignedIds: new Map() });
         },
         setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
       };
       const repo = withSink(slow);
       const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
@@ -565,6 +568,7 @@ describe('useRoster', () => {
           return ok({ snapshot: null, assignedIds: new Map() });
         },
         setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
       };
       const repo = withSink(slow);
       const client = new QueryClient();

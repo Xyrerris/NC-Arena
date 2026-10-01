@@ -53,6 +53,7 @@ import {
   isPlayerDraftValid,
   normaliseGameCode,
   normalisePlayerName,
+  sameAvatar,
   validatePlayerDraft,
   type HeadToHead,
   type MatchDelta,
@@ -66,6 +67,7 @@ import {
   type RosterEntry,
   type RosterSort,
   type StoredPlayer,
+  type ViewerAvatar,
 } from '../model';
 import type { ArenaPreferences } from '../prefs';
 import {
@@ -290,6 +292,28 @@ export const createRosterRepository = ({
   };
 
   /**
+   * The viewer's avatar (ADR-0044), as one object per value. `useSyncExternalStore` compares
+   * snapshots by identity, and the preference layer builds a fresh object on every read, so
+   * returning that directly would re-render forever.
+   */
+  let avatarSeen: ViewerAvatar | null = null;
+  const viewerAvatar = (): ViewerAvatar | null => {
+    const stored = preferences.getViewerAvatar();
+    if (!sameAvatar(stored, avatarSeen)) avatarSeen = stored;
+    return avatarSeen;
+  };
+
+  /**
+   * The avatar describes whoever the viewer is, and the server drops it the moment the viewer
+   * changes. Clearing it here keeps the two in step, and keeps a stale address from being sent
+   * for somebody else.
+   */
+  const dropViewerAvatar = (): void => {
+    preferences.clearViewerAvatar();
+    preferences.clearViewerAvatarPending();
+  };
+
+  /**
    * The setup gate's subscription, kept apart from the viewer's rather than folded into it.
    * They change at different moments and are watched by different screens: the gate cares
    * only whether a key exists, and re-running it every time a sync moved the viewer would
@@ -319,6 +343,7 @@ export const createRosterRepository = ({
     pushedEdits?: ReadonlyMap<string, number>,
     pushedDeletes?: ReadonlySet<string>,
   ): void => {
+    const viewerBefore = preferences.getViewerId();
     replaceRoster(db, snapshot, adopted, pushedEdits, pushedDeletes);
     // A viewer picked here and not yet seated upstream wins over the snapshot's, exactly as
     // a pending row edit does (ADR-0037) — otherwise a pull puts back the player the user
@@ -331,6 +356,14 @@ export const createRosterRepository = ({
     } else {
       if (pending !== null) preferences.clearPendingViewerId();
       preferences.setViewerId(snapshot.viewerId);
+    }
+    // The same person under a new id (a local row the push just adopted) is still the same
+    // viewer; anybody else is not, and takes the avatar with them.
+    if (
+      viewerBefore !== null &&
+      (adopted?.get(viewerBefore) ?? viewerBefore) !== preferences.getViewerId()
+    ) {
+      dropViewerAvatar();
     }
     preferences.setSeason(snapshot.season);
     // Stamped here rather than where the request succeeded, and the difference is the whole
@@ -474,10 +507,21 @@ export const createRosterRepository = ({
       ) {
         preferences.clearPendingViewerId();
       }
-      return ok(undefined);
     } catch (cause) {
       return err(toError(cause));
     }
+
+    // The server drops an avatar when the viewer changes, so it is sent last, once the viewer
+    // it belongs to is the one upstream (ADR-0044). A failure leaves it pending for the next
+    // sync, and is reported like any other: the roster itself has already been applied.
+    const avatar = preferences.isViewerAvatarPending() ? preferences.getViewerAvatar() : null;
+    if (avatar !== null) {
+      const sent = await sink.setViewerAvatar(avatar);
+      if (!sent.ok) return sent;
+      // Not cleared if the user entered another address while the request was in flight.
+      if (sameAvatar(preferences.getViewerAvatar(), avatar)) preferences.clearViewerAvatarPending();
+    }
+    return ok(undefined);
   };
 
   /**
@@ -564,6 +608,9 @@ export const createRosterRepository = ({
 
     if (backup.viewerId === null) preferences.clearViewerId();
     else preferences.setViewerId(asPlayerId(backup.viewerId));
+    // The file carries no avatar, and the viewer it names is not necessarily the one the
+    // address belonged to (ADR-0044).
+    dropViewerAvatar();
     if (backup.season !== null) preferences.setSeason(backup.season);
     // Every row on screen now came from a file, so the last sync no longer describes any of
     // them. Cleared rather than left behind: the roster renders no staleness label at all
@@ -741,6 +788,7 @@ export const createRosterRepository = ({
         if (preferences.getViewerId() === id) {
           preferences.clearViewerId();
           preferences.clearPendingViewerId();
+          dropViewerAvatar();
           // The same announcement every other viewer change makes. Without it the screens
           // holding the old id as their subscription key keep reading a row that is gone.
           notifyViewerChanged();
@@ -790,6 +838,9 @@ export const createRosterRepository = ({
      */
     setViewerId: (id: PlayerId): Result<void> => {
       if (playerQuery(db, id).all().length === 0) return err(new Error(NO_SUCH_PLAYER));
+      // Choosing somebody else ends the previous viewer's avatar; choosing the same one again
+      // keeps it (ADR-0044).
+      if (preferences.getViewerId() !== id) dropViewerAvatar();
       preferences.setViewerId(id);
       // The account has one viewer, shared by every device on it. Remembered as pending so
       // the next sync tells the server instead of taking the old one back (ADR-0037).
@@ -804,6 +855,25 @@ export const createRosterRepository = ({
       return () => {
         viewerListeners.delete(listener);
       };
+    },
+
+    /**
+     * The Nine Chronicles avatar the viewer plays, or null (ADR-0044). A value that keeps its
+     * identity until it changes, so it can back `useSyncExternalStore`; the change is
+     * announced with the viewer's, through `subscribeViewerId`.
+     */
+    getViewerAvatar: (): ViewerAvatar | null => viewerAvatar(),
+
+    /**
+     * Records the avatar the viewer plays. Needs a viewer to belong to, and — like the viewer
+     * itself (ADR-0037) — is only *pending* until a sync has told the server.
+     */
+    setViewerAvatar: (avatar: ViewerAvatar): Result<void> => {
+      if (preferences.getViewerId() === null) return err(new Error(NO_VIEWER_YET));
+      preferences.setViewerAvatar(avatar);
+      preferences.setViewerAvatarPending();
+      notifyViewerChanged();
+      return ok(undefined);
     },
 
     /**

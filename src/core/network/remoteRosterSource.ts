@@ -19,7 +19,7 @@ import {
   type RosterSnapshot,
   type RosterSource,
 } from '../common';
-import type { PlayerId } from '../model';
+import type { PlayerId, ViewerAvatar } from '../model';
 import { rosterSnapshotDtoSchema, rosterSyncRequestSchema, rosterSyncResponseSchema } from './dto';
 import type { RosterSnapshotDto } from './dto';
 import { HttpClient, type ApiKeySource } from './httpClient';
@@ -100,6 +100,19 @@ export class RemoteRosterSource implements RosterSource, RosterSink {
     // The response echoes the id back. Nothing here reads it: the caller passed it in, and a
     // server that answered with a different one would be a contract violation this method has
     // no better answer for than the next pull, which reads the viewer from the snapshot.
+    return ok(undefined);
+  }
+
+  async setViewerAvatar(avatar: ViewerAvatar): Promise<Result<void>> {
+    // The body is the model's own shape: `planet` and the lower-cased `address`. The server
+    // validates it again and lower-cases it again; this side only has to send what it holds.
+    const response = await this.client.request<unknown>('/v1/me/avatar', {
+      method: 'PUT',
+      body: JSON.stringify({ planet: avatar.planet, address: avatar.address }),
+    });
+    if (!response.ok) {
+      return err(this.failure(`${response.error.code} — ${response.error.message}`));
+    }
     return ok(undefined);
   }
 

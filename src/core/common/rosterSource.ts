@@ -12,7 +12,7 @@
  * Phase 5 produces a diff under src/features, the boundary was wrong.
  */
 
-import type { HeadToHead, Player, PlayerId } from '../model';
+import type { HeadToHead, Player, PlayerId, ViewerAvatar } from '../model';
 import type { Result } from './result';
 
 /** One coherent view of the ladder. Written to SQLite as a unit. */
@@ -106,4 +106,10 @@ export interface RosterSink {
    * push, set the viewer, and only then pull.
    */
   setViewer(playerId: PlayerId): Promise<Result<void>>;
+  /**
+   * Tells the upstream which Nine Chronicles avatar the viewer plays (ADR-0044). It needs a
+   * viewer to exist upstream first, and the upstream drops it when the viewer changes, so a
+   * caller sends it *after* `setViewer`, never before.
+   */
+  setViewerAvatar(avatar: ViewerAvatar): Promise<Result<void>>;
 }

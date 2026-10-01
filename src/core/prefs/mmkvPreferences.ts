@@ -12,7 +12,7 @@
 import { createMMKV } from 'react-native-mmkv';
 
 import { isShortUnit } from '../common';
-import { asPlayerId, isRosterSort } from '../model';
+import { asPlayerId, isRosterSort, parseStoredAvatar } from '../model';
 import { DEFAULT_ROSTER_SORT, DEFAULT_SHORT_UNIT, PREF_KEYS, type ArenaPreferences } from './types';
 
 // react-native-mmkv 4 is Nitro-based: the instance comes from a factory, not a
@@ -51,6 +51,19 @@ export const mmkvPreferences: ArenaPreferences = {
   setPendingViewerId: (id) => storage.set(PREF_KEYS.pendingViewerId, id),
   clearPendingViewerId: () => {
     storage.remove(PREF_KEYS.pendingViewerId);
+  },
+
+  // Stored as JSON and validated on the way out, like the season: a value written by code
+  // that no longer exists reads as "no avatar" rather than as a chain address nobody typed.
+  getViewerAvatar: () => parseStoredAvatar(storage.getString(PREF_KEYS.viewerAvatar)),
+  setViewerAvatar: (avatar) => storage.set(PREF_KEYS.viewerAvatar, JSON.stringify(avatar)),
+  clearViewerAvatar: () => {
+    storage.remove(PREF_KEYS.viewerAvatar);
+  },
+  isViewerAvatarPending: () => storage.getBoolean(PREF_KEYS.viewerAvatarPending) === true,
+  setViewerAvatarPending: () => storage.set(PREF_KEYS.viewerAvatarPending, true),
+  clearViewerAvatarPending: () => {
+    storage.remove(PREF_KEYS.viewerAvatarPending);
   },
 
   getSeason: () => {

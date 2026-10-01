@@ -18,7 +18,13 @@ import {
   type RosterSource,
 } from '../common';
 import { deletedPlayers, headToHead, players } from '../db';
-import { asPlayerId, type Player, type PlayerDraft, type PlayerId } from '../model';
+import {
+  asPlayerId,
+  type Player,
+  type PlayerDraft,
+  type PlayerId,
+  type ViewerAvatar,
+} from '../model';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 import { createTestDatabase, type TestDatabase } from '../testing';
 import { createRosterRepository } from './rosterRepository';
@@ -59,13 +65,18 @@ const remotePlayer = (id: string, name: string, rank: number): Player => ({
 /** Records what the repository pushed, and answers with whatever the test wants back. */
 const createSpySink = (
   reply: (push: RosterPush) => Result<RosterPushResult>,
-  options: { onSetViewer?: (id: PlayerId) => Result<void> } = {},
+  options: {
+    onSetViewer?: (id: PlayerId) => Result<void>;
+    onSetAvatar?: (avatar: ViewerAvatar) => Result<void>;
+  } = {},
 ) => {
   const pushes: RosterPush[] = [];
   const seated: PlayerId[] = [];
+  const avatars: ViewerAvatar[] = [];
   return {
     pushes,
     seated,
+    avatars,
     sink: {
       name: 'spy',
       pushRoster: (push: RosterPush) => {
@@ -75,6 +86,10 @@ const createSpySink = (
       setViewer: (id: PlayerId) => {
         seated.push(id);
         return Promise.resolve(options.onSetViewer?.(id) ?? ok(undefined));
+      },
+      setViewerAvatar: (avatar: ViewerAvatar) => {
+        avatars.push(avatar);
+        return Promise.resolve(options.onSetAvatar?.(avatar) ?? ok(undefined));
       },
     },
   };
@@ -692,5 +707,182 @@ describe('syncRoster — removing a synced player', () => {
       [SERVER_C, 3],
     ]);
     expect(tombstones()).toEqual([]);
+  });
+});
+
+/**
+ * ADR-0044: the avatar the viewer plays is stored beside "me", sent after the viewer is seated,
+ * and goes away with the viewer — the server drops it when the viewer changes, so the device
+ * must never send an address for somebody else.
+ */
+describe('the viewer’s avatar', () => {
+  let handle: TestDatabase;
+  const AVATAR: ViewerAvatar = {
+    planet: 'heimdall',
+    address: '0x1023d8f22c6f5a8701e56a95e18fb2dbe436b41f',
+  };
+  const OTHER: ViewerAvatar = { planet: 'odin', address: `0x${'ab'.repeat(20)}` };
+  const serverSaysA: RosterSnapshot = {
+    season: 41,
+    viewerId: asPlayerId(SERVER_A),
+    players: [remotePlayer(SERVER_A, 'Nyx', 1), remotePlayer(SERVER_B, 'Orrin', 2)],
+    headToHead: [],
+  };
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+    handle.db
+      .insert(players)
+      .values([
+        { ...remotePlayer(SERVER_A, 'Nyx', 1), nameFolded: 'nyx', origin: 'REMOTE' },
+        { ...remotePlayer(SERVER_B, 'Orrin', 2), nameFolded: 'orrin', origin: 'REMOTE' },
+      ])
+      .run();
+  });
+  afterEach(() => {
+    handle.close();
+  });
+
+  const setup = (onSetAvatar?: (a: ViewerAvatar) => Result<void>, pulls: RosterSnapshot[] = []) => {
+    const preferences = createMemoryPreferences({ viewerId: asPlayerId(SERVER_A) });
+    const spy = createSpySink(() => ok({ snapshot: serverSaysA, assignedIds: new Map() }), {
+      onSetAvatar,
+    });
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource(pulls),
+      sink: spy.sink,
+      preferences,
+    });
+    return { preferences, spy, repo };
+  };
+
+  it('is refused while nobody is the viewer', () => {
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([]),
+      preferences: createMemoryPreferences(),
+    });
+    expect(repo.setViewerAvatar(AVATAR).ok).toBe(false);
+    expect(repo.getViewerAvatar()).toBeNull();
+  });
+
+  it('is sent once, by the sync, and then stops being pending', async () => {
+    const { preferences, spy, repo } = setup();
+
+    expect(repo.setViewerAvatar(AVATAR).ok).toBe(true);
+    expect(repo.getViewerAvatar()).toEqual(AVATAR);
+    expect(preferences.isViewerAvatarPending()).toBe(true);
+
+    expect((await repo.syncRoster()).ok).toBe(true);
+    expect(spy.avatars).toEqual([AVATAR]);
+    expect(preferences.isViewerAvatarPending()).toBe(false);
+
+    await repo.syncRoster();
+    expect(spy.avatars).toHaveLength(1);
+  });
+
+  it('is sent after the viewer is seated, never before', async () => {
+    // After the viewer is seated the server answers with B, as it would for real.
+    const { spy, repo } = setup(undefined, [{ ...serverSaysA, viewerId: asPlayerId(SERVER_B) }]);
+    repo.setViewerId(asPlayerId(SERVER_B));
+    repo.setViewerAvatar(AVATAR);
+    const order: string[] = [];
+    const { setViewer, setViewerAvatar } = spy.sink;
+    spy.sink.setViewer = (id) => {
+      order.push('viewer');
+      return setViewer(id);
+    };
+    spy.sink.setViewerAvatar = (a) => {
+      order.push('avatar');
+      return setViewerAvatar(a);
+    };
+
+    await repo.syncRoster();
+
+    expect(order).toEqual(['viewer', 'avatar']);
+  });
+
+  it('stays pending when the server refuses it, and is reported as a failed sync', async () => {
+    let fail = true;
+    const { preferences, spy, repo } = setup(() => (fail ? err(new Error('boom')) : ok(undefined)));
+    repo.setViewerAvatar(AVATAR);
+
+    const first = await repo.syncRoster();
+    expect(first.ok).toBe(false);
+    expect(preferences.isViewerAvatarPending()).toBe(true);
+    expect(repo.getViewerAvatar()).toEqual(AVATAR);
+
+    fail = false;
+    expect((await repo.syncRoster()).ok).toBe(true);
+    expect(spy.avatars).toEqual([AVATAR, AVATAR]);
+    expect(preferences.isViewerAvatarPending()).toBe(false);
+  });
+
+  it('keeps a newer address entered while the first one was in flight', async () => {
+    let repoRef: ReturnType<typeof createRosterRepository> | undefined;
+    const { preferences, repo } = setup(() => {
+      repoRef?.setViewerAvatar(OTHER);
+      return ok(undefined);
+    });
+    repoRef = repo;
+    repo.setViewerAvatar(AVATAR);
+
+    await repo.syncRoster();
+
+    expect(repo.getViewerAvatar()).toEqual(OTHER);
+    expect(preferences.isViewerAvatarPending()).toBe(true);
+  });
+
+  it('follows the viewer: choosing somebody else drops it, choosing the same one keeps it', () => {
+    const { preferences, repo } = setup();
+    repo.setViewerAvatar(AVATAR);
+
+    repo.setViewerId(asPlayerId(SERVER_A));
+    expect(repo.getViewerAvatar()).toEqual(AVATAR);
+
+    repo.setViewerId(asPlayerId(SERVER_B));
+    expect(repo.getViewerAvatar()).toBeNull();
+    expect(preferences.isViewerAvatarPending()).toBe(false);
+  });
+
+  it('is dropped when a pull shows another device chose a different viewer', async () => {
+    const preferences = createMemoryPreferences({ viewerId: asPlayerId(SERVER_B) });
+    preferences.setViewerAvatar(AVATAR);
+    const spy = createSpySink(() => ok({ snapshot: serverSaysA, assignedIds: new Map() }));
+    const repo = createRosterRepository({
+      db: handle.db,
+      source: createStubSource([]),
+      sink: spy.sink,
+      preferences,
+    });
+
+    await repo.syncRoster();
+
+    expect(preferences.getViewerId()).toBe(SERVER_A);
+    expect(repo.getViewerAvatar()).toBeNull();
+    expect(spy.avatars).toEqual([]);
+  });
+
+  it('is dropped with the viewer when that player is removed', () => {
+    const { repo } = setup();
+    repo.createPlayer(draft('Mine'));
+    const mine = handle.db
+      .select()
+      .from(players)
+      .all()
+      .find((p) => p.name === 'Mine')!;
+    repo.setViewerId(asPlayerId(mine.id));
+    repo.setViewerAvatar(AVATAR);
+
+    expect(repo.deletePlayer(asPlayerId(mine.id)).ok).toBe(true);
+
+    expect(repo.getViewerAvatar()).toBeNull();
+  });
+
+  it('hands out one object per value, so a subscription does not loop', () => {
+    const { repo } = setup();
+    repo.setViewerAvatar(AVATAR);
+    expect(repo.getViewerAvatar()).toBe(repo.getViewerAvatar());
   });
 });

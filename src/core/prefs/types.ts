@@ -8,7 +8,7 @@
  */
 
 import type { ShortUnit } from '../common';
-import type { PlayerId, RosterSort } from '../model';
+import type { PlayerId, RosterSort, ViewerAvatar } from '../model';
 
 export interface ArenaPreferences {
   getShortUnit(): ShortUnit;
@@ -43,6 +43,21 @@ export interface ArenaPreferences {
   getPendingViewerId(): PlayerId | null;
   setPendingViewerId(id: PlayerId): void;
   clearPendingViewerId(): void;
+
+  /**
+   * The Nine Chronicles avatar the viewer plays (ADR-0044), or null. It belongs to whoever
+   * `viewerId` names, so whoever changes the viewer clears it.
+   */
+  getViewerAvatar(): ViewerAvatar | null;
+  setViewerAvatar(avatar: ViewerAvatar): void;
+  clearViewerAvatar(): void;
+  /**
+   * Whether the avatar was set here and the server has not been told. The same shape as
+   * `getPendingViewerId`: a sync sends it, and a pull may not take the server's place.
+   */
+  isViewerAvatarPending(): boolean;
+  setViewerAvatarPending(): void;
+  clearViewerAvatarPending(): void;
 
   /**
    * The season the last sync described. Null before the first one. It is a preference
@@ -108,6 +123,8 @@ export const PREF_KEYS = {
   rosterSort: 'pref.rosterSort',
   viewerId: 'pref.viewerId',
   pendingViewerId: 'pref.pendingViewerId',
+  viewerAvatar: 'pref.viewerAvatar',
+  viewerAvatarPending: 'pref.viewerAvatarPending',
   season: 'pref.season',
   lastSyncedAt: 'pref.lastSyncedAt',
   apiKey: 'pref.apiKey',

@@ -44,3 +44,4 @@ export {
 export { useCanLinkAccount } from './useCanLinkAccount';
 export { useNeedsAccount } from './useNeedsAccount';
 export { useViewerId } from './useViewerId';
+export { useViewerAvatar } from './useViewerAvatar';

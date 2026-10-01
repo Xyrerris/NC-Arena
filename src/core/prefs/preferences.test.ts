@@ -44,3 +44,25 @@ describe('createMemoryPreferences', () => {
     expect(prefs.getShortUnit()).toBe('MILLIONS');
   });
 });
+
+describe('the viewer’s avatar preference (ADR-0044)', () => {
+  const avatar = { planet: 'heimdall', address: `0x${'1'.repeat(40)}` } as const;
+
+  it('starts absent, round-trips, and clears back to absent', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getViewerAvatar()).toBeNull();
+    prefs.setViewerAvatar(avatar);
+    expect(prefs.getViewerAvatar()).toEqual(avatar);
+    prefs.clearViewerAvatar();
+    expect(prefs.getViewerAvatar()).toBeNull();
+  });
+
+  it('tracks whether the server has been told, apart from the value', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.isViewerAvatarPending()).toBe(false);
+    prefs.setViewerAvatarPending();
+    expect(prefs.isViewerAvatarPending()).toBe(true);
+    prefs.clearViewerAvatarPending();
+    expect(prefs.isViewerAvatarPending()).toBe(false);
+  });
+});
