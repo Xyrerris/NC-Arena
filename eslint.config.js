@@ -114,6 +114,7 @@ module.exports = defineConfig([
         { type: 'core-network', pattern: 'src/core/network' },
         { type: 'core-prefs', pattern: 'src/core/prefs' },
         { type: 'core-ocr', pattern: 'src/core/ocr' },
+        { type: 'core-collection', pattern: 'src/core/collection' },
         { type: 'core-testing', pattern: 'src/core/testing' },
         { type: 'app', pattern: 'src/app' },
       ],
@@ -150,6 +151,10 @@ module.exports = defineConfig([
             // that could write would make "scanned" and "saved" the same act (ADR-0024).
             { from: { element: { type: 'core-ocr' } }, allow: to('core-model', 'core-common') },
 
+            // core/collection is pure: the sheet parser and the owned-versus-claimed rule
+            // (ADR-0044). It depends on nothing, so it stays testable in plain Node.
+            { from: { element: { type: 'core-collection' } }, allow: to('core-common') },
+
             // core/data is the only place that knows both the database and the network
             // exist.
             {
@@ -160,7 +165,14 @@ module.exports = defineConfig([
             // Features may not reach the database or the network.
             {
               from: { element: { type: 'feature' } },
-              allow: to('core-model', 'core-common', 'core-design-system', 'core-data', 'core-ocr'),
+              allow: to(
+                'core-model',
+                'core-common',
+                'core-design-system',
+                'core-data',
+                'core-ocr',
+                'core-collection',
+              ),
             },
             // ...and may not reach *each other*. Matching the captured folder name to the
             // importer's is what makes a feature a unit rather than a flat namespace.
@@ -187,6 +199,7 @@ module.exports = defineConfig([
                 'core-data',
                 'core-db',
                 'core-ocr',
+                'core-collection',
                 'core-prefs',
               ),
             },

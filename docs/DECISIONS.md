@@ -2502,3 +2502,62 @@ forced WorkManager job on a killed process logs `Executing task`, `Started headl
 adds a native module that is loaded by reflection or named only in a manifest repeats the
 manifest-against-`usage.txt` check**; R8 fails silently for exactly that kind of class.
 Not measured: an arm64 build, and a run on a physical device.
+
+## ADR-0044 — The collection tracker: the chain is the truth, a manual tick is a claim
+
+**Status:** proposed, 2026-10-01. Spike only: the sheet parser and the reconciliation rule exist in
+`src/core/collection/`; there is no screen, no migration and no network call yet.
+
+**Context.** The owner wants a section, parallel to the arena, that tracks the collection of the
+player marked as "me" and lists what is missing to complete it. "Collection" is Nine Chronicles'
+own feature: lib9c's `CollectionSheet.csv` has 942 collections, each a set of 1-6 items
+(equipment or costumes, by id) that grants a permanent stat bonus once the avatar owns all of them.
+716 need a single item, 123 need two. The sheet has ids and no names. The set of unlocked
+collections is on-chain: raw state, account `0x…1f`, keyed by the avatar address, as a list of
+ids (`docs/research/nc-cp/README.md`).
+
+Two sources of "what do I own", and they will disagree: the node (complete, but needs the network
+and an avatar address) and a tick by hand (works offline, but is only a memory).
+
+**Decision.**
+
+1. **The chain is the truth; a manual tick is a provisional claim.** `collectionStatus` returns one
+   of four values: `UNLOCKED` (the chain says so, whatever was ticked), `CLAIMED` (ticked, and no
+   chain read has ever been applied), `DISPUTED` (ticked, a complete chain read says it is not
+   unlocked) and `MISSING`.
+2. **A dispute is shown, never erased.** The node may be behind, or the tick may be a mistake;
+   the code cannot tell which. The row stays, labelled as unconfirmed, with an action to drop the
+   tick. A disputed collection counts as open in the missing list, so hiding it would hide the
+   disagreement as well.
+3. **A chain unlock needs no tick.** It updates silently and wins from then on.
+4. **Only a complete, valid read is applied.** A failed, empty-because-it-failed or partial
+   response is not an empty set: passing `∅` would turn every tick into a dispute. The caller
+   passes `null` until a real read has landed. This is the same stance as the roster, where a
+   failed sync must not blank the data (HANDOFF.md, decision 2).
+5. **Offline shows the stored state with "updated N ago"**, using the indicator the roster
+   already has.
+6. **The sheet and the names ship in the bundle**, generated once, so the section works offline.
+   The source and its commit are recorded next to the file, so a drift from the live sheets is
+   visible.
+7. **Whose collection: the player marked as "me".** The avatar address is stored with that
+   choice, locally and then on the backend; it is **not** a field of `Player`, so the roster's
+   sync rules (ADR-0035, ADR-0036) are untouched.
+
+**Open — not verified, do not build on these yet.**
+
+- **Resolving the avatar address from planet + name + game code.** The `#xxxx` of the game is a
+  4-hex fragment of the avatar address (believed to be its start; not confirmed). That is 16 bits,
+  so it cannot be derived, only looked up, and the node has no name → address query. It needs an
+  indexer (9CAPI or an explorer). The planned flow: planet, name and code go to the indexer; one
+  match is proposed for confirmation, several are listed, none or offline lets the user paste the
+  address by hand. Planet is stored with the address because it picks the node.
+  First test data: Heimdall, `Xyrerris`, `#1023`.
+- **Item names in English.** Not found in `Lib9c/TableCSV` under the paths tried; a localisation
+  file in lib9c or the game client, or an indexer endpoint, is the likely source. Fallback: show
+  the item family and id.
+
+**Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
+`core-common` only, with two probes in `scripts/check-boundaries.mjs`. The parser throws on a row
+it cannot read instead of skipping it, because a shorter list reads as more progress than there
+is. A backend change (an address column and its migration) will deploy on push to the backend
+branch (HANDOFF.md, Operational) and is deliberately left out of the spike.

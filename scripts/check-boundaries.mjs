@@ -69,6 +69,19 @@ const CASES = [
     expect: 'allow',
   },
   {
+    name: 'core/collection may not reach the repository',
+    file: 'src/core/collection/__boundary_probe.ts',
+    source: "import * as data from '@/core/data';\nexport const probe = data;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'features/roster may reach the collection rules',
+    file: 'src/features/roster/__boundary_probe.ts',
+    source:
+      "import { parseCollectionSheet } from '@/core/collection';\nexport const probe = parseCollectionSheet;\n",
+    expect: 'allow',
+  },
+  {
     name: 'a test file may reach the test fakes',
     file: 'src/features/roster/__boundary_probe.test.ts',
     source:
