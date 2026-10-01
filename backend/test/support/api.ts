@@ -65,3 +65,9 @@ export const newPlayer = (
   spd: 700,
   ...overrides,
 });
+
+export const putAvatar = (app: App, apiKey: string, payload: object) =>
+  app.inject({ method: 'PUT', url: '/v1/me/avatar', headers: auth(apiKey), payload });
+
+export const getAvatar = (app: App, apiKey: string) =>
+  app.inject({ method: 'GET', url: '/v1/me/avatar', headers: auth(apiKey) });

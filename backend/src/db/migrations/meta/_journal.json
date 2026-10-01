@@ -15,6 +15,13 @@
       "when": 1789821005203,
       "tag": "0001_client_id",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790847647207,
+      "tag": "0002_viewer_avatar",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,9 @@ import { hashSecret } from './token.js';
 export interface AuthedAccount {
   id: string;
   viewerId: string | null;
+  /** Both null or both set (ADR-0044). */
+  viewerAvatarPlanet: string | null;
+  viewerAvatarAddress: string | null;
   season: number;
 }
 
@@ -26,7 +29,13 @@ export const requireAccount = async (req: FastifyRequest): Promise<AuthedAccount
   }
 
   const [row] = await db
-    .select({ id: accounts.id, viewerId: accounts.viewerId, season: accounts.season })
+    .select({
+      id: accounts.id,
+      viewerId: accounts.viewerId,
+      viewerAvatarPlanet: accounts.viewerAvatarPlanet,
+      viewerAvatarAddress: accounts.viewerAvatarAddress,
+      season: accounts.season,
+    })
     .from(apiKeys)
     .innerJoin(accounts, eq(apiKeys.accountId, accounts.id))
     .where(eq(apiKeys.keyHash, hashSecret(key)))

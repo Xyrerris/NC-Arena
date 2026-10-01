@@ -36,3 +36,34 @@ export type RosterSyncResponse = z.infer<typeof rosterSyncResponseSchema>;
 
 export const setViewerRequestSchema = z.object({ playerId: z.uuid() });
 export type SetViewerRequest = z.infer<typeof setViewerRequestSchema>;
+
+/** The planets Nine Chronicles runs on, as 9CAPI and Mimir name them (ADR-0044). */
+export const planetSchema = z.enum(['odin', 'heimdall', 'thor']);
+export type Planet = z.infer<typeof planetSchema>;
+
+/** An avatar address: `0x` and 40 hex digits, in either case. */
+const avatarAddressPattern = /^0x[0-9a-fA-F]{40}$/;
+const avatarAddressMessage = 'An avatar address is 0x followed by 40 hex digits.';
+
+/**
+ * What the server stores and answers: the address already lower-cased. Kept free of
+ * transforms because a response schema is also used to *encode*, and fastify-type-provider-zod
+ * refuses a one-way transform there.
+ */
+export const viewerAvatarSchema = z.object({
+  planet: planetSchema,
+  address: z.string().regex(avatarAddressPattern, avatarAddressMessage),
+});
+export type ViewerAvatar = z.infer<typeof viewerAvatarSchema>;
+
+/**
+ * The request: the same shape, with the address lower-cased on the way in so the stored value
+ * does not depend on whether it was pasted from a checksummed source.
+ */
+export const setViewerAvatarRequestSchema = z.object({
+  planet: planetSchema,
+  address: z
+    .string()
+    .regex(avatarAddressPattern, avatarAddressMessage)
+    .transform((address) => address.toLowerCase()),
+});

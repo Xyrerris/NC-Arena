@@ -1,6 +1,6 @@
 {
-  "id": "f5dfaf7b-bc60-4649-833a-2ec8c87ba80e",
-  "prevId": "43e9c39a-eeb6-4230-842f-c5264c68ef13",
+  "id": "dd547316-5e4e-4947-a21d-d6025bc4c4c9",
+  "prevId": "f5dfaf7b-bc60-4649-833a-2ec8c87ba80e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -24,6 +24,18 @@
         "viewer_id": {
           "name": "viewer_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "viewer_avatar_planet": {
+          "name": "viewer_avatar_planet",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "viewer_avatar_address": {
+          "name": "viewer_avatar_address",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

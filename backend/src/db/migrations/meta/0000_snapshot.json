@@ -49,9 +49,7 @@
         "accounts_recovery_code_hash_unique": {
           "name": "accounts_recovery_code_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "recovery_code_hash"
-          ]
+          "columns": ["recovery_code_hash"]
         }
       },
       "policies": {},
@@ -95,12 +93,8 @@
           "name": "api_keys_account_id_accounts_id_fk",
           "tableFrom": "api_keys",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -110,9 +104,7 @@
         "api_keys_key_hash_unique": {
           "name": "api_keys_key_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "key_hash"
-          ]
+          "columns": ["key_hash"]
         }
       },
       "policies": {},
@@ -185,12 +177,8 @@
           "name": "head_to_head_account_id_accounts_id_fk",
           "tableFrom": "head_to_head",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -198,12 +186,8 @@
           "name": "head_to_head_viewer_id_players_id_fk",
           "tableFrom": "head_to_head",
           "tableTo": "players",
-          "columnsFrom": [
-            "viewer_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["viewer_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -211,12 +195,8 @@
           "name": "head_to_head_opponent_id_players_id_fk",
           "tableFrom": "head_to_head",
           "tableTo": "players",
-          "columnsFrom": [
-            "opponent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["opponent_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -224,11 +204,7 @@
       "compositePrimaryKeys": {
         "head_to_head_account_id_viewer_id_opponent_id_pk": {
           "name": "head_to_head_account_id_viewer_id_opponent_id_pk",
-          "columns": [
-            "account_id",
-            "viewer_id",
-            "opponent_id"
-          ]
+          "columns": ["account_id", "viewer_id", "opponent_id"]
         }
       },
       "uniqueConstraints": {},
@@ -412,12 +388,8 @@
           "name": "players_account_id_accounts_id_fk",
           "tableFrom": "players",
           "tableTo": "accounts",
-          "columnsFrom": [
-            "account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["account_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

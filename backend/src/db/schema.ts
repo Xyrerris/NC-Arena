@@ -42,6 +42,14 @@ export const accounts = pgTable('accounts', {
    * FK between the two tables buys nothing a nullable uuid plus an app-level check does not.
    */
   viewerId: uuid('viewer_id'),
+  /**
+   * The Nine Chronicles avatar the viewer plays, as the planet it lives on and its on-chain
+   * address (ADR-0044). Both null or both set. It describes the *viewer*, so choosing a
+   * different viewer clears it: an address left behind would name somebody else's avatar.
+   * Stored lower-cased, so a pasted checksum address and a typed one are the same value.
+   */
+  viewerAvatarPlanet: text('viewer_avatar_planet'),
+  viewerAvatarAddress: text('viewer_avatar_address'),
   /** The ladder season this account's roster belongs to (ARCHITECTURE.md §7, ADR-0018). */
   season: integer('season').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
