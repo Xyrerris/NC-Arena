@@ -9,6 +9,12 @@
 
 export { ArenaDataProvider, useArenaData, type ArenaData } from './arenaContext';
 export type { BackupFile } from './backupFile';
+export {
+  createCollectionRepository,
+  type CollectionRepository,
+  type CollectionRepositoryDeps,
+  type StoredChainRead,
+} from './collectionRepository';
 export type { LiveData, UseLiveData } from './liveData';
 /**
  * `expoBackupFile.ts` is deliberately NOT re-exported, for the reason `arenaRepository.ts`

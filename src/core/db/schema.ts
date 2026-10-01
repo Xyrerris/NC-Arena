@@ -113,6 +113,50 @@ export const deletedPlayers = sqliteTable('deleted_players', {
   id: text('id').primaryKey(),
 });
 
+/**
+ * Collections the user ticked by hand for one avatar (ADR-0044). A claim, not a fact: the
+ * chain's answer wins over it, and a tick the chain contradicts stays here, shown as disputed,
+ * until the user drops it.
+ *
+ * Keyed by the avatar as well as the collection, so a tick belongs to the avatar it was made
+ * for. Choosing a different viewer or avatar does not delete anything and does not carry
+ * the old ticks over — they are simply not the ones the new avatar's screen asks for.
+ */
+export const collectionTicks = sqliteTable(
+  'collection_ticks',
+  {
+    planet: text('planet').notNull(),
+    avatarAddress: text('avatar_address').notNull(),
+    collectionId: integer('collection_id').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.planet, table.avatarAddress, table.collectionId] })],
+);
+
+/**
+ * The last **complete** read of an avatar's unlocked collections (ADR-0044, decisions 4 and 5).
+ * One row per avatar, replaced whole: a read is applied entirely or not at all, which is what
+ * lets the screen show "updated N ago" from a device that is offline.
+ *
+ * `unlocked_ids` is a JSON array of integers — a set read and written as one value, never
+ * queried by member, so a join table would only be more places for a half-applied read.
+ */
+export const collectionReads = sqliteTable(
+  'collection_reads',
+  {
+    planet: text('planet').notNull(),
+    avatarAddress: text('avatar_address').notNull(),
+    unlockedIds: text('unlocked_ids').notNull(),
+    /** Epoch milliseconds. */
+    readAt: integer('read_at').notNull(),
+    /** Which source answered (`mimir`, `node`), for the "from where" line. */
+    source: text('source').notNull(),
+    /** How far that source had indexed, or null when it cannot say. */
+    blockIndex: integer('block_index'),
+  },
+  (table) => [primaryKey({ columns: [table.planet, table.avatarAddress] })],
+);
+
+export type CollectionReadRow = typeof collectionReads.$inferSelect;
 export type PlayerRow = typeof players.$inferSelect;
 export type PlayerInsert = typeof players.$inferInsert;
 export type HeadToHeadRow = typeof headToHead.$inferSelect;

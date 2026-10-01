@@ -12,7 +12,16 @@
 
 export { DATABASE_NAME, SCHEMA_VERSION } from './constants';
 
-export { deletedPlayers, headToHead, players } from './schema';
+export { collectionReads, collectionTicks, deletedPlayers, headToHead, players } from './schema';
+export {
+  collectionReadQuery,
+  collectionTicksQuery,
+  parseStoredIds,
+  setCollectionTick,
+  storeCollectionRead,
+  type CollectionReadRow,
+  type CollectionReadWrite,
+} from './collection';
 export type { HeadToHeadInsert, HeadToHeadRow, PlayerInsert, PlayerRow } from './schema';
 export { toHeadToHead, toPlayer } from './mappers';
 export {

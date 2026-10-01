@@ -2600,13 +2600,60 @@ and an avatar address) and a tick by hand (works offline, but is only a memory).
   viewer), removing the viewer, and a restore.
 - **Screen:** `features/viewerAvatar`, rendered by `/me` beside the backup; it shows nothing until
   somebody is "you". The route composes it, as it does the backup (ARCHITECTURE.md §4).
-- **Not built yet:** the address is checked for **shape only**. Confirming it against a node
-  (`avatar(address).name`) needs a port in `core/data`, because a feature may not reach the
-  network. A second device does not learn the avatar from the server (there is no pull of it),
-  and there is no way to remove an avatar, only to replace it.
+- **Not built yet:** a second device does not learn the avatar from the server (there is no pull
+  of it), and there is no way to remove an avatar, only to replace it. (The address used to be
+  checked for shape only; see "Built (2026-10-01): reading the chain" below.)
+
+**Built (2026-10-01): reading the chain.**
+
+- **Ports in `core/common`, implementations in `core/network`.** `CollectionSource.readUnlocked`
+  and `AvatarSource.readAvatar`, each over Mimir and over a plain node, each behind a
+  `Fallback…Source` that tries them in order (`firstUseful`). A read is complete or a failure; `ok(null)`
+  is "the chain has nothing at this address". A failure falls through to the next source and so does
+  `ok(null)` — Mimir can lag, so its "nothing" may only mean "newer than my index" — and `ok(null)`
+  comes out only when **every** source said it. One said null and another failed is the failure.
+- **A GraphQL failure is HTTP 200.** Observed on both services: a missing document, a bad address and a
+  resolver exception all answer 200 with `errors`. Mimir's "nothing there" is `errors[0]` starting
+  "Document not found" on `path: ["collection"]` (or `["avatar"]`); the node's is `avatar: null` plus a
+  NULL_REFERENCE per selected field under `["stateQuery","avatar"]`. Both are matched on the path, so
+  another failure is not read as "no such avatar".
+- **Thor has no endpoint.** Mimir answers 404 on `/thor/` and `thor-rpc-1` answered 502, so a read on
+  Thor is a `FAILED` and the address can still be saved unchecked.
+- **The address is confirmed when it is saved.** The avatar block asks `AvatarSource` and shows
+  "Xyrerris · level 494 — is this you?"; nothing is stored until the user says yes. No avatar there, or
+  a lookup that did not happen, are different sentences, and only the second offers "save without
+  checking". An answer that arrives after the address was edited is dropped.
+- **The tracker's store** (`collection_ticks`, `collection_reads`, migration `0006`; `SCHEMA_VERSION` 7).
+  Both are keyed by planet and avatar address, so choosing another avatar never has to clear anything.
+  A read replaces the stored one whole, and a failed or "nothing there" answer leaves the last good one
+  alone (decision 4). A stored read whose ids do not parse is no read at all.
+
+**Correction to decision 6 — where the sheet comes from.** Mimir's `sheet("CollectionSheet")` is **not**
+current. Measured against the avatar above on 2026-10-01 (444 unlocked ids):
+
+| Sheet                                       | Rows | Unlocked ids it contains |
+| ------------------------------------------- | ---- | ------------------------ |
+| Mimir `sheet()`, Heimdall and Odin          | 822  | 420                      |
+| The installed client (`resources.assets`)   | 882  | 440                      |
+| lib9c, `Lib9c/TableCSV/CollectionSheet.csv` | 942  | 444                      |
+
+Only lib9c's covers every unlocked collection. The bundle is therefore generated from lib9c, not from
+Mimir, and the source and commit are recorded beside it as decision 6 already says. A collection the
+chain unlocked and the bundle does not know is something the screen must not drop silently.
+
+**Where item names are, and what is still open.** The Windows client carries its localisation under
+`StreamingAssets/Localization/`: `item_name.csv` (`ITEM_NAME_<id>`, one column per language) and
+`collection.csv` (`COLLECTION_NAME_<id>`, the collections' own names). Of the **424** items the 942
+collections need: **210** have an English name there, **89** more have an English `_name` in the chain's
+item sheets (developer-written, with typos such as "Saphire DUst"), **55** have only a Korean one and **70**
+have none — mostly equipment 107xxxxx and 106xxxxx, and family 800, which includes `800120`. 772 of the 942
+collections have every item named in English. **Open for the owner: licence.** lib9c is GPL-3.0 and the
+client repository, where those CSVs live, is AGPL-3.0. Shipping either in a distributed app is a decision
+about obligations, not a build step, so the bundle and the names are not generated until it is made.
 
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
-`core-common` only, with two probes in `scripts/check-boundaries.mjs`. The parser throws on a row
+`core-common` only, with two probes in `scripts/check-boundaries.mjs`. `core/network` may now read it
+too — the node's state is Bencodex hex and the decoder is already there — with a probe each way. The parser throws on a row
 it cannot read instead of skipping it, because a shorter list reads as more progress than there
 is. A backend change (an address column and its migration) will deploy on push to the backend
 branch (HANDOFF.md, Operational) and is deliberately left out of the spike.

@@ -43,6 +43,7 @@ import {
 } from '../network';
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
+import { createCollectionRepository } from './collectionRepository';
 import { createRosterRepository } from './rosterRepository';
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -83,6 +84,16 @@ export const collectionSource: CollectionSource = new FallbackCollectionSource([
   new MimirCollectionSource(),
   new NodeCollectionSource(),
 ]);
+
+/**
+ * The collection tracker's ticks and last chain read, over the same database. Not on
+ * `ArenaData` yet: the screen that reads it does not exist, and a context field nothing
+ * consumes would be a name for later to inherit.
+ */
+export const collectionRepository = createCollectionRepository({
+  db: arenaDb,
+  source: collectionSource,
+});
 
 /** Who is at an avatar address, read from the same two public services. */
 export const avatarSource: AvatarSource = new FallbackAvatarSource([
