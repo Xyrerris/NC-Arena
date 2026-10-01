@@ -2543,18 +2543,25 @@ and an avatar address) and a tick by hand (works offline, but is only a memory).
    choice, locally and then on the backend; it is **not** a field of `Player`, so the roster's
    sync rules (ADR-0035, ADR-0036) are untouched.
 
-**Open — not verified, do not build on these yet.**
+**Open — what the 9CAPI probe of 2026-10-01 showed.**
 
-- **Resolving the avatar address from planet + name + game code.** The `#xxxx` of the game is a
-  4-hex fragment of the avatar address (believed to be its start; not confirmed). That is 16 bits,
-  so it cannot be derived, only looked up, and the node has no name → address query. It needs an
-  indexer (9CAPI or an explorer). The planned flow: planet, name and code go to the indexer; one
-  match is proposed for confirmation, several are listed, none or offline lets the user paste the
-  address by hand. Planet is stored with the address because it picks the node.
-  First test data: Heimdall, `Xyrerris`, `#1023`.
-- **Item names in English.** Not found in `Lib9c/TableCSV` under the paths tried; a localisation
-  file in lib9c or the game client, or an indexer endpoint, is the likely source. Fallback: show
-  the item family and id.
+- **9CAPI has no name → address lookup and no collection endpoint.** Its OpenAPI file
+  (`https://api.9capi.com/openapi.json`) lists arena, market, craft and tower endpoints; the only
+  ones that carry a name next to an address are the arena leaderboard and participants. The
+  leaderboard answered `[]` during a live round (Heimdall round 12) and `arenaParticipants`
+  answered 444 without a key. An avatar that is not in the arena is therefore not findable there.
+- **The nodes are not reachable from the build sandbox** (`heimdall-rpc-1.nine-chronicles.com` and
+  the `*.9capi.com` GraphQL nodes answer 403 to CONNECT), so the on-chain read of the unlocked
+  collections, and a name search through the node's own GraphQL, are still untested.
+- **Resolving the avatar address from planet + name + game code** stays unproven. The `#xxxx` is
+  believed to be a 4-hex fragment of the address, which makes it a filter, not a key. Candidates
+  still to try: the node's GraphQL, an explorer. Fallback that always works: paste the address.
+  Test data: Heimdall, `Xyrerris`, `#1023`.
+- **English item names: partial.** `GET /getcraftlist` (free) names 114 of the **424** distinct
+  items the collections need, all equipment, from families 101-107 and 201. The rest (families
+  400-401, 499, 500, 600, 800, 900, and part of 101-107/201) has no source yet; lib9c's
+  localisation or the game client are the next place to look. Meanwhile an unnamed item shows its
+  family and id.
 
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
 `core-common` only, with two probes in `scripts/check-boundaries.mjs`. The parser throws on a row
