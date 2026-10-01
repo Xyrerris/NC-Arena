@@ -6,7 +6,7 @@
  */
 
 export { RosterRow, type RosterRowProps } from './RosterRow';
-export { RosterScreen } from './RosterScreen';
+export { RosterScreen, type RosterScreenProps } from './RosterScreen';
 export {
   SORT_OPTIONS,
   playerCountLabel,

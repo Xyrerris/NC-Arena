@@ -8,7 +8,12 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ArenaDataProvider, useNeedsAccount, type ArenaData } from '@/core/data';
-import { arenaQueryClient, arenaRepository, avatarSource } from '@/core/data/arenaRepository';
+import {
+  arenaQueryClient,
+  arenaRepository,
+  avatarSource,
+  collectionRepository,
+} from '@/core/data/arenaRepository';
 import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
 import { useExpoLiveData } from '@/core/data/expoLiveData';
 import { useArenaMigrations } from '@/core/db/client';
@@ -53,6 +58,7 @@ const ARENA_DATA: ArenaData = {
   repository: arenaRepository,
   useLiveData: useExpoLiveData,
   avatarSource,
+  collections: collectionRepository,
 };
 
 export default function RootLayout() {

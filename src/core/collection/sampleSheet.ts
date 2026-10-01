@@ -1,11 +1,14 @@
 /**
  * An invented sheet, in lib9c's column layout, small enough to reason about by hand.
  *
- * Invented on purpose: the real sheet is not bundled yet (ADR-0044 leaves its licence to the
- * owner), and these tests are about the reconciliation rules, not about what the game currently
- * ships. The ids and stats are made up; what is real is the shape — the same header, the same
- * empty cells for an unused slot — so `parseCollectionSheet` reads it the way it reads the
- * real one.
+ * **Placeholder data, not the game's.** The real sheet is not bundled yet (ADR-0044 leaves its
+ * licence to the owner), so the collection screen is given this one by its route and says so on
+ * screen. The ids and stats are made up; what is real is the shape — the same header, the same
+ * empty cells for an unused slot — so `parseCollectionSheet` reads it the way it reads the real
+ * one, and swapping the real sheet in changes the route and nothing under it. The reconciliation
+ * tests read it too, because six collections are small enough to check by hand.
+ *
+ * Delete this file when the real sheet lands and the tests have a fixture of their own.
  *
  * What each collection is for:
  *
@@ -34,7 +37,7 @@ const slots = (...itemIds: number[]): string =>
 const row = (id: number, items: number[], stats: string): string =>
   `${id},${slots(...items)},${stats}`;
 
-export const FAKE_SHEET_CSV = [
+export const SAMPLE_SHEET_CSV = [
   HEADER,
   row(1, [10110000, 10210000, 10660000], 'HP,Add,1000,ATK,Add,400,DEF,Add,80'),
   row(2, [10110000], 'ATK,Add,500,,,,,,'),

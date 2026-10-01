@@ -15,6 +15,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 
 import type { AvatarSource } from '../common';
+import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
 import type { RosterRepository } from './rosterRepository';
 
@@ -28,6 +29,12 @@ export interface ArenaData {
    * `_layout.tsx` always supplies it.
    */
   avatarSource?: AvatarSource;
+  /**
+   * The collection tracker's ticks and chain read (ADR-0044). Optional for the same reason
+   * `avatarSource` is — only the collection screen reads it — and that screen refuses to render
+   * without it, loudly, rather than showing a tracker that cannot save.
+   */
+  collections?: CollectionRepository;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);

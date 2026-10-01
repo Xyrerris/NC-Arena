@@ -2628,6 +2628,33 @@ and an avatar address) and a tick by hand (works offline, but is only a memory).
   A read replaces the stored one whole, and a failed or "nothing there" answer leaves the last good one
   alone (decision 4). A stored read whose ids do not parse is no read at all.
 
+**Built (2026-10-01): the screen, on placeholder data.**
+
+- **Reconciliation is pure** (`core/collection/reconciliation.ts`): rows with what can be ticked or
+  dropped, counts per state, `filterRows`, a stable `sortRows` by items needed, and the hunt grouped
+  by item kind. A chain-unlocked id the sheet does not contain is **returned, not dropped**
+  (`unknownUnlockedIds`) — it is how the screen tells the user their progress is a lower bound.
+- **No inventory, so no "items left".** The app tracks collections, not what the user owns, so a
+  row's size is how many distinct items it asks for. For the 716 one-item collections that is "one
+  away"; for the others it is the size of the hunt, not what is left of it.
+- **No sort by bonus value.** HP, ATK and DEF are different units, and `Add` and `Percentage` are
+  different scales (and what unit `Percentage` values are in has not been checked), so a single
+  ranking would be arbitrary. It is only meaningful within one stat, and waits for a design.
+- **A route, `/collection`, beside the roster**, and an `Arena | Collection` switcher
+  (`features/sectionTabs`) that both routes render. It uses `replace`, so flipping between the two
+  builds no history. The roster takes it as an optional prop because a feature may not import
+  another. This is a switcher on a Stack, **not** tab navigation: the app has no tab bar, and
+  adding one would be a navigation change of its own.
+- **The sheet is a prop.** The route parses `SAMPLE_SHEET_CSV` (six invented collections in lib9c's
+  column layout) and passes `sampleData`, so the screen says "Sample data" until the real sheet is
+  bundled. Swapping it changes `src/app/collection.tsx` and nothing under it.
+- **Opening the tab reads the chain once**; a failure leaves the last read on screen with its age,
+  and pull-to-refresh and RETRY read again. `ArenaData.collections` is optional and the screen
+  throws without it, so a build that forgot to wire it fails loudly rather than showing a tracker
+  that cannot save.
+- **Not built yet:** the "hunting" and "ignore" marks (nowhere to store them), item names, collection
+  names, and the real sheet.
+
 **Correction to decision 6 — where the sheet comes from.** Mimir's `sheet("CollectionSheet")` is **not**
 current. Measured against the avatar above on 2026-10-01 (444 unlocked ids):
 

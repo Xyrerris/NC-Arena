@@ -14,7 +14,7 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -44,7 +44,16 @@ import { useDebouncedValue } from './useDebouncedValue';
 import { rosterStrings } from './strings';
 import { useRoster } from './useRoster';
 
-export function RosterScreen() {
+export interface RosterScreenProps {
+  /**
+   * The Arena | Collection switcher. Supplied by the route, because the switcher belongs to
+   * neither screen and a feature may not import another (ARCHITECTURE.md §4). It sits above
+   * everything, outside the states below, so it is there while the ladder loads or fails too.
+   */
+  sectionTabs?: ReactNode;
+}
+
+export function RosterScreen({ sectionTabs }: RosterScreenProps = {}) {
   const { state, onEvent } = useRoster();
   const router = useRouter();
 
@@ -75,6 +84,7 @@ export function RosterScreen() {
 
   return (
     <ScreenScaffold applyBottomInset={false}>
+      {sectionTabs === undefined ? null : <View style={styles.sectionTabs}>{sectionTabs}</View>}
       {header === null ? null : (
         <RosterHeader
           header={header}
@@ -369,6 +379,7 @@ function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () =>
 const NO_ROWS: readonly RosterRowUi[] = [];
 
 const styles = StyleSheet.create({
+  sectionTabs: { paddingHorizontal: layout.screenGutter, paddingTop: space[6] },
   header: {
     paddingHorizontal: layout.screenGutter,
     paddingTop: space[6],

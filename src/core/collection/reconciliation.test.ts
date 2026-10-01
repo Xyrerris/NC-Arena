@@ -14,9 +14,9 @@ import {
   sortRows,
   type CollectionRow,
 } from './reconciliation';
-import { FAKE_SHEET_CSV } from './reconciliation.fixture';
+import { SAMPLE_SHEET_CSV } from './sampleSheet';
 
-const SHEET = parseCollectionSheet(FAKE_SHEET_CSV);
+const SHEET = parseCollectionSheet(SAMPLE_SHEET_CSV);
 
 const chain = (ids: number[], readAt = 1_790_000_000_000): ChainRead => ({
   unlockedIds: new Set(ids),

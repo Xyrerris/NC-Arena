@@ -27,7 +27,9 @@ that grants a permanent stat bonus once the avatar owns all of them.
 | `83511f0`             | **Screen:** `features/viewerAvatar`, rendered by `/me` beside the backup                                           |
 | `a32c720`             | **Reading the chain:** `CollectionSource` over Mimir and the node, behind a fallback                               |
 | `698dae8`             | **Confirming the address:** `AvatarSource`; `/me` shows "is this you?" before storing                              |
-| (next commit)         | **Store:** `collection_ticks`, `collection_reads` (migration `0006`), `collectionRepository` in `core/data`        |
+| `64390ec`             | **Store:** `collection_ticks`, `collection_reads` (migration `0006`), `collectionRepository` in `core/data`        |
+| `45198a6`             | **Reconciliation:** pure rows, counts, filter, sort and item groups in `core/collection`                           |
+| (next commit)         | **Screen:** `/collection` beside the roster, `Arena \| Collection` switcher, on **placeholder data**               |
 
 `core/collection` is pure and registered as a `core-collection` element in `eslint.config.js`
 (depends on `core-common` only; two probes in `scripts/check-boundaries.mjs`).
@@ -75,20 +77,21 @@ Test avatar: `Xyrerris`, planet `heimdall`, `#1023`,
 1. ~~A port that reads a collection.~~ **Done** (`CollectionSource`; Mimir, then the node).
 2. ~~Confirm the address against the network.~~ **Done** (`AvatarSource`; Thor has no endpoint yet).
 3. ~~Local store for manual ticks and the last chain read.~~ **Done** (`collectionRepository`, ADR-0044
-   "Built: reading the chain"). **Still to do: the reconciliation view** — `collectionProgress`
-   over the bundled sheet, the stored read and the ticks — and an `ArenaData` field for the
-   repository once a screen consumes it (`collectionRepository` is exported from `arenaRepository.ts`
-   but deliberately not on the context yet).
+   "Built: reading the chain"), and the **reconciliation** over it (`core/collection/reconciliation.ts`),
+   with `ArenaData.collections` wired in `_layout.tsx`.
 4. **The bundled sheet + names — BLOCKED on a licence decision for the owner** (ADR-0044, "Where item
    names are"). lib9c is GPL-3.0 and the client's localisation CSVs are AGPL-3.0. Two facts are settled
    and must not be redone: the sheet comes from **lib9c, not Mimir** (Mimir's has 822 rows and misses 24
    of the test avatar's unlocked ids; lib9c's 942 has all 444), and names come from the client's
    `item_name.csv` (210 of 424 in English), then the chain's item sheets (89 English, 55 Korean), then
    family and id (70). The client is at `%APPDATA%\Nine Chronicles\player\main\NineChronicles_Data\`.
-5. **The screen** (a route parallel to the roster) with the usability ideas from the first session:
-   sort by items still missing (the "one away" collections first), by bonus value, group by item
-   family, an overall progress bar, an item shared by several open collections shown once with
-   "unlocks N", and manual "hunting" / "ignore" marks.
+5. **The screen — built on placeholder data** (`/collection`, `features/collection`; ADR-0044 "Built: the
+   screen"): progress bar, filters, sort by items needed, an items view with "helps N", mark and drop a
+   tick, a refresh that never blanks the list. **Still owed:** the "hunting" / "ignore" marks (nowhere to
+   store them), a sort by bonus (only meaningful within one stat), item and collection names, and the real
+   sheet — in `src/app/collection.tsx`, which is the one file that changes when it lands. It has **not been
+   seen on a device or emulator**: only rendered in Jest, so layout at 200 % font scale on a phone is
+   untested.
 6. Smaller, owed: a second device does not learn the avatar from the server (the client never calls
    `GET /v1/me/avatar`); an avatar cannot be removed, only replaced.
 
