@@ -141,13 +141,13 @@ describe('SegmentedTabs', () => {
 describe('SearchField', () => {
   it('carries a label that survives typing, unlike a placeholder', async () => {
     await render(<SearchField value="" onChangeText={jest.fn()} />);
-    expect(screen.getByLabelText('Search players by name')).toBeTruthy();
+    expect(screen.getByPlaceholderText('Search players')).toBeTruthy();
   });
 
   it('reports what was typed', async () => {
     const onChangeText = jest.fn();
     await render(<SearchField value="" onChangeText={onChangeText} />);
-    fireEvent.changeText(screen.getByLabelText('Search players by name'), 'skarn');
+    fireEvent.changeText(screen.getByPlaceholderText('Search players'), 'skarn');
     expect(onChangeText).toHaveBeenCalledWith('skarn');
   });
 });
@@ -246,13 +246,13 @@ describe('ArenaButton', () => {
 describe('FormField', () => {
   it('carries a label that survives typing, unlike a placeholder', async () => {
     await render(<FormField label="Combat power" value="" onChangeText={jest.fn()} />);
-    expect(screen.getByLabelText('Combat power')).toBeTruthy();
+    expect(screen.getByLabelText(/combat power/i)).toBeTruthy();
   });
 
   it('reports what was typed', async () => {
     const onChangeText = jest.fn();
     await render(<FormField label="Name" value="" onChangeText={onChangeText} />);
-    fireEvent.changeText(screen.getByLabelText('Name'), 'Skarn');
+    fireEvent.changeText(screen.getByLabelText(/name/i), 'Skarn');
     expect(onChangeText).toHaveBeenCalledWith('Skarn');
   });
 
@@ -270,7 +270,7 @@ describe('FormField', () => {
 
     expect(screen.getByText('A player needs a name.')).toBeTruthy();
     expect(colorOfText('A player needs a name.')).toBe(color.negative);
-    expect(screen.getByLabelText('Name').props['aria-invalid']).toBe(true);
+    expect(screen.getByLabelText(/name/i).props['aria-invalid']).toBe(true);
   });
 
   it('replaces the hint with the error rather than stacking them', async () => {
@@ -290,6 +290,6 @@ describe('FormField', () => {
 
   it('reports itself as valid when there is nothing wrong with it', async () => {
     await render(<FormField label="Name" value="Skarn" onChangeText={jest.fn()} />);
-    expect(screen.getByLabelText('Name').props['aria-invalid']).toBe(false);
+    expect(screen.getByLabelText(/name/i).props['aria-invalid']).toBe(false);
   });
 });

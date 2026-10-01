@@ -10,7 +10,9 @@ export const playerFormStrings = {
   cancel: 'Cancel',
   cancelA11y: 'Cancel and go back',
   notYou: 'Not you?',
-  notYouA11y: 'Choose a different player as your avatar',
+  // The accessible name of a control starts from what it says on screen (WCAG 2.5.3, "Label in
+  // Name"), so a voice-control user can say what they read.
+  notYouA11y: 'Not you? Choose a different player as your avatar',
 
   loading: 'One moment…',
   unavailableTitle: 'Not yours to edit',
@@ -27,7 +29,7 @@ export const playerFormStrings = {
   saveMyStats: 'Save my stats',
 
   removePlayer: 'Remove player',
-  removePlayerA11y: 'Remove this player from the roster',
+  removePlayerA11y: 'Remove player — take this player out of the roster',
   confirmRemoveTitle: 'Remove this player?',
   confirmRemoveBody:
     'They are removed from this device only, and the ranking closes up behind them.',
@@ -35,7 +37,7 @@ export const playerFormStrings = {
   confirmRemove: 'Remove',
 
   scanLabel: 'Fill from screenshot',
-  scanA11y: 'Fill the form from a screenshot of the game',
+  scanA11y: 'Fill from screenshot — read the form from a picture of the game',
   // What the control is about to do, said before it is pressed — including the deleting
   // (ADR-0026).
   scanHint:
@@ -81,7 +83,7 @@ export const playerFormStrings = {
   nobodyTitle: 'Nobody to pick yet',
   nobodyBody: 'Add yourself to the roster first — then come back and say which player you are.',
   addPlayerButton: '+ New player',
-  addPlayerA11y: 'Add a player to the roster',
+  addPlayerA11y: 'New player — add a player to the roster',
   combatPower: (exact: string) => `CP ${exact}`,
   thisIsYou: 'THIS IS YOU',
   candidateA11y: (name: string, rank: number, combatPower: string, isCurrent: boolean) =>

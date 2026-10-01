@@ -16,16 +16,18 @@ export const rosterStrings = {
 
   syncing: 'Syncing…',
   syncRetry: 'RETRY',
-  syncRetryA11y: 'Try syncing again',
+  // The accessible name of a control starts from what it says on screen (WCAG 2.5.3, "Label in
+  // Name"), so a voice-control user can say what they read: "tap update my stats".
+  syncRetryA11y: 'Retry syncing',
 
   addPlayer: '+ New player',
   addPlayerA11y: 'Add a new player to the roster',
-  addFirstPlayerA11y: 'Add the first player to the roster',
+  addFirstPlayerA11y: 'New player — add the first player to the roster',
 
   whoAreYou: 'Who are you?',
-  whoAreYouA11y: 'Choose which player is your avatar',
+  whoAreYouA11y: 'Who are you? Choose which player is your avatar',
   updateMyStats: 'Update my stats',
-  updateMyStatsA11y: (name: string) => `Update your own stats — ${name}`,
+  updateMyStatsA11y: (name: string) => `Update my stats — ${name}`,
 
   loading: 'Reading the ladder…',
   errorTitle: 'The ladder could not be read',
@@ -65,6 +67,8 @@ export const rosterStrings = {
     const you = p.isViewer ? ', your avatar' : '';
     // Announced but not drawn — see the note on `RosterRowUi.isLocal`.
     const added = p.isLocal ? ', added on this device' : '';
-    return `Rank ${p.rank}, ${p.name}${you}${added}, combat power ${p.combatPower}, ${p.score}${record}`;
+    // "CP" as it is written on the row, not "combat power": the row is a button, and its name
+    // has to contain the text on it.
+    return `Rank ${p.rank}, ${p.name}${you}${added}, CP ${p.combatPower}, ${p.score}${record}`;
   },
 } as const;

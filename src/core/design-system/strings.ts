@@ -25,7 +25,6 @@ export const designStrings = {
 
   searchField: {
     placeholder: 'Search players',
-    a11y: 'Search players by name',
   },
 
   segmentedTabs: {

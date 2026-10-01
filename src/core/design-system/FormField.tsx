@@ -17,6 +17,7 @@
  *   rule ROADMAP.md Phase 6 applies to the comparison bars.
  */
 
+import { useId } from 'react';
 import { StyleSheet, TextInput, View, type KeyboardTypeOptions } from 'react-native';
 
 import { ArenaText } from './ArenaText';
@@ -58,15 +59,23 @@ export function FormField({
   testID,
 }: FormFieldProps) {
   const invalid = error !== null && error !== '';
+  const labelId = useId();
 
   return (
     <View style={styles.root}>
-      <ArenaText variant="labelMicro" tone="muted">
+      {/*
+        The visible label is the field's name, linked to it rather than copied onto it. An
+        `accessibilityLabel` on a `TextInput` becomes the node's `contentDescription`, which
+        TalkBack reads in place of what the user has typed — the Accessibility Scanner's
+        "editable label" finding — and it made every label a second, identical stop ("HP"
+        twice) beside the field it described.
+      */}
+      <ArenaText variant="labelMicro" tone="muted" nativeID={labelId}>
         {label.toUpperCase()}
       </ArenaText>
 
       <TextInput
-        accessibilityLabel={label}
+        accessibilityLabelledBy={labelId}
         aria-invalid={invalid}
         autoCapitalize={numeric ? 'none' : 'words'}
         autoCorrect={false}

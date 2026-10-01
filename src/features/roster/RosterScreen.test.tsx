@@ -471,7 +471,7 @@ describe('RosterScreen — reaching your own stats', () => {
 
     expect(screen.queryByTestId('viewer-card')).toBeNull();
     expect(screen.getByTestId('roster-viewer').props.accessibilityLabel).toBe(
-      'Choose which player is your avatar',
+      'Who are you? Choose which player is your avatar',
     );
   });
 
@@ -482,7 +482,7 @@ describe('RosterScreen — reaching your own stats', () => {
 
     expect(screen.getByTestId('viewer-card')).toBeTruthy();
     expect(screen.getByTestId('roster-viewer').props.accessibilityLabel).toBe(
-      'Update your own stats — Aurel',
+      'Update my stats — Aurel',
     );
   });
 
