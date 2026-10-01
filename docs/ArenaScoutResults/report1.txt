@@ -1,0 +1,31 @@
+Di seguito è riportato un elenco di opportunità per migliorare l'accessibilità di Arena Scout. Ciascun elemento corrisponde a un'area delineata sullo screenshot allegato.
+
+Etichetta elemento modificabile
+roster-search
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Touch target
+roster-sort-COMBAT_POWER
+È consigliabile ingrandire questo elemento cliccabile.
+La larghezza di questo elemento è pari a 42dp. È consigliabile impostare la larghezza di questo touch target su 48dp o un valore superiore.
+
+Testo non esposto
+roster-viewer
+Possibile testo rilevato: UPDATE MY STATS
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+roster-row-9a812c5a-1239-4e45-b5ce-66d886b450c7
+Possibile testo rilevato: CP 8.531.802.550
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+roster-row-122ff7bf-5b27-4660-a8fb-3e80812f9bf5
+Possibile testo rilevato: CP 25.232.822.822
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+roster-row-ca55b76f-c0f0-4880-bd71-a1fc2c392248
+Possibile testo rilevato: CP 9.165.290.522
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+

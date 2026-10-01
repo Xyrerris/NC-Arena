@@ -1,0 +1,96 @@
+Di seguito è riportato un elenco di opportunità per migliorare l'accessibilità di Arena Scout. Ciascun elemento corrisponde a un'area delineata sullo screenshot allegato.
+
+Etichetta elemento modificabile
+form-field-name
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-level
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-gameCode
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-combatPower
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-score
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-hp
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-atk
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-def
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-critPercent
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-hit
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Etichetta elemento modificabile
+form-field-spd
+Questa classe modificabile TextView include l'attributo android:contentDescription. Uno screen reader potrebbe leggere questo attributo anziché i contenuti modificabili durante la navigazione.
+
+Contrasto del testo
+form-field-atk
+È consigliabile aumentare il rapporto del contrasto tra il primo piano e lo sfondo del testo dell'elemento.
+Il rapporto del contrasto del testo è 1,40. Questo rapporto si basa su un colore di primo piano stimato uguale a #303936 e un colore di sfondo stimato uguale a #17201D. Ti consigliamo di aumentare il rapporto del contrasto del testo di questo elemento impostando un valore maggiore o uguale a 4,50. Questo elemento potrebbe essere visibile solo parzialmente all'interno di un contenitore a scorrimento.
+
+Descrizioni elemento
+form-field-hp
+Più elementi hanno la stessa descrizione.
+Il testo pronunciabile di questo elemento cliccabile, "HP", è identico a quello di altri 1 elementi.
+
+Descrizioni elemento
+form-field-atk
+Più elementi hanno la stessa descrizione.
+Il testo pronunciabile di questo elemento cliccabile, "ATK", è identico a quello di altri 1 elementi.
+
+Testo non esposto
+form-change-viewer
+Possibile testo rilevato: NOT YOU?
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+form-scan-button
+Possibile testo rilevato: FILL FROM SCREENSHOT
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+form-field-name
+Possibile testo rilevato: Xyrerris
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+form-field-level
+Possibile testo rilevato: 486
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+form-field-gameCode
+Possibile testo rilevato: 1023
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+form-field-combatPower
+Possibile testo rilevato: 25232822822
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+form-field-hp
+Possibile testo rilevato: 2835740100
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
