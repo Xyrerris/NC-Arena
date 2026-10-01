@@ -30,10 +30,13 @@
 
 import { QueryClient } from '@tanstack/react-query';
 
-import type { CollectionSource } from '../common';
+import type { AvatarSource, CollectionSource } from '../common';
 import {
+  FallbackAvatarSource,
   FallbackCollectionSource,
+  MimirAvatarSource,
   MimirCollectionSource,
+  NodeAvatarSource,
   NodeCollectionSource,
   RemoteAccountGateway,
   RemoteRosterSource,
@@ -79,6 +82,12 @@ export const arenaRepository = createRosterRepository({
 export const collectionSource: CollectionSource = new FallbackCollectionSource([
   new MimirCollectionSource(),
   new NodeCollectionSource(),
+]);
+
+/** Who is at an avatar address, read from the same two public services. */
+export const avatarSource: AvatarSource = new FallbackAvatarSource([
+  new MimirAvatarSource(),
+  new NodeAvatarSource(),
 ]);
 
 /**

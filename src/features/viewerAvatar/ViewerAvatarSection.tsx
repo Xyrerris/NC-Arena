@@ -23,13 +23,19 @@ import {
   ADDRESS_HINT,
   ADDRESS_LABEL,
   ADDRESS_PLACEHOLDER,
+  CANCEL_LABEL,
+  CHECKING_NOTE,
+  CONFIRM_LABEL,
+  CONFIRM_QUESTION,
   PLANET_CHOICES,
   PLANET_LABEL,
   SAVED_NOTE,
   SAVE_LABEL,
+  SAVE_UNCHECKED_LABEL,
   SECTION_HINT,
   SECTION_TITLE,
   describeAvatar,
+  describeIdentity,
 } from './viewerAvatarUiState';
 import { useViewerAvatarForm } from './useViewerAvatarForm';
 
@@ -77,15 +83,58 @@ export function ViewerAvatarSection() {
       <ArenaButton
         label={SAVE_LABEL}
         variant="secondary"
+        busy={form.state.kind === 'checking'}
         onPress={form.onSave}
         testID="viewer-avatar-save"
       />
+
+      {form.state.kind === 'checking' ? (
+        <ArenaText variant="bodyCaption" tone="subtle" testID="viewer-avatar-checking">
+          {CHECKING_NOTE}
+        </ArenaText>
+      ) : null}
+
+      {form.state.kind === 'confirm' ? (
+        <View style={styles.confirm} testID="viewer-avatar-confirm">
+          <ArenaText variant="bodyCaption" tone="subtle">
+            {CONFIRM_QUESTION}
+          </ArenaText>
+          <ArenaText variant="bodyMedium" testID="viewer-avatar-identity">
+            {describeIdentity(form.state.identity)}
+          </ArenaText>
+          <ArenaButton
+            label={CONFIRM_LABEL}
+            onPress={form.onConfirm}
+            testID="viewer-avatar-confirm-yes"
+          />
+          <ArenaButton
+            label={CANCEL_LABEL}
+            variant="secondary"
+            onPress={form.onCancel}
+            testID="viewer-avatar-confirm-no"
+          />
+        </View>
+      ) : null}
+
+      {form.state.kind === 'unchecked' ? (
+        <View style={styles.confirm}>
+          <ArenaText variant="bodyCaption" tone="subtle" testID="viewer-avatar-unchecked">
+            {form.state.message}
+          </ArenaText>
+          <ArenaButton
+            label={SAVE_UNCHECKED_LABEL}
+            variant="secondary"
+            onPress={form.onSaveUnchecked}
+            testID="viewer-avatar-save-unchecked"
+          />
+        </View>
+      ) : null}
 
       {form.state.kind === 'saved' ? (
         <ArenaText variant="bodyCaption" tone="accent" testID="viewer-avatar-note">
           {SAVED_NOTE}
         </ArenaText>
-      ) : form.state.kind === 'failed' ? (
+      ) : form.state.kind === 'failed' || form.state.kind === 'notFound' ? (
         <ArenaText variant="bodyCaption" tone="negative" testID="viewer-avatar-error">
           {form.state.message}
         </ArenaText>
@@ -106,6 +155,7 @@ const styles = StyleSheet.create({
     gap: space[8],
   },
   eyebrow: { textTransform: 'uppercase' },
+  confirm: { gap: space[8] },
   // Wraps rather than shrinks, like every other row of controls: at 200 % font scale three
   // labels cannot share a line, and a squeezed chip is a clipped label.
   planets: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },

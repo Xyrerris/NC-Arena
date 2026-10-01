@@ -8,7 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { ArenaDataProvider, useNeedsAccount, type ArenaData } from '@/core/data';
-import { arenaQueryClient, arenaRepository } from '@/core/data/arenaRepository';
+import { arenaQueryClient, arenaRepository, avatarSource } from '@/core/data/arenaRepository';
 import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
 import { useExpoLiveData } from '@/core/data/expoLiveData';
 import { useArenaMigrations } from '@/core/db/client';
@@ -49,7 +49,11 @@ void SplashScreen.preventAutoHideAsync();
  * the context identity never changes — a new object per render would re-subscribe every
  * live query in the tree on every render.
  */
-const ARENA_DATA: ArenaData = { repository: arenaRepository, useLiveData: useExpoLiveData };
+const ARENA_DATA: ArenaData = {
+  repository: arenaRepository,
+  useLiveData: useExpoLiveData,
+  avatarSource,
+};
 
 export default function RootLayout() {
   const { success, error } = useArenaMigrations();

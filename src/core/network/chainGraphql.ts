@@ -30,6 +30,19 @@ export interface GraphqlEnvelope {
   readonly errors: readonly { readonly message: string; readonly path?: readonly unknown[] }[];
 }
 
+/**
+ * A transport failure as the screens' two-reason taxonomy: unreachable or out of time is
+ * `OFFLINE`, anything else is `FAILED`. The shape is shared by `CollectionError` and
+ * `AvatarError`, which is why a structural return type serves both.
+ */
+export const networkFailure = (
+  source: string,
+  error: NetworkError,
+): { reason: 'OFFLINE' | 'FAILED'; message: string } => ({
+  reason: error.code === 'OFFLINE' ? 'OFFLINE' : 'FAILED',
+  message: `${source}: ${error.code} — ${error.message}`,
+});
+
 export async function postGraphql(
   endpoint: string,
   query: string,

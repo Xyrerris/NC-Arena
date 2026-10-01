@@ -13,6 +13,7 @@ export type {
   AccountGateway,
   LinkedAccount,
 } from './accountGateway';
+export type { AvatarError, AvatarIdentity, AvatarSource } from './avatarSource';
 export type {
   CollectionError,
   CollectionFailure,

@@ -4,6 +4,7 @@
  * Kept apart from the component so the sentences can be read, and tested, without rendering.
  */
 
+import type { AvatarIdentity } from '@/core/common';
 import { PLANETS, type Planet, type ViewerAvatar } from '@/core/model';
 
 export const SECTION_TITLE = 'Your Nine Chronicles avatar';
@@ -31,5 +32,33 @@ export const PLANET_CHOICES: readonly Planet[] = PLANETS;
 export const describeAvatar = (avatar: ViewerAvatar): string =>
   `${PLANET_LABEL[avatar.planet]} · ${avatar.address.slice(0, 6)}…${avatar.address.slice(-4)}`;
 
+export const CHECKING_NOTE = 'Checking the address…';
+export const CONFIRM_QUESTION = 'Is this you?';
+export const CONFIRM_LABEL = 'YES, THIS IS ME';
+export const CANCEL_LABEL = 'CHANGE';
+export const SAVE_UNCHECKED_LABEL = 'SAVE WITHOUT CHECKING';
+
+/** `Xyrerris · level 494` — what the user recognises their own avatar by. */
+export const describeIdentity = (identity: AvatarIdentity): string =>
+  `${identity.name} · level ${identity.level}`;
+
+export const notFoundMessage = (planet: Planet): string =>
+  `No avatar at that address on ${PLANET_LABEL[planet]}. Check the planet and the address.`;
+
+/** Why the address could not be looked up, and that saving it unchecked is still possible. */
+export const uncheckedMessage = (reason: 'OFFLINE' | 'FAILED'): string =>
+  reason === 'OFFLINE'
+    ? 'Could not reach the network to check this address. You can save it anyway.'
+    : 'The address could not be checked right now. You can save it anyway.';
+
 export type ViewerAvatarUiState =
-  { kind: 'idle' } | { kind: 'saved' } | { kind: 'failed'; message: string };
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  /** The chain has an avatar there: shown for the user to say whether it is theirs. */
+  | { kind: 'confirm'; avatar: ViewerAvatar; identity: AvatarIdentity }
+  /** The chain has nothing there: a wrong planet or a wrong address. Nothing is stored. */
+  | { kind: 'notFound'; message: string }
+  /** The lookup did not happen. The address is well-formed, so saving it is still the user's call. */
+  | { kind: 'unchecked'; avatar: ViewerAvatar; message: string }
+  | { kind: 'saved' }
+  | { kind: 'failed'; message: string };

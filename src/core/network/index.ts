@@ -60,7 +60,10 @@ export {
 export { DEFAULT_TIMEOUT_MS, HttpClient } from './httpClient';
 export type { ApiKeySource, HttpClientOptions } from './httpClient';
 
+export { FallbackAvatarSource } from './fallbackAvatarSource';
 export { FallbackCollectionSource } from './fallbackCollectionSource';
+export { MimirAvatarSource } from './mimirAvatarSource';
+export { NodeAvatarSource } from './nodeAvatarSource';
 export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';
 export { NODE_ENDPOINTS, NodeCollectionSource } from './nodeCollectionSource';
 export { RemoteAccountGateway } from './remoteAccountGateway';

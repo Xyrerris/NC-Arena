@@ -14,12 +14,20 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
+import type { AvatarSource } from '../common';
 import type { UseLiveData } from './liveData';
 import type { RosterRepository } from './rosterRepository';
 
 export interface ArenaData {
   repository: RosterRepository;
   useLiveData: UseLiveData;
+  /**
+   * Reads the name behind a typed-in avatar address, so it can be shown for confirmation
+   * (ADR-0044). Optional because only the avatar block uses it: absent, that block saves an
+   * address on its shape alone, which is what every other screen's test provider relies on.
+   * `_layout.tsx` always supplies it.
+   */
+  avatarSource?: AvatarSource;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);
