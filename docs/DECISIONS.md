@@ -2543,25 +2543,33 @@ and an avatar address) and a tick by hand (works offline, but is only a memory).
    choice, locally and then on the backend; it is **not** a field of `Player`, so the roster's
    sync rules (ADR-0035, ADR-0036) are untouched.
 
-**Open — what the 9CAPI probe of 2026-10-01 showed.**
+**Verified against Heimdall, 2026-10-01** (`Xyrerris`, avatar
+`0x1023d8f22c6f5a8701e56a95e18fb2dbe436b41f`, with `heimdall-rpc-1.nine-chronicles.com` and
+`heimdall6.9capi.com` answering identically):
 
-- **9CAPI has no name → address lookup and no collection endpoint.** Its OpenAPI file
-  (`https://api.9capi.com/openapi.json`) lists arena, market, craft and tower endpoints; the only
-  ones that carry a name next to an address are the arena leaderboard and participants. The
-  leaderboard answered `[]` during a live round (Heimdall round 12) and `arenaParticipants`
-  answered 444 without a key. An avatar that is not in the arena is therefore not findable there.
-- **The nodes are not reachable from the build sandbox** (`heimdall-rpc-1.nine-chronicles.com` and
-  the `*.9capi.com` GraphQL nodes answer 403 to CONNECT), so the on-chain read of the unlocked
-  collections, and a name search through the node's own GraphQL, are still untested.
-- **Resolving the avatar address from planet + name + game code** stays unproven. The `#xxxx` is
-  believed to be a 4-hex fragment of the address, which makes it a filter, not a key. Candidates
-  still to try: the node's GraphQL, an explorer. Fallback that always works: paste the address.
-  Test data: Heimdall, `Xyrerris`, `#1023`.
-- **English item names: partial.** `GET /getcraftlist` (free) names 114 of the **424** distinct
-  items the collections need, all equipment, from families 101-107 and 201. The rest (families
-  400-401, 499, 500, 600, 800, 900, and part of 101-107/201) has no source yet; lib9c's
-  localisation or the game client are the next place to look. Meanwhile an unnamed item shows its
-  family and id.
+- **The game code is the start of the avatar address.** `#1023` is `0x1023…`. It is a 4-hex
+  prefix, so it narrows a search but is not a key.
+- **The unlocked collections are readable from a plain node, with no key.** Root query
+  `state(address: <avatar>, accountAddress: "0x…1f")` returns Bencodex as hex; decoded it is a
+  list of integer ids (`lli1ei2e…ee`). It gave **442** ids for this avatar, every one present in
+  the 942-row sheet — the same 442 as `docs/research/nc-cp/fixture.ts`. 500 collections are
+  missing; 423 of them need a single item. An avatar with no state answers `null`, and that must
+  be told apart from a failed request (decision 4).
+- **From an agent address, its avatars are listed:** `stateQuery.agent(address).avatarStates
+{ address name level }` returned three avatars, `Xyrerris` among them.
+- **There is no way to go from a name to an address.** The node has no such query (`avatar` takes
+  an address) and 9CAPI has none either: the only endpoints that pair a name with an address are the
+  arena leaderboard (`[]` during a live round) and `arenaParticipants` (444 without a key), so an
+  avatar outside the arena is not findable there. Resolving by planet + name + code therefore
+  needs a source that has not been found; until it is, **the address is entered by hand** (or
+  scanned from a QR/clipboard), validated by reading `stateQuery.avatar(address).name` and showing
+  that name for confirmation. That check also catches a mistyped address and a wrong planet.
+- **English item names: partial.** `GET https://api.9capi.com/getcraftlist` (free) names 114 of the
+  **424** distinct items the collections need, all equipment. The most-needed missing items
+  (`800120`, `800202`, `600206`) are not among them. The node's `cachedSheet` answers `null` for
+  `MaterialItemSheet`, `CostumeItemSheet` and `EquipmentItemSheet`, and the repository paths guessed
+  in lib9c and the client are 404. Open: find the localisation file. Meanwhile an unnamed item
+  shows its family and id.
 
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
 `core-common` only, with two probes in `scripts/check-boundaries.mjs`. The parser throws on a row
