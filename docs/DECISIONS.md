@@ -2557,19 +2557,31 @@ and an avatar address) and a tick by hand (works offline, but is only a memory).
   be told apart from a failed request (decision 4).
 - **From an agent address, its avatars are listed:** `stateQuery.agent(address).avatarStates
 { address name level }` returned three avatars, `Xyrerris` among them.
-- **There is no way to go from a name to an address.** The node has no such query (`avatar` takes
-  an address) and 9CAPI has none either: the only endpoints that pair a name with an address are the
-  arena leaderboard (`[]` during a live round) and `arenaParticipants` (444 without a key), so an
-  avatar outside the arena is not findable there. Resolving by planet + name + code therefore
-  needs a source that has not been found; until it is, **the address is entered by hand** (or
-  scanned from a QR/clipboard), validated by reading `stateQuery.avatar(address).name` and showing
-  that name for confirmation. That check also catches a mistyped address and a wrong planet.
-- **English item names: partial.** `GET https://api.9capi.com/getcraftlist` (free) names 114 of the
-  **424** distinct items the collections need, all equipment. The most-needed missing items
-  (`800120`, `800202`, `600206`) are not among them. The node's `cachedSheet` answers `null` for
-  `MaterialItemSheet`, `CostumeItemSheet` and `EquipmentItemSheet`, and the repository paths guessed
-  in lib9c and the client are 404. Open: find the localisation file. Meanwhile an unnamed item
-  shows its family and id.
+- **Mimir answers the same question as JSON.** `https://mimir.nine-chronicles.dev/heimdall/graphql/`
+  (Odin beside it) is Planetarium's indexer: chain state in MongoDB behind GraphQL, no key.
+  `collection(address) { ids }` returned the same **442** ids as the node's raw state, with no
+  Bencodex to decode. It can lag the chain (`metadata(collectionName) { latestBlockIndex }` says
+  by how much), so the node's raw state, read by `parseUnlockedCollectionIds`, stays as the
+  fallback and as the cross-check.
+- **There is still no way to go from a name to an address.** Neither Mimir (`avatar(address)`
+  only; the CP rankings take `skip`/`take` and no filter, and give no total) nor the node nor
+  9CAPI has such a query, and scanning a ranking page by page is not something a phone should do.
+  Resolving by planet + name + code therefore needs a source that has not been found; until then
+  **the address is entered by hand**, validated by reading `avatar(address).name` (Mimir or the
+  node) and showing that name for confirmation. That check also catches a mistyped address and a
+  wrong planet.
+- **Mimir serves the game's sheets**: `sheet(sheetName) { csv }`, 118 sheets, among them
+  `CollectionSheet`, `EquipmentItemSheet`, `MaterialItemSheet`, `CostumeItemSheet` and
+  `ConsumableItemSheet`. The item sheets carry a `_name` column, which is where the names are, so
+  the bundled copy of the sheet (decision 6) can be refreshed from the chain instead of from
+  GitHub.
+- **English item names: 242 of the 424 items.** The `_name` column is the on-chain value and is
+  not always English: **110** of the 424 are Korean (49 equipment, 48 consumables, 11 costumes, 2
+  materials) and **72** are in no item sheet at all (families 107, 106, 104, 103, 101, 800, 499,
+  401…). `getcraftlist` adds nothing beyond the sheets. Item names for the client UI live in the
+  game client's localisation files, whose path has not been found, so those 182 items still show
+  family and id, or the Korean name marked as such, until it is. `800120`, the item the most open
+  collections need, is among the unnamed.
 
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
 `core-common` only, with two probes in `scripts/check-boundaries.mjs`. The parser throws on a row
