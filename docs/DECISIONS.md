@@ -2583,6 +2583,28 @@ and an avatar address) and a tick by hand (works offline, but is only a memory).
   family and id, or the Korean name marked as such, until it is. `800120`, the item the most open
   collections need, is among the unnamed.
 
+**Built (2026-10-01): the avatar address beside "me".**
+
+- **Backend:** `accounts.viewer_avatar_planet` and `viewer_avatar_address` (migration `0002`,
+  additive, nullable); `PUT` and `GET /v1/me/avatar`. The address is `0x` and 40 hex digits and
+  is stored lower-cased; the planet is `odin`, `heimdall` or `thor`. A `PUT` before the account
+  has a viewer is a 404, and `PUT /v1/me/viewer` with a **different** player clears the avatar,
+  because the address belongs to the previous viewer. It is on the account, not on `players`, so
+  the roster's sync rules (ADR-0035, ADR-0036) did not change.
+- **Client:** `ViewerAvatar` and `normaliseAvatarAddress` in `core/model`; a preference with a
+  _pending_ flag, shaped like `pendingViewerId`; `RosterSink.setViewerAvatar`. The repository
+  sends it **last in a sync**, once the viewer upstream is the one it belongs to; a refusal keeps
+  it pending and fails the sync, and an address typed while the request was in flight is not
+  marked as sent. It is dropped wherever the viewer changes: choosing someone else, a pull that
+  shows another device chose differently (a local row adopted under a server id is still the same
+  viewer), removing the viewer, and a restore.
+- **Screen:** `features/viewerAvatar`, rendered by `/me` beside the backup; it shows nothing until
+  somebody is "you". The route composes it, as it does the backup (ARCHITECTURE.md §4).
+- **Not built yet:** the address is checked for **shape only**. Confirming it against a node
+  (`avatar(address).name`) needs a port in `core/data`, because a feature may not reach the
+  network. A second device does not learn the avatar from the server (there is no pull of it),
+  and there is no way to remove an avatar, only to replace it.
+
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
 `core-common` only, with two probes in `scripts/check-boundaries.mjs`. The parser throws on a row
 it cannot read instead of skipping it, because a shorter list reads as more progress than there
