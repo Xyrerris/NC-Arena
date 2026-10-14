@@ -13,6 +13,7 @@ import {
   arenaRepository,
   avatarSource,
   collectionRepository,
+  sheetLibrary,
 } from '@/core/data/arenaRepository';
 import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
 import { useExpoLiveData } from '@/core/data/expoLiveData';
@@ -59,6 +60,7 @@ const ARENA_DATA: ArenaData = {
   useLiveData: useExpoLiveData,
   avatarSource,
   collections: collectionRepository,
+  sheets: sheetLibrary,
 };
 
 export default function RootLayout() {

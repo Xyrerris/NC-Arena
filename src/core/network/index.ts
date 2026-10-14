@@ -62,6 +62,7 @@ export type { ApiKeySource, HttpClientOptions } from './httpClient';
 
 export { FallbackAvatarSource } from './fallbackAvatarSource';
 export { FallbackCollectionSource } from './fallbackCollectionSource';
+export { GameSheetSource, LIB9C_COLLECTION_SHEET_URL } from './gameSheetSource';
 export { MimirAvatarSource } from './mimirAvatarSource';
 export { NodeAvatarSource } from './nodeAvatarSource';
 export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';

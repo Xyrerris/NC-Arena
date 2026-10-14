@@ -2678,6 +2678,46 @@ collections have every item named in English. **Open for the owner: licence.** l
 client repository, where those CSVs live, is AGPL-3.0. Shipping either in a distributed app is a decision
 about obligations, not a build step, so the bundle and the names are not generated until it is made.
 
+**Built (2026-10-14): the missing equipment, by name, level, element and skill.** Asked for by the
+owner: for an avatar, the list of equipment its open collections still need, each with a name, a
+level (`+0`, `+4`…), an element and — "if it is easy" — how many collections it helps.
+
+- **Where each field is.** `CollectionSheet` has the item id, `count`, `level` and `skill` (lib9c's
+  `SkillContains`: the piece must carry a skill when TRUE, none when FALSE) and no name or element.
+  The name, the element and the kind are columns of the chain's `EquipmentItemSheet` (`_name`,
+  `elemental_type`, `item_sub_type`), and the element belongs to the **id** (`10111000` is the Fire
+  Long Sword), so the join is id → equipment, plus the level and the flag from the collection.
+- **A piece is `(id, level, skill)`**, not an id: a `Long Sword +0` and a `Long Sword +4` are different
+  things to go and get, and so are one with a skill and one without. "Helps N" is the number of open
+  collections that ask for exactly that piece (`missingEquipment`, `core/collection/equipmentCatalog.ts`).
+  On 2026-10-14 the test avatar had 458 of 942 unlocked and 422 distinct pieces still open.
+- **The sheets are fetched, not bundled.** `SheetSource` (a port in `core/common`) is implemented by
+  `GameSheetSource`: the collection sheet as text from lib9c on GitHub (`Lib9c/TableCSV/CollectionSheet.csv`,
+  `development`), the equipment sheet from Mimir. Both or a failure. `createSheetLibrary` in `core/data`
+  keeps a success for the run and does not keep a failure, so the screen's retry asks again. The route
+  no longer hands the screen a sheet: `CollectionScreen` loads it (`useGameSheets`), shows "loading" or a
+  failure with a retry, then the tracker. A `sheet` prop still works and means "exactly this list, bare
+  ids", which is what the screen tests use. Fetching at run time is not shipping a copy, so it does not
+  settle the licence question above for a bundled one; it sidesteps it.
+- **A blank level or skill is 0 and FALSE.** The real lib9c sheet has 433 requirements with a blank
+  `level` (the first is a material, `201000`); lib9c's own parser reads it as 0, and so does ours now. Found
+  by reading the live sheet, not by the tests, which had only the invented one — a reason to keep the
+  live check in mind when the sheet changes.
+- **Known gaps.** In memory only: a cold start offline has no sheet and says so. The `development` branch
+  can be ahead of what the chain runs, so an id the chain unlocked and the sheet lacks is still returned,
+  not dropped (`unknownUnlockedIds`), and the reverse — a collection in the sheet that is not live — is not
+  detected. Twelve equipment names are Korean (the chain's `_name` is not always English).
+  Equipment is the whole list: 217 requirement slots of the open collections are costumes and materials.
+
+**Next step (not started): costumes and materials in the same list.** Do this **once the above works
+on a device and the numbers have been checked against the game** — not before. The 217 open slots that
+are not equipment are in `CostumeItemSheet` and `MaterialItemSheet` (served by Mimir the same way) and
+in the consumable sheet, with `_name` columns and no element or level (a material slot has a count
+instead, and its level is blank). The work: a catalog per sheet, a `kind` on the missing-piece entry
+(equipment / costume / material), the count of units needed rather than collections helped for
+materials, and the "N slots not in this list yet" note dropped. About 70 of the 424 items have no name
+in any sheet, so family and id remain the fallback there (see "Where item names are").
+
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
 `core-common` only, with two probes in `scripts/check-boundaries.mjs`. `core/network` may now read it
 too — the node's state is Bencodex hex and the decoder is already there — with a probe each way. The parser throws on a row

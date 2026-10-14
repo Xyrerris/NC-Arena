@@ -14,7 +14,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { SAMPLE_SHEET_CSV, parseCollectionSheet } from '@/core/collection';
 import { err, ok, type CollectionSource, type UnlockedCollections } from '@/core/common';
-import { ArenaDataProvider, createCollectionRepository, type RosterRepository } from '@/core/data';
+import {
+  ArenaDataProvider,
+  createCollectionRepository,
+  createSheetLibrary,
+  type RosterRepository,
+  type SheetLibrary,
+} from '@/core/data';
 import type { PlayerDraft } from '@/core/model';
 import {
   createStubLiveData,
@@ -68,6 +74,8 @@ describe('CollectionScreen', () => {
   let answer: Awaited<ReturnType<CollectionSource['readUnlocked']>>;
   let readUnlocked: jest.Mock;
 
+  let sheets: SheetLibrary | undefined;
+
   const wrapper = () => {
     readUnlocked = jest.fn(() => Promise.resolve(answer));
     const collections = createCollectionRepository({
@@ -78,7 +86,9 @@ describe('CollectionScreen', () => {
     return function Harness({ children }: { children: ReactNode }) {
       return (
         <SafeAreaProvider initialMetrics={METRICS}>
-          <ArenaDataProvider value={{ repository, useLiveData: createStubLiveData(), collections }}>
+          <ArenaDataProvider
+            value={{ repository, useLiveData: createStubLiveData(), collections, sheets }}
+          >
             {children}
           </ArenaDataProvider>
         </SafeAreaProvider>
@@ -260,5 +270,73 @@ describe('CollectionScreen', () => {
     // Collection 1 is unlocked, so the shared weapon now serves two collections, not three.
     expect(screen.getByText('10110000 · helps 2 collections')).toBeTruthy();
     expect(screen.queryByTestId('collection-list')).toBeNull();
+  });
+
+  describe('without a sheet prop (the real route)', () => {
+    const EQUIPMENT_CSV = [
+      'id,_name,item_sub_type,grade,elemental_type',
+      '10110000,Long Sword,Weapon,1,Normal',
+      '10310000,Plate Armor,Armor,1,Fire',
+    ].join('\r\n');
+    const GAME_SHEETS = {
+      collectionCsv: SAMPLE_SHEET_CSV,
+      equipmentCsv: EQUIPMENT_CSV,
+      source: 'test',
+    };
+
+    const mountGated = async (read: jest.Mock): Promise<void> => {
+      sheets = createSheetLibrary({ source: { name: 'test', read } });
+      await render(<CollectionScreen />, { wrapper: wrapper() });
+      await act(async () => {});
+    };
+
+    afterEach(() => {
+      sheets = undefined;
+    });
+
+    it('loads the sheets, then lists the missing equipment by name, level, element and skill', async () => {
+      makeViewerWithAvatar();
+      const read = jest.fn(() => Promise.resolve(ok(GAME_SHEETS)));
+      await mountGated(read);
+
+      expect(read).toHaveBeenCalledWith('heimdall');
+      await act(async () => {
+        fireEvent.press(screen.getByText(words.viewItems));
+      });
+
+      expect(screen.getByText('Long Sword +0 · Normal · with skill')).toBeTruthy();
+      expect(screen.getByText('helps 2 collections')).toBeTruthy();
+      // Collection 1 is unlocked. Of the open ones, 10750000 and the two 40100001 slots are not in
+      // the equipment catalog, so they are counted rather than listed.
+      expect(text('collection-unlisted-note')).toBe(words.unlistedNote(3));
+    });
+
+    it('says it could not load and tries again when asked, without a list in the meantime', async () => {
+      makeViewerWithAvatar();
+      const read = jest
+        .fn()
+        .mockResolvedValueOnce(err({ reason: 'OFFLINE', message: 'down' }))
+        .mockResolvedValueOnce(ok(GAME_SHEETS));
+      await mountGated(read);
+
+      expect(screen.getByText(words.sheetFailedOffline)).toBeTruthy();
+      expect(screen.queryByTestId('collection-list')).toBeNull();
+
+      await press('collection-sheets-retry');
+
+      expect(read).toHaveBeenCalledTimes(2);
+      expect(text('collection-progress')).toBe('1 of 6 unlocked');
+    });
+
+    it('refuses a collection sheet it cannot parse instead of showing a shorter list', async () => {
+      makeViewerWithAvatar();
+      const read = jest.fn(() =>
+        Promise.resolve(ok({ ...GAME_SHEETS, collectionCsv: 'id,item_id1\r\n1,notanumber' })),
+      );
+      await mountGated(read);
+
+      expect(screen.getByText(words.sheetMalformed)).toBeTruthy();
+      expect(screen.queryByTestId('collection-list')).toBeNull();
+    });
   });
 });

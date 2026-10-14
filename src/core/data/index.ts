@@ -15,6 +15,7 @@ export {
   type CollectionRepositoryDeps,
   type StoredChainRead,
 } from './collectionRepository';
+export { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
 export type { LiveData, UseLiveData } from './liveData';
 /**
  * `expoBackupFile.ts` is deliberately NOT re-exported, for the reason `arenaRepository.ts`

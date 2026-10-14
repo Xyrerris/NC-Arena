@@ -5,12 +5,20 @@
 
 import {
   SAMPLE_SHEET_CSV,
+  missingEquipment,
   missingItemGroups,
   parseCollectionSheet,
+  parseEquipmentCatalog,
   reconcile,
 } from '@/core/collection';
 
-import { bonusLabel, toHeaderUi, toItemLines, toRowUi } from './collectionUiState';
+import {
+  bonusLabel,
+  toEquipmentLines,
+  toHeaderUi,
+  toItemLines,
+  toRowUi,
+} from './collectionUiState';
 
 const SHEET = parseCollectionSheet(SAMPLE_SHEET_CSV);
 const NOW = 1_790_000_600_000;
@@ -31,7 +39,7 @@ describe('bonusLabel', () => {
 
 describe('toRowUi', () => {
   const rows = (ticked: number[]) =>
-    reconcile(SHEET, chain([1]), new Set(ticked)).rows.map(toRowUi);
+    reconcile(SHEET, chain([1]), new Set(ticked)).rows.map((row) => toRowUi(row));
 
   it('names the collection and sizes its hunt', () => {
     expect(rows([])[2]).toMatchObject({
@@ -63,7 +71,7 @@ describe('toRowUi', () => {
   });
 
   it('calls the same mark a claim, not a dispute, while no chain read exists', () => {
-    const claimed = reconcile(SHEET, null, new Set([2])).rows.map(toRowUi);
+    const claimed = reconcile(SHEET, null, new Set([2])).rows.map((row) => toRowUi(row));
 
     expect(claimed[1]?.statusLabel).toBe('Marked by you, not checked yet');
   });
@@ -103,6 +111,39 @@ describe('toHeaderUi', () => {
 
     expect(toHeaderUi(one, null, NOW).unknownNote).toContain('1 unlocked collection that');
     expect(toHeaderUi(two, null, NOW).unknownNote).toContain('2 unlocked collections that');
+  });
+});
+
+describe('toEquipmentLines', () => {
+  const catalog = parseEquipmentCatalog(
+    [
+      'id,_name,item_sub_type,grade,elemental_type',
+      '10110000,Long Sword,Weapon,1,Normal',
+      '10310000,Plate Armor,Armor,1,Fire',
+    ].join('\r\n'),
+  );
+
+  it('names each piece with level, element and skill, under a heading per kind', () => {
+    const { rows } = reconcile(SHEET, null, new Set());
+
+    const lines = toEquipmentLines(missingEquipment(rows, catalog));
+
+    expect(lines[0]).toEqual({ kind: 'heading', key: 'kind-Weapon', text: 'Weapon' });
+    expect(lines[1]).toEqual({
+      kind: 'item',
+      key: 'piece-10110000-0-true',
+      itemId: 10110000,
+      text: 'Long Sword +0 · Normal · with skill',
+      detail: 'helps 3 collections',
+    });
+  });
+
+  it('words the row of a collection with the names the catalog has, and ids for the rest', () => {
+    const { rows } = reconcile(SHEET, null, new Set());
+
+    expect(toRowUi(rows[0]!, catalog).itemsText).toBe(
+      'Long Sword +0 · Normal · 10210000 · 10660000',
+    );
   });
 });
 

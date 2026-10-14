@@ -29,7 +29,8 @@ that grants a permanent stat bonus once the avatar owns all of them.
 | `698dae8`             | **Confirming the address:** `AvatarSource`; `/me` shows "is this you?" before storing                              |
 | `64390ec`             | **Store:** `collection_ticks`, `collection_reads` (migration `0006`), `collectionRepository` in `core/data`        |
 | `45198a6`             | **Reconciliation:** pure rows, counts, filter, sort and item groups in `core/collection`                           |
-| (next commit)         | **Screen:** `/collection` beside the roster, `Arena \| Collection` switcher, on **placeholder data**               |
+| `1f7bf12`             | **Screen:** `/collection` beside the roster, `Arena \| Collection` switcher, on **placeholder data**               |
+| (2026-10-14)          | **Extraction connected:** sheets fetched (lib9c + Mimir), equipment by name/level/element/skill, "helps N"         |
 
 `core/collection` is pure and registered as a `core-collection` element in `eslint.config.js`
 (depends on `core-common` only; two probes in `scripts/check-boundaries.mjs`).
@@ -85,7 +86,13 @@ Test avatar: `Xyrerris`, planet `heimdall`, `#1023`,
    of the test avatar's unlocked ids; lib9c's 942 has all 444), and names come from the client's
    `item_name.csv` (210 of 424 in English), then the chain's item sheets (89 English, 55 Korean), then
    family and id (70). The client is at `%APPDATA%\Nine Chronicles\player\main\NineChronicles_Data\`.
-5. **The screen — built on placeholder data** (`/collection`, `features/collection`; ADR-0044 "Built: the
+   **Update 2026-10-14:** the sheet and the equipment names are no longer placeholders. They are **fetched
+   when the tab opens** (`GameSheetSource`: lib9c's CSV from GitHub, Mimir's `EquipmentItemSheet`), not
+   bundled, so this item's licence question only applies if they are ever bundled for offline use. The
+   items view now lists equipment as name · level · element · skill · "helps N" (ADR-0044, "Built
+   (2026-10-14)"). **Next step, once this is verified on a device:** costumes and materials in the same
+   list (ADR-0044, "Next step"). Still owed: persisting the sheets for a cold start offline.
+5. **The screen — built on placeholder data** (superseded by the update above for the sheet itself) (`/collection`, `features/collection`; ADR-0044 "Built: the
    screen"): progress bar, filters, sort by items needed, an items view with "helps N", mark and drop a
    tick, a refresh that never blanks the list. **Still owed:** the "hunting" / "ignore" marks (nowhere to
    store them), a sort by bonus (only meaningful within one stat), item and collection names, and the real

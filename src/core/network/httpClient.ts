@@ -55,6 +55,40 @@ export class HttpClient {
   }
 
   async request<T>(path: string, init: RequestInit = {}): Promise<Result<T, NetworkError>> {
+    return this.run<T>(path, init, async (response) => {
+      try {
+        return ok((await response.json()) as T);
+      } catch {
+        return err({
+          code: 'MALFORMED_RESPONSE',
+          message: `HTTP ${response.status}: invalid JSON body`,
+        });
+      }
+    });
+  }
+
+  /**
+   * Same deadline and failure taxonomy, but the body is returned as text. For a file served as
+   * plain text (a CSV on GitHub) where `request` would call it malformed JSON.
+   */
+  async requestText(path: string, init: RequestInit = {}): Promise<Result<string, NetworkError>> {
+    return this.run<string>(path, init, async (response) => {
+      try {
+        return ok(await response.text());
+      } catch {
+        return err({
+          code: 'MALFORMED_RESPONSE',
+          message: `HTTP ${response.status}: unreadable body`,
+        });
+      }
+    });
+  }
+
+  private async run<T>(
+    path: string,
+    init: RequestInit,
+    readBody: (response: Response) => Promise<Result<T, NetworkError>>,
+  ): Promise<Result<T, NetworkError>> {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Raced rather than trusted to the abort alone: aborting is what frees the socket, but the
@@ -67,7 +101,7 @@ export class HttpClient {
       }, this.timeoutMs);
     });
     try {
-      return await Promise.race([this.send<T>(path, init, controller.signal), expired]);
+      return await Promise.race([this.send<T>(path, init, controller.signal, readBody), expired]);
     } finally {
       clearTimeout(timer);
     }
@@ -77,6 +111,7 @@ export class HttpClient {
     path: string,
     init: RequestInit,
     signal: AbortSignal,
+    readBody: (response: Response) => Promise<Result<T, NetworkError>>,
   ): Promise<Result<T, NetworkError>> {
     const apiKey = this.readApiKey();
     let response: Response;
@@ -98,13 +133,6 @@ export class HttpClient {
       return err(await parseApiError(response));
     }
 
-    try {
-      return ok((await response.json()) as T);
-    } catch {
-      return err({
-        code: 'MALFORMED_RESPONSE',
-        message: `HTTP ${response.status}: invalid JSON body`,
-      });
-    }
+    return readBody(response);
   }
 }

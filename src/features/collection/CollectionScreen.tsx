@@ -26,7 +26,8 @@ import {
   radius,
   space,
 } from '@/core/design-system';
-import type { Collection } from '@/core/collection';
+import type { Collection, EquipmentCatalog } from '@/core/collection';
+import { useViewerAvatar } from '@/core/data';
 
 import { CollectionRowItem } from './CollectionRow';
 import {
@@ -39,10 +40,15 @@ import {
 } from './collectionUiState';
 import { collectionStrings as words } from './strings';
 import { useCollection, type CollectionController } from './useCollection';
+import { useGameSheets } from './useGameSheets';
 
 export interface CollectionScreenProps {
-  /** The collections to track. Where they come from is the route's business. */
-  sheet: readonly Collection[];
+  /**
+   * The collections to track, when the route already has them (a test, or a placeholder). Left
+   * out, the screen loads the game's sheets itself through `ArenaData.sheets` and names the
+   * equipment; given, it shows exactly this list and bare ids.
+   */
+  sheet?: readonly Collection[];
   /** The Arena | Collection switcher, supplied by the route (a feature may not import another). */
   sectionTabs?: ReactNode;
   /** True while `sheet` is placeholder data: the screen says so rather than let it pass. */
@@ -54,7 +60,78 @@ export function CollectionScreen({
   sectionTabs,
   sampleData = false,
 }: CollectionScreenProps) {
-  const controller = useCollection(sheet);
+  if (sheet !== undefined) {
+    return <CollectionBody sheet={sheet} sectionTabs={sectionTabs} sampleData={sampleData} />;
+  }
+  return <SheetGate sectionTabs={sectionTabs} />;
+}
+
+/**
+ * Fetches the sheets before there is anything to track. Until they are in, the screen is the title
+ * and one sentence; a failure says why and offers another try, because without the list there is
+ * nothing to show and nothing to fall back to.
+ */
+function SheetGate({ sectionTabs }: { sectionTabs?: ReactNode }) {
+  const avatar = useViewerAvatar();
+  const loaded = useGameSheets(avatar?.planet ?? 'heimdall');
+
+  if (loaded.status === 'ready') {
+    return (
+      <CollectionBody
+        sheet={loaded.sheet}
+        catalog={loaded.catalog}
+        sectionTabs={sectionTabs}
+        sampleData={false}
+      />
+    );
+  }
+
+  return (
+    <ScreenScaffold applyBottomInset={false}>
+      <View style={styles.top}>
+        {sectionTabs}
+        <ArenaText variant="displayMedium" tone="primary" accessibilityRole="header">
+          {words.title}
+        </ArenaText>
+      </View>
+      <View style={styles.centred} testID="collection-sheets-state">
+        {loaded.status === 'loading' ? (
+          <ArenaText variant="bodySmall" tone="subtle" accessibilityLiveRegion="polite">
+            {words.sheetLoading}
+          </ArenaText>
+        ) : (
+          <>
+            <ArenaText variant="bodySmall" tone="negative" align="center">
+              {loaded.reason === 'OFFLINE'
+                ? words.sheetFailedOffline
+                : loaded.reason === 'MALFORMED'
+                  ? words.sheetMalformed
+                  : words.sheetFailedOther}
+            </ArenaText>
+            <ArenaButton
+              label={words.sheetRetry}
+              onPress={loaded.retry}
+              testID="collection-sheets-retry"
+            />
+          </>
+        )}
+      </View>
+    </ScreenScaffold>
+  );
+}
+
+function CollectionBody({
+  sheet,
+  catalog,
+  sectionTabs,
+  sampleData,
+}: {
+  sheet: readonly Collection[];
+  catalog?: EquipmentCatalog;
+  sectionTabs?: ReactNode;
+  sampleData: boolean;
+}) {
+  const controller = useCollection(sheet, catalog);
   const router = useRouter();
   const openViewer = useCallback(() => router.push('/me'), [router]);
 
@@ -264,6 +341,15 @@ function ItemList({ controller }: { controller: CollectionController }) {
       keyExtractor={(line) => line.key}
       getItemType={(line) => line.kind}
       renderItem={({ item }) => <ItemLine line={item} />}
+      ListHeaderComponent={
+        controller.unlistedSlots === 0 ? null : (
+          <View style={styles.itemHeading}>
+            <ArenaText variant="bodyCaption" tone="subtle" testID="collection-unlisted-note">
+              {words.unlistedNote(controller.unlistedSlots)}
+            </ArenaText>
+          </View>
+        )
+      }
       ListEmptyComponent={
         <View style={styles.centred} testID="collection-items-empty">
           <ArenaText variant="titleMedium" tone="primary" align="center">
@@ -295,6 +381,11 @@ function ItemLine({ line }: { line: ItemLineUi }) {
       <ArenaText variant="bodyMedium" tone="body">
         {line.text}
       </ArenaText>
+      {line.detail === undefined ? null : (
+        <ArenaText variant="bodyCaption" tone="subtle">
+          {line.detail}
+        </ArenaText>
+      )}
     </View>
   );
 }

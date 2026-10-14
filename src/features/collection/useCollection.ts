@@ -15,10 +15,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   filterRows,
+  missingEquipment,
   missingItemGroups,
   reconcile,
   sortRows,
   type Collection,
+  type EquipmentCatalog,
   type RowFilter,
   type RowSort,
 } from '@/core/collection';
@@ -29,6 +31,7 @@ import type { ViewerAvatar } from '@/core/model';
 import {
   failureMessage,
   toHeaderUi,
+  toEquipmentLines,
   toItemLines,
   toRowUi,
   type CollectionHeaderUi,
@@ -53,6 +56,8 @@ export interface CollectionController {
   header: CollectionHeaderUi;
   rows: readonly CollectionRowUi[];
   itemLines: readonly ItemLineUi[];
+  /** Open-collection slots for costumes and materials, which the items view does not list yet. */
+  unlistedSlots: number;
   view: CollectionView;
   filter: RowFilter;
   sort: RowSort;
@@ -64,7 +69,12 @@ export interface CollectionController {
   onRefresh: () => void;
 }
 
-export const useCollection = (sheet: readonly Collection[]): CollectionController => {
+const NO_CATALOG: EquipmentCatalog = new Map();
+
+export const useCollection = (
+  sheet: readonly Collection[],
+  catalog: EquipmentCatalog = NO_CATALOG,
+): CollectionController => {
   const { collections, useLiveData } = useArenaData();
   if (collections === undefined) {
     throw new Error(
@@ -144,13 +154,22 @@ export const useCollection = (sheet: readonly Collection[]): CollectionControlle
   );
 
   const reconciliation = reconcile(sheet, chainRead, ticked);
-  const rows = sortRows(filterRows(reconciliation.rows, filter), sort).map(toRowUi);
+  const rows = sortRows(filterRows(reconciliation.rows, filter), sort).map((row) =>
+    toRowUi(row, catalog),
+  );
+  // With a catalog the items view lists equipment by name, level, element and skill; without one
+  // (the placeholder sheet) it falls back to bare ids, which is all the sheet itself can say.
+  const equipment = catalog.size > 0 ? missingEquipment(reconciliation.rows, catalog) : null;
 
   return {
     avatar,
     header: toHeaderUi(reconciliation, chainRead, now),
     rows,
-    itemLines: toItemLines(missingItemGroups(reconciliation.rows)),
+    itemLines:
+      equipment === null
+        ? toItemLines(missingItemGroups(reconciliation.rows))
+        : toEquipmentLines(equipment),
+    unlistedSlots: equipment?.unlistedSlots ?? 0,
     view,
     filter,
     sort,

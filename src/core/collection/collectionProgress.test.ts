@@ -9,7 +9,7 @@ import type { Collection } from './collectionSheet';
 
 const make = (id: number, ...itemIds: number[]): Collection => ({
   id,
-  requirements: itemIds.map((itemId) => ({ itemId, count: 1, level: 0 })),
+  requirements: itemIds.map((itemId) => ({ itemId, count: 1, level: 0, skillContains: true })),
   bonuses: [],
 });
 const A = make(1, 100, 200);

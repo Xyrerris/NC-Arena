@@ -18,6 +18,7 @@ import type { AvatarSource } from '../common';
 import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
 import type { RosterRepository } from './rosterRepository';
+import type { SheetLibrary } from './sheetLibrary';
 
 export interface ArenaData {
   repository: RosterRepository;
@@ -35,6 +36,11 @@ export interface ArenaData {
    * without it, loudly, rather than showing a tracker that cannot save.
    */
   collections?: CollectionRepository;
+  /**
+   * The game's collection and item sheets (ADR-0044). Optional like the two above: only the
+   * collection screen reads it, and only when its route did not hand it a sheet directly.
+   */
+  sheets?: SheetLibrary;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);

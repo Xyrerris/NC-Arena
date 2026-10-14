@@ -20,6 +20,7 @@ export type {
   CollectionSource,
   UnlockedCollections,
 } from './collectionSource';
+export type { GameSheets, SheetError, SheetFailure, SheetSource } from './sheetSource';
 export { err, isOk, ok, type Result } from './result';
 export type {
   RosterPush,

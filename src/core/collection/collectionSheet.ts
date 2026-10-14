@@ -18,6 +18,11 @@ export interface CollectionRequirement {
   readonly itemId: number;
   readonly count: number;
   readonly level: number;
+  /**
+   * lib9c's `SkillContains`: true means the piece must carry at least one skill, false that it
+   * must carry none. Two requirements for the same id and level can differ only by this.
+   */
+  readonly skillContains: boolean;
 }
 
 export interface CollectionBonus {
@@ -41,6 +46,14 @@ const toInt = (raw: string, what: string, row: number): number => {
     throw new Error(`CollectionSheet row ${row}: ${what} is not an integer: "${raw}"`);
   }
   return value;
+};
+
+const toBool = (raw: string, what: string, row: number): boolean => {
+  const value = raw.toLowerCase();
+  if (value === 'true') return true;
+  // Empty is false, as in lib9c's `ParseBool(field, false)`.
+  if (value === 'false' || value === '') return false;
+  throw new Error(`CollectionSheet row ${row}: ${what} is not TRUE or FALSE: "${raw}"`);
 };
 
 export function parseCollectionSheet(csv: string): readonly Collection[] {
@@ -69,7 +82,11 @@ export function parseCollectionSheet(csv: string): readonly Collection[] {
       requirements.push({
         itemId: toInt(raw, `item_id${n}`, row),
         count: toInt(cell(need(`count${n}`)), `count${n}`, row),
-        level: toInt(cell(need(`level${n}`)), `level${n}`, row),
+        // lib9c reads an empty level as 0 (`ParseInt(field, 0)`) and 433 requirements in the sheet
+        // leave it blank (the first is a material, item 201000). Anything else that is not an
+        // integer is still an error.
+        level: toInt(cell(need(`level${n}`)) || '0', `level${n}`, row),
+        skillContains: toBool(cell(need(`skill${n}`)), `skill${n}`, row),
       });
     }
 

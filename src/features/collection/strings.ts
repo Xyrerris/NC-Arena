@@ -40,7 +40,19 @@ export const collectionStrings = {
 
   collectionTitle: (id: number) => `Collection ${id}`,
   itemCount: (count: number) => `${count} ${count === 1 ? 'item' : 'items'}`,
-  itemList: (ids: readonly number[]) => ids.join(' · '),
+  itemList: (labels: readonly (number | string)[]) => labels.join(' · '),
+  piece: (name: string, level: number, element: string) => `${name} +${level} · ${element}`,
+  withSkill: 'with skill',
+  noSkill: 'no skill',
+  helps: (count: number) => `helps ${count} ${count === 1 ? 'collection' : 'collections'}`,
+  unlistedNote: (slots: number) =>
+    `${slots} costume and material ${slots === 1 ? 'slot is' : 'slots are'} not in this list yet.`,
+
+  sheetLoading: 'Loading the collection list…',
+  sheetFailedOffline: 'Could not reach the game data. Check the connection and try again.',
+  sheetFailedOther: 'The game data could not be read right now.',
+  sheetMalformed: 'The game data came back in a shape this app does not understand.',
+  sheetRetry: 'TRY AGAIN',
 
   statusUnlocked: 'Unlocked',
   statusClaimed: 'Marked by you, not checked yet',

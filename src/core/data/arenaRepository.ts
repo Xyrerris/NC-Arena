@@ -34,6 +34,7 @@ import type { AvatarSource, CollectionSource } from '../common';
 import {
   FallbackAvatarSource,
   FallbackCollectionSource,
+  GameSheetSource,
   MimirAvatarSource,
   MimirCollectionSource,
   NodeAvatarSource,
@@ -44,6 +45,7 @@ import {
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
 import { createCollectionRepository } from './collectionRepository';
+import { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
 import { createRosterRepository } from './rosterRepository';
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -94,6 +96,12 @@ export const collectionRepository = createCollectionRepository({
   db: arenaDb,
   source: collectionSource,
 });
+
+/**
+ * The collection sheet (lib9c) and the equipment names (Mimir), fetched when the collection tab
+ * opens and kept for the run. Not bundled: that waits on a licence decision (ADR-0044).
+ */
+export const sheetLibrary: SheetLibrary = createSheetLibrary({ source: new GameSheetSource() });
 
 /** Who is at an avatar address, read from the same two public services. */
 export const avatarSource: AvatarSource = new FallbackAvatarSource([

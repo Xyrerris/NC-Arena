@@ -8,7 +8,10 @@
 
 import type {
   CollectionBonus,
+  CollectionRequirement,
   CollectionRow,
+  EquipmentCatalog,
+  MissingEquipmentList,
   CollectionStatus,
   ItemGroup,
   Reconciliation,
@@ -71,7 +74,21 @@ export interface CollectionRowUi {
   readonly action: { readonly tick: boolean; readonly label: string; readonly a11y: string } | null;
 }
 
-export const toRowUi = (row: CollectionRow): CollectionRowUi => {
+/** `Long Sword +4 · Fire`: what a collection asks for, in words when the catalog knows the id. */
+export const requirementLabel = (
+  requirement: CollectionRequirement,
+  catalog: EquipmentCatalog,
+): string => {
+  const info = catalog.get(requirement.itemId);
+  return info === undefined
+    ? String(requirement.itemId)
+    : words.piece(info.name, requirement.level, info.element);
+};
+
+export const toRowUi = (
+  row: CollectionRow,
+  catalog: EquipmentCatalog = new Map(),
+): CollectionRowUi => {
   const id = row.collection.id;
   const status = STATUS[row.status];
   let action: CollectionRowUi['action'] = null;
@@ -87,7 +104,7 @@ export const toRowUi = (row: CollectionRow): CollectionRowUi => {
     statusLabel: status.label,
     statusTone: status.tone,
     itemCountLabel: words.itemCount(row.itemsNeeded),
-    itemsText: words.itemList(row.collection.requirements.map((r) => r.itemId)),
+    itemsText: words.itemList(row.collection.requirements.map((r) => requirementLabel(r, catalog))),
     bonusText: bonusLabel(row.collection.bonuses),
     action,
   };
@@ -130,7 +147,34 @@ export type ItemLineUi =
       readonly key: string;
       readonly itemId: number;
       readonly text: string;
+      /** A second line under `text`: how many open collections the piece would finish. */
+      readonly detail?: string;
     };
+
+/**
+ * The equipment still to find, one line per piece (name, level, element, skill) with how many
+ * open collections it helps, under a heading per kind of equipment. The list arrives sorted by
+ * how many collections a piece helps, so a heading takes its place from the first piece under it.
+ */
+export const toEquipmentLines = (list: MissingEquipmentList): readonly ItemLineUi[] => {
+  const kinds: string[] = [];
+  for (const piece of list.entries) if (!kinds.includes(piece.subType)) kinds.push(piece.subType);
+
+  return kinds.flatMap((kind) => [
+    { kind: 'heading' as const, key: `kind-${kind}`, text: kind },
+    ...list.entries
+      .filter((piece) => piece.subType === kind)
+      .map((piece) => ({
+        kind: 'item' as const,
+        key: `piece-${piece.id}-${piece.level}-${piece.skillContains}`,
+        itemId: piece.id,
+        text: `${words.piece(piece.name, piece.level, piece.element)} · ${
+          piece.skillContains ? words.withSkill : words.noSkill
+        }`,
+        detail: words.helps(piece.neededBy.length),
+      })),
+  ]);
+};
 
 export const toItemLines = (groups: readonly ItemGroup[]): readonly ItemLineUi[] =>
   groups.flatMap((group) => [
