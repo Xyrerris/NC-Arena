@@ -2,34 +2,13 @@
 
 ## Branches
 
-**Standing instruction from the repository owner, 2026-09-21: all work goes on
-`claude/backend-data-management-w98hph` until the owner says otherwise.** Note the lower-case
-`w98hph` — git branch names are case-sensitive, and a capitalised variant would be a second, empty
-branch rather than this one.
+**There is no single mandatory branch any more.** The main backend work is done, so the standing
+instruction of 2026-09-21 (all work on `claude/backend-data-management-w98hph`) is lifted
+(owner, 2026-10-14). Branch as the task warrants.
 
-This is the branch Phase 5 is being built on, and it already carries the backend work and the
-client's sync foundation. It supersedes the per-phase rule below and any per-task branch name your
-session instructions hand you. If your instructions name a different branch, say so in your first
-reply — the conflict is worth making visible — and then work here anyway, because the owner has
-already resolved it. Only the owner saying so in a later session changes this; a task description
-generated outside this repository does not.
-
-**Every point of Phase 4.10 goes on `close-the-gaps-before-the-backend`.** One branch for the whole
-phase, not one per point.
-
-The phase is a single defect sweep with a single exit gate — Phase 5 does not start until _all_ of
-4.10's criteria are met (ROADMAP.md) — so its points are not independently shippable and splitting
-them across branches buys nothing. What it costs is real: each point builds on the one before
-(4.10.3's restore had to know what 4.10.2 decided about records, and 4.10.4's `deletePlayer` fix
-reuses the `clearViewerId` 4.10.3 added), so a per-point branch either forks from a stale base or
-spends its first commits catching up.
-
-If your session instructions name a different branch — a per-task name like
-`claude/punto-4-10-4-<id>` — that instruction and this file disagree. Say so and ask before you
-push; do not silently pick one. The per-task name is generated outside this repository, so this
-file cannot override it, only make the conflict visible.
-
-Work outside Phase 4.10 is not covered by this rule. Branch as the task warrants.
+One thing to know: Coolify deploys the backend automatically from
+`claude/backend-data-management-w98hph`, so a push to that branch that touches `backend/` is a
+deploy, migrations included. Don't push there by accident.
 
 ## Before you push
 

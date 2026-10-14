@@ -1,7 +1,8 @@
 # Handoff — Phase 5, mid-flight
 
-**As of 2026-09-27.** Branch: `claude/backend-data-management-w98hph` (see CLAUDE.md — all work goes
-there until the owner says otherwise).
+**As of 2026-09-27.** The backend was built on `claude/backend-data-management-w98hph`, which is
+still the branch Coolify deploys from. Since 2026-10-14 work is no longer confined to it (see
+CLAUDE.md).
 
 This file says where Phase 5 stopped and which decisions are already made, so the next session
 argues about the right things. It is not a substitute for ADR-0035 and its five addenda in
