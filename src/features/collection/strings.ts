@@ -18,6 +18,8 @@ export const collectionStrings = {
   sortFewest: 'FEWEST ITEMS',
   sortSheet: 'LIST ORDER',
 
+  statsLabel: 'REWARDS — all of the ones selected',
+
   noAvatarTitle: 'No avatar yet',
   noAvatarBody: 'Say which Nine Chronicles avatar is yours, and its collections show up here.',
   noAvatarAction: 'OPEN YOU',

@@ -11,13 +11,15 @@
  * Nothing here would change when that does.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  filterByRewardStats,
   filterRows,
   missingEquipment,
   missingItemGroups,
   reconcile,
+  rewardStats,
   sortRows,
   type Collection,
   type EquipmentCatalog,
@@ -61,9 +63,14 @@ export interface CollectionController {
   view: CollectionView;
   filter: RowFilter;
   sort: RowSort;
+  /** The stats the sheet's collections reward, in the game's order: the filter's choices. */
+  statOptions: readonly string[];
+  /** The reward stats selected. A collection must give all of them to stay in the list. */
+  stats: ReadonlySet<string>;
   refresh: RefreshUi;
   onView: (view: CollectionView) => void;
   onFilter: (filter: RowFilter) => void;
+  onStat: (stat: string) => void;
   onSort: (sort: RowSort) => void;
   onTick: (collectionId: number, ticked: boolean) => void;
   onRefresh: () => void;
@@ -92,6 +99,16 @@ export const useCollection = (
   const [view, setView] = useState<CollectionView>('COLLECTIONS');
   const [filter, setFilter] = useState<RowFilter>('OPEN');
   const [sort, setSort] = useState<RowSort>('FEWEST_ITEMS');
+  // Reward stats asked for, all of which a collection must give (AND). Empty means no filter.
+  const [stats, setStats] = useState<ReadonlySet<string>>(new Set());
+  const statOptions = useMemo(() => rewardStats(sheet), [sheet]);
+  const onStat = useCallback((stat: string) => {
+    setStats((current) => {
+      const next = new Set(current);
+      if (!next.delete(stat)) next.add(stat);
+      return next;
+    });
+  }, []);
   // The first read starts as soon as there is an avatar (below), so the screen opens already
   // saying it is reading rather than flashing "never checked".
   const [refresh, setRefresh] = useState<RefreshUi>(
@@ -154,28 +171,31 @@ export const useCollection = (
   );
 
   const reconciliation = reconcile(sheet, chainRead, ticked);
-  const rows = sortRows(filterRows(reconciliation.rows, filter), sort).map((row) =>
-    toRowUi(row, catalog),
-  );
+  // The reward filter narrows both views: the items view lists what the collections that
+  // remain still need, so asking for ATK and HIT shows the pieces for those collections only.
+  // The status filter is the collections view's alone; the items view is always about open ones.
+  const rewarded = filterByRewardStats(reconciliation.rows, stats);
+  const rows = sortRows(filterRows(rewarded, filter), sort).map((row) => toRowUi(row, catalog));
   // With a catalog the items view lists equipment by name, level, element and skill; without one
   // (the placeholder sheet) it falls back to bare ids, which is all the sheet itself can say.
-  const equipment = catalog.size > 0 ? missingEquipment(reconciliation.rows, catalog) : null;
+  const equipment = catalog.size > 0 ? missingEquipment(rewarded, catalog) : null;
 
   return {
     avatar,
     header: toHeaderUi(reconciliation, chainRead, now),
     rows,
     itemLines:
-      equipment === null
-        ? toItemLines(missingItemGroups(reconciliation.rows))
-        : toEquipmentLines(equipment),
+      equipment === null ? toItemLines(missingItemGroups(rewarded)) : toEquipmentLines(equipment),
     unlistedSlots: equipment?.unlistedSlots ?? 0,
     view,
     filter,
     sort,
+    statOptions,
+    stats,
     refresh,
     onView: setView,
     onFilter: setFilter,
+    onStat,
     onSort: setSort,
     onTick,
     onRefresh,

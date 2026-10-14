@@ -179,6 +179,39 @@ describe('CollectionScreen', () => {
     expect(screen.getByTestId('collection-empty')).toBeTruthy();
   });
 
+  it('filters by the stats a collection rewards, all of them at once', async () => {
+    makeViewerWithAvatar();
+    await mount();
+
+    await press('collection-stat-ATK');
+    expect(listedIds()).toEqual([2, 3]);
+
+    // 1 gives ATK and DEF but is unlocked, so the open list holds nothing with both.
+    await press('collection-stat-DEF');
+    expect(listedIds()).toEqual([]);
+    expect(screen.getByTestId('collection-empty')).toBeTruthy();
+
+    await press('collection-stat-DEF');
+    expect(listedIds()).toEqual([2, 3]);
+    expect(screen.getByTestId('collection-stat-ATK').props.accessibilityState).toMatchObject({
+      selected: true,
+    });
+  });
+
+  it('narrows the items view to the collections that reward the stat', async () => {
+    makeViewerWithAvatar();
+    await mount();
+    await act(async () => {
+      fireEvent.press(screen.getByText(words.viewItems));
+    });
+
+    await press('collection-stat-SPD');
+
+    // Only collection 5 rewards SPD, so only its item is still to find.
+    expect(screen.getByText('40100001 · helps 1 collection')).toBeTruthy();
+    expect(screen.queryByText('10110000 · helps 2 collections')).toBeNull();
+  });
+
   it('moves the sort chip when another order is chosen', async () => {
     makeViewerWithAvatar();
     await mount();

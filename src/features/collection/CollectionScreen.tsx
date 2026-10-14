@@ -207,6 +207,25 @@ function CollectionHeader({
         testID="collection-views"
       />
 
+      {controller.statOptions.length === 0 ? null : (
+        <View style={styles.statFilter}>
+          <ArenaText variant="bodyCaption" tone="subtle">
+            {words.statsLabel}
+          </ArenaText>
+          <View style={styles.chips}>
+            {controller.statOptions.map((stat) => (
+              <SortChip
+                key={stat}
+                label={stat}
+                selected={controller.stats.has(stat)}
+                onPress={() => controller.onStat(stat)}
+                testID={`collection-stat-${stat}`}
+              />
+            ))}
+          </View>
+        </View>
+      )}
+
       {controller.view === 'COLLECTIONS' ? (
         <>
           <View style={styles.chips}>
@@ -353,10 +372,10 @@ function ItemList({ controller }: { controller: CollectionController }) {
       ListEmptyComponent={
         <View style={styles.centred} testID="collection-items-empty">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            {words.emptyItemsTitle}
+            {controller.stats.size > 0 ? words.emptyFilterTitle : words.emptyItemsTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="subtle" align="center">
-            {words.emptyItemsBody}
+            {controller.stats.size > 0 ? words.emptyFilterBody : words.emptyItemsBody}
           </ArenaText>
         </View>
       }
@@ -403,6 +422,7 @@ const styles = StyleSheet.create({
   },
   barDone: { backgroundColor: color.accent },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
+  statFilter: { gap: space[6] },
   failure: {
     flexDirection: 'row',
     // Wraps rather than shrinks: at 200 % font scale the sentence and the button cannot share a line.

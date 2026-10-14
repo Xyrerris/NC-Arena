@@ -98,6 +98,39 @@ export function filterRows(rows: readonly CollectionRow[], filter: RowFilter): C
   return rows.filter((row) => row.status === filter);
 }
 
+/** The order the game lists stats in; any stat the sheet adds later follows, alphabetically. */
+const STAT_ORDER: readonly string[] = ['HP', 'ATK', 'DEF', 'SPD', 'HIT', 'CDMG', 'CRI'];
+
+/**
+ * The stats the collections reward, read from the sheet rather than assumed, so a stat lib9c adds
+ * shows up as a filter without a code change. `Add` and `Percentage` bonuses of one stat are the
+ * same stat here: asking for ATK means "gives ATK", however it is given.
+ */
+export function rewardStats(collections: readonly Collection[]): readonly string[] {
+  const found = new Set<string>();
+  for (const { bonuses } of collections) for (const { stat } of bonuses) found.add(stat);
+  const rank = (stat: string): number => {
+    const index = STAT_ORDER.indexOf(stat);
+    return index === -1 ? STAT_ORDER.length : index;
+  };
+  return [...found].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/**
+ * Keeps the collections that reward **every** stat asked for (AND): `ATK` and `HIT` leaves those
+ * that give both, and may well give more besides. No stat asked for keeps everything.
+ */
+export function filterByRewardStats(
+  rows: readonly CollectionRow[],
+  stats: ReadonlySet<string>,
+): CollectionRow[] {
+  if (stats.size === 0) return [...rows];
+  return rows.filter((row) => {
+    const given = new Set(row.collection.bonuses.map((bonus) => bonus.stat));
+    return [...stats].every((stat) => given.has(stat));
+  });
+}
+
 export type RowSort = 'SHEET' | 'FEWEST_ITEMS';
 
 /** Stable: rows that tie keep the sheet's order, so the list does not shuffle between renders. */

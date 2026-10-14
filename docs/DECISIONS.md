@@ -2638,7 +2638,8 @@ and an avatar address) and a tick by hand (works offline, but is only a memory).
   row's size is how many distinct items it asks for. For the 716 one-item collections that is "one
   away"; for the others it is the size of the hunt, not what is left of it.
 - **No sort by bonus value.** HP, ATK and DEF are different units, and `Add` and `Percentage` are
-  different scales (and what unit `Percentage` values are in has not been checked), so a single
+  different scales (a `Percentage` value is in percentage points — see "Built (2026-10-14): reward
+  filter" — so `2` is 2 %, but it still does not rank against a flat amount), so a single
   ranking would be arbitrary. It is only meaningful within one stat, and waits for a design.
 - **A route, `/collection`, beside the roster**, and an `Arena | Collection` switcher
   (`features/sectionTabs`) that both routes render. It uses `replace`, so flipping between the two
@@ -2708,6 +2709,20 @@ level (`+0`, `+4`…), an element and — "if it is easy" — how many collectio
   not dropped (`unknownUnlockedIds`), and the reverse — a collection in the sheet that is not live — is not
   detected. Twelve equipment names are Korean (the chain's `_name` is not always English).
   Equipment is the whole list: 217 requirement slots of the open collections are costumes and materials.
+
+**Built (2026-10-14): reward filter, and `%` for a percentage bonus.**
+
+- **Filter by the stats a collection rewards**, in both views. The choices are the stats found in the
+  sheet (`rewardStats`, in the game's order HP, ATK, DEF, SPD, HIT, CDMG, CRI), so one lib9c adds appears
+  without a change. Selected stats combine with **AND**: `ATK` + `HIT` keeps the collections that give
+  both, and any others besides (`filterByRewardStats`). A flat and a percentage bonus of one stat are the
+  same stat to the filter. It narrows the items view too, which then lists what the remaining
+  collections still need; the progress numbers in the header stay those of the whole sheet. It
+  composes with the status filter (OPEN, UNLOCKED…), which belongs to the collections view alone.
+- **`%`, not "(percentage)".** lib9c's `StatModifier` applies a `Percentage` value as
+  `value * Value / 100` and prints it with a `%` (`ToString`), so the value is in percentage points and
+  `HP,Percentage,2` is `HP +2%`. The earlier wording existed only because the unit had not been
+  checked. A percentage still cannot be ranked against a flat amount, so sorting by bonus stays open.
 
 **Next step (not started): costumes and materials in the same list.** Do this **once the above works
 on a device and the numbers have been checked against the game** — not before. The 217 open slots that

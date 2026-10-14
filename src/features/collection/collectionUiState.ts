@@ -51,14 +51,11 @@ const STATUS: Record<CollectionStatus, { label: string; tone: Tone }> = {
 };
 
 /**
- * `ATK +500`. A percentage bonus says so in words rather than with a `%`: what unit lib9c's
- * `Percentage` values are in has not been checked against the game, and a wrong symbol is
- * worse than a plain word.
+ * `ATK +500`, or `HP +2%`. A `Percentage` value is in percentage points: lib9c applies it as
+ * `value * Value / 100` and prints it with a `%` itself (`StatModifier.ToString`).
  */
 export const bonusLabel = (bonuses: readonly CollectionBonus[]): string =>
-  bonuses
-    .map((b) => `${b.stat} +${b.value}${b.operation === 'Percentage' ? ' (percentage)' : ''}`)
-    .join(' · ');
+  bonuses.map((b) => `${b.stat} +${b.value}${b.operation === 'Percentage' ? '%' : ''}`).join(' · ');
 
 export interface CollectionRowUi {
   /** Stable list key. */

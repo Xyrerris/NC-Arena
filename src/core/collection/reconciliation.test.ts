@@ -7,10 +7,12 @@
 import type { ChainRead } from './collectionProgress';
 import { parseCollectionSheet } from './collectionSheet';
 import {
+  filterByRewardStats,
   filterRows,
   itemFamily,
   missingItemGroups,
   reconcile,
+  rewardStats,
   sortRows,
   type CollectionRow,
 } from './reconciliation';
@@ -128,6 +130,39 @@ describe('filterRows', () => {
     expect(ids(filterRows(rows, 'DISPUTED'))).toEqual([2, 5]);
     expect(ids(filterRows(rows, 'UNLOCKED'))).toEqual([1, 4]);
     expect(ids(filterRows(rows, 'CLAIMED'))).toEqual([]);
+  });
+});
+
+describe('rewardStats and filterByRewardStats', () => {
+  const { rows } = reconcile(SHEET, null, new Set());
+
+  it('lists the stats the sheet rewards, in the game order, once each', () => {
+    expect(rewardStats(SHEET)).toEqual(['HP', 'ATK', 'DEF', 'SPD', 'HIT']);
+  });
+
+  it('keeps everything when no stat is asked for', () => {
+    expect(ids(filterByRewardStats(rows, new Set()))).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('keeps the collections that give the stat, however it is given', () => {
+    // 4 gives HP as a percentage, 1 gives it as a flat amount: both are "gives HP".
+    expect(ids(filterByRewardStats(rows, new Set(['HP'])))).toEqual([1, 4]);
+    expect(ids(filterByRewardStats(rows, new Set(['ATK'])))).toEqual([1, 2, 3]);
+  });
+
+  it('is an AND: every stat asked for, and others besides are fine', () => {
+    expect(ids(filterByRewardStats(rows, new Set(['ATK', 'DEF'])))).toEqual([1]);
+    expect(ids(filterByRewardStats(rows, new Set(['HP', 'ATK', 'DEF'])))).toEqual([1]);
+    // No collection gives both ATK and HIT, so it is empty rather than "ATK or HIT".
+    expect(ids(filterByRewardStats(rows, new Set(['ATK', 'HIT'])))).toEqual([]);
+  });
+
+  it('combines with the state filter', () => {
+    const chainRows = reconcile(SHEET, chain([1]), new Set()).rows;
+
+    expect(ids(filterRows(filterByRewardStats(chainRows, new Set(['ATK'])), 'OPEN'))).toEqual([
+      2, 3,
+    ]);
   });
 });
 

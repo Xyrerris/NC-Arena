@@ -29,11 +29,11 @@ const chain = (ids: number[], readAt = 1_790_000_000_000) => ({
 });
 
 describe('bonusLabel', () => {
-  it('lists each bonus, saying "percentage" in words rather than guessing a unit', () => {
+  it('lists each bonus, with a % for a percentage one as the game writes it', () => {
     const [big, , , grimoire] = SHEET;
 
     expect(bonusLabel(big?.bonuses ?? [])).toBe('HP +1000 · ATK +400 · DEF +80');
-    expect(bonusLabel(grimoire?.bonuses ?? [])).toBe('HP +2 (percentage)');
+    expect(bonusLabel(grimoire?.bonuses ?? [])).toBe('HP +2%');
   });
 });
 
