@@ -1,16 +1,25 @@
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { ArenaDataProvider, type ArenaData } from '@/core/data';
-import { arenaRepository } from '@/core/data/arenaRepository';
+import { ArenaDataProvider, useNeedsAccount, type ArenaData } from '@/core/data';
+import {
+  arenaQueryClient,
+  arenaRepository,
+  avatarSource,
+  collectionRepository,
+  sheetLibrary,
+} from '@/core/data/arenaRepository';
+import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
 import { useExpoLiveData } from '@/core/data/expoLiveData';
 import { useArenaMigrations } from '@/core/db/client';
 import { ArenaText, color, layout, space, useArenaFonts } from '@/core/design-system';
+import { AccountSetupScreen } from '@/features/accountSetup';
 
 /**
  * Root layout.
@@ -46,7 +55,13 @@ void SplashScreen.preventAutoHideAsync();
  * the context identity never changes — a new object per render would re-subscribe every
  * live query in the tree on every render.
  */
-const ARENA_DATA: ArenaData = { repository: arenaRepository, useLiveData: useExpoLiveData };
+const ARENA_DATA: ArenaData = {
+  repository: arenaRepository,
+  useLiveData: useExpoLiveData,
+  avatarSource,
+  collections: collectionRepository,
+  sheets: sheetLibrary,
+};
 
 export default function RootLayout() {
   const { success, error } = useArenaMigrations();
@@ -60,6 +75,18 @@ export default function RootLayout() {
     if (ready) void SplashScreen.hideAsync();
   }, [ready]);
 
+  // The periodic sync is scheduled once the database is known to be usable. The task itself is
+  // *defined* in the entry, not here (see `core/data/backgroundSync.ts` for why); this only asks
+  // the OS to run it. Best-effort: a device that refuses background work still has
+  // pull-to-refresh, so a refusal is a development warning rather than a boot failure.
+  const booted = ready && !failure;
+  useEffect(() => {
+    if (!booted) return;
+    scheduleBackgroundSync().catch((cause: unknown) => {
+      if (__DEV__) console.warn('The periodic sync could not be scheduled.', cause);
+    });
+  }, [booted]);
+
   // Splash stays up. Returning null rather than a spinner is deliberate: a spinner behind a
   // splash screen is invisible work that only makes the boot path harder to reason about.
   if (!ready) return null;
@@ -71,13 +98,47 @@ export default function RootLayout() {
         {failure ? (
           <BootFailure message={failure.message} />
         ) : (
-          <ArenaDataProvider value={ARENA_DATA}>
-            <ArenaStack key={fontScale} />
-          </ArenaDataProvider>
+          <QueryClientProvider client={arenaQueryClient}>
+            <ArenaDataProvider value={ARENA_DATA}>
+              <ArenaGate fontScale={fontScale} />
+            </ArenaDataProvider>
+          </QueryClientProvider>
         )}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+/**
+ * The setup gate (ADR-0035, decision 2). With a backend configured and no API key stored,
+ * there is nothing the app can do until this device is paired, so the gate is what there is
+ * instead of the stack — not a route, because a route would be somewhere the user could
+ * navigate away from.
+ *
+ * **Whether setup is required is latched at mount, and that is load-bearing.** The key is
+ * stored the moment the account exists, so `needsAccount` goes false while the recovery code
+ * is still on screen. Reading it live would close the gate over the one and only time that
+ * code is ever shown, and nothing — not the server, which keeps only its hash — could show
+ * it again. So the gate opens on what was true at launch and closes when the screen says it
+ * is done.
+ *
+ * `fontScale` keys the stack, not this component, for the same reason. The remount is what
+ * re-measures the navigation tree after a font-scale change (ADR-0030); applying it here
+ * would reset the latch and discard a recovery code mid-read if the user changed their font
+ * size while it was up. The gate re-renders and re-lays-out like any other view.
+ */
+function ArenaGate({ fontScale }: { fontScale: number }) {
+  const needsAccount = useNeedsAccount();
+  const [required] = useState(needsAccount);
+  const [done, setDone] = useState(false);
+
+  // Stable, so the setup hook's memoised controller is not rebuilt on every render of this
+  // component — `onDone` is a dependency of the submit handler it hands to the screen.
+  const finish = useCallback(() => setDone(true), []);
+
+  if (required && !done) return <AccountSetupScreen onDone={finish} />;
+
+  return <ArenaStack key={fontScale} />;
 }
 
 function ArenaStack() {
@@ -91,11 +152,14 @@ function ArenaStack() {
   );
 }
 
+// A constant here rather than in a `strings.ts`: every file under `src/app` is a route.
+const BOOT_FAILURE_TITLE = 'Arena could not start';
+
 function BootFailure({ message }: { message: string }) {
   return (
     <View style={styles.failure}>
       <ArenaText variant="displaySmall" tone="primary">
-        Arena could not start
+        {BOOT_FAILURE_TITLE}
       </ArenaText>
       <ArenaText variant="bodySmall" tone="negative">
         {message}

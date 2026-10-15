@@ -11,12 +11,20 @@
  * (ARCHITECTURE.md §10).
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import { err, ok, type RosterSnapshot, type RosterSource } from '@/core/common';
-import { ArenaDataProvider, type RosterRepository } from '@/core/data';
-import { asPlayerId, type HeadToHead, type Player } from '@/core/model';
+import {
+  err,
+  ok,
+  type RosterPush,
+  type RosterSink,
+  type RosterSnapshot,
+  type RosterSource,
+} from '@/core/common';
+import { ArenaDataProvider, runBackgroundSync, type RosterRepository } from '@/core/data';
+import { asPlayerId, type HeadToHead, type Player, type PlayerDraft } from '@/core/model';
 import {
   createStubLiveData,
   createTestDatabase,
@@ -45,6 +53,21 @@ const player = (id: string, name: string, rank: number, combatPower: number): Pl
   spd: 4_000_000 + rank,
 });
 
+/** A row typed in on this device, so it starts `LOCAL` and has somewhere to be pushed to. */
+const draftFor = (name: string): PlayerDraft => ({
+  name,
+  level: 12,
+  gameCode: '',
+  combatPower: 500_000,
+  score: 10,
+  hp: 9,
+  atk: 1,
+  def: 2,
+  critPercent: 3,
+  hit: 4,
+  spd: 5,
+});
+
 const record = (opponentId: string, wins: number, losses: number): HeadToHead => ({
   viewerId: asPlayerId('p-a'),
   opponentId: asPlayerId(opponentId),
@@ -70,10 +93,25 @@ const sourceOf = (snapshot: RosterSnapshot): RosterSource => ({
   fetchRoster: async () => ok(snapshot),
 });
 
-const wrapperFor = (repository: RosterRepository, useLiveData = createStubLiveData()) =>
-  function Harness({ children }: { children: ReactNode }) {
-    return <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>;
+/**
+ * A fresh `QueryClient` per harness, built outside the component. React Query caches per
+ * client, so a shared one would let a mutation started by one test be observed by the next;
+ * and a client constructed *inside* `Harness` would be a new client on every render, which
+ * silently discards the state the mutation is keeping.
+ */
+const wrapperFor = (
+  repository: RosterRepository,
+  useLiveData = createStubLiveData(),
+  client = new QueryClient(),
+) => {
+  return function Harness({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={client}>
+        <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>
+      </QueryClientProvider>
+    );
   };
+};
 
 const namesOf = (state: RosterUiState): string[] =>
   state.kind === 'ready' ? state.rows.map((row) => row.name) : [];
@@ -322,7 +360,31 @@ describe('useRoster', () => {
       });
     });
 
-    it('surfaces a failed refresh, and clears it when the search changes', async () => {
+    it('keeps the ladder on screen when a sync fails, and says so above it', async () => {
+      // The owner's decision 2. Airplane mode is exactly when somebody needs to read the
+      // rows they already have, so a failed sync is a line above them, never the `error`
+      // state that replaces them.
+      const failing: RosterSource = {
+        name: 'failing',
+        fetchRoster: async () => err(new Error('airplane mode')),
+      };
+      const repo = wired.restart(failing);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          kind: 'ready',
+          syncError: 'airplane mode',
+        }),
+      );
+      expect(namesOf(result.current.state)).toEqual(['Aurel', 'Brann', 'Cinder', 'Dross']);
+    });
+
+    it('clears a stale sync failure when the search changes', async () => {
       const failing: RosterSource = {
         name: 'failing',
         fetchRoster: async () => err(new Error('airplane mode')),
@@ -334,7 +396,7 @@ describe('useRoster', () => {
         result.current.onEvent({ type: 'refresh' });
       });
       await waitFor(() =>
-        expect(result.current.state).toMatchObject({ kind: 'error', message: 'airplane mode' }),
+        expect(result.current.state).toMatchObject({ syncError: 'airplane mode' }),
       );
 
       // A stale failure must not outlive the query that caused it, or the roster looks
@@ -342,7 +404,7 @@ describe('useRoster', () => {
       await act(async () => {
         result.current.onEvent({ type: 'search', query: 'a' });
       });
-      expect(result.current.state).toMatchObject({ kind: 'ready' });
+      expect(result.current.state).toMatchObject({ kind: 'ready', syncError: null });
     });
 
     it('recovers when a retry succeeds', async () => {
@@ -360,13 +422,256 @@ describe('useRoster', () => {
       await act(async () => {
         result.current.onEvent({ type: 'refresh' });
       });
-      await waitFor(() => expect(result.current.state).toMatchObject({ kind: 'error' }));
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ syncError: 'airplane mode' }),
+      );
 
       await act(async () => {
         result.current.onEvent({ type: 'refresh' });
       });
-      await waitFor(() => expect(result.current.state).toMatchObject({ kind: 'ready' }));
+      await waitFor(() => expect(result.current.state).toMatchObject({ syncError: null }));
       expect(attempts).toBe(2);
+    });
+  });
+
+  /**
+   * The owner's decision 1: a sync is push-then-pull as one operation, fired by this
+   * gesture and by the periodic task — not by every local write. Before this, pull-to-
+   * refresh called `refresh()` and a row typed in here never left the device.
+   */
+  describe('pull-to-refresh is a sync, not a pull', () => {
+    /** Records what was pushed, and answers the way a fresh account's server does. */
+    const createSpySink = () => {
+      const pushes: RosterPush[] = [];
+      const sink: RosterSink = {
+        name: 'spy',
+        pushRoster: (push: RosterPush) => {
+          pushes.push(push);
+          return Promise.resolve(ok({ snapshot: null, assignedIds: new Map() }));
+        },
+        setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
+      };
+      return { pushes, sink };
+    };
+
+    const withSink = (sink: RosterSink, source: RosterSource = sourceOf(FIXTURE)) =>
+      createTestRepository(handle.db, source, undefined, sink).repository;
+
+    it('pushes what this device has before pulling', async () => {
+      const spy = createSpySink();
+      const repo = withSink(spy.sink);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() => expect(spy.pushes).toHaveLength(1));
+    });
+
+    it('carries a hand-entered row up, which a plain pull never did', async () => {
+      const spy = createSpySink();
+      const repo = withSink(spy.sink);
+      expect(repo.createPlayer(draftFor('Ekko')).ok).toBe(true);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() => expect(spy.pushes).toHaveLength(1));
+      expect(spy.pushes[0]?.newPlayers.map((row) => row.name)).toEqual(['Ekko']);
+    });
+
+    it('surfaces a failed push the same way a failed pull is surfaced', async () => {
+      // The push half can fail on its own — offline, or a key the server no longer knows —
+      // and it must reach the same recoverable banner rather than a crash or a blank list.
+      const refusing: RosterSink = {
+        name: 'refusing',
+        pushRoster: () => Promise.resolve(err(new Error('backend: OFFLINE — no network'))),
+        setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
+      };
+      const repo = withSink(refusing);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          kind: 'ready',
+          syncError: 'backend: OFFLINE — no network',
+        }),
+      );
+    });
+
+    it('reports a sync in flight, and stops reporting one when it lands', async () => {
+      // `header.isSyncing` is any sync on the shared key, and it drives both the
+      // pull-to-refresh spinner and the badge. The roster stays on screen throughout —
+      // decision 2 — so this is a spinner on a list, never a blank screen.
+      let land = (): void => {};
+      const held = new Promise<void>((resolve) => {
+        land = resolve;
+      });
+      const slow: RosterSink = {
+        name: 'slow',
+        pushRoster: async () => {
+          await held;
+          return ok({ snapshot: null, assignedIds: new Map() });
+        },
+        setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
+      };
+      const repo = withSink(slow);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      // Both halves inside an async `act`: a synchronous one around a handler that starts a
+      // promise lets that promise settle outside any act scope, which corrupts the renderer
+      // for the rest of the file rather than failing the test that caused it.
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+      // `waitFor` for the reason the screen test gives: React Query's notifications are
+      // batched through a scheduler, so this is not settled when the act scope returns.
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          kind: 'ready',
+          header: { isSyncing: true },
+        }),
+      );
+
+      await act(async () => {
+        land();
+        await held;
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ header: { isSyncing: false } }),
+      );
+    });
+
+    it('shows a background sync as in flight, although this screen did not start it', async () => {
+      // The periodic task runs its sync on the app's one client, with no screen involved.
+      // The badge reads the shared key rather than this hook's own mutation, so a sync that
+      // lands while the app is open announces itself exactly as a pull does.
+      let land = (): void => {};
+      const held = new Promise<void>((resolve) => {
+        land = resolve;
+      });
+      const slow: RosterSink = {
+        name: 'slow',
+        pushRoster: async () => {
+          await held;
+          return ok({ snapshot: null, assignedIds: new Map() });
+        },
+        setViewer: () => Promise.resolve(ok(undefined)),
+        setViewerAvatar: () => Promise.resolve(ok(undefined)),
+      };
+      const repo = withSink(slow);
+      const client = new QueryClient();
+      const { result } = await renderHook(() => useRoster(), {
+        wrapper: wrapperFor(repo, createStubLiveData(), client),
+      });
+
+      let background: Promise<string> = Promise.resolve('');
+      await act(async () => {
+        background = runBackgroundSync(repo, client, { retry: 0 });
+      });
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ header: { isSyncing: true } }),
+      );
+
+      await act(async () => {
+        land();
+        await background;
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({ header: { isSyncing: false } }),
+      );
+      await expect(background).resolves.toBe('synced');
+      // Nobody asked for it, so nothing is reported as this screen's failure either.
+      expect(result.current.state).toMatchObject({ syncError: null });
+    });
+
+    it('falls back to a plain pull when there is no sink, so a backendless build is unchanged', async () => {
+      let pulls = 0;
+      const counting: RosterSource = {
+        name: 'counting',
+        fetchRoster: async () => {
+          pulls += 1;
+          return ok(FIXTURE);
+        },
+      };
+      const repo = wired.restart(counting);
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() => expect(pulls).toBe(1));
+      expect(result.current.state).toMatchObject({ kind: 'ready' });
+    });
+  });
+
+  /**
+   * ROADMAP.md Phase 5's staleness policy, at the seam where it becomes a string. The
+   * arithmetic itself is proven in `core/common/relativeTime.test.ts`; what is asserted
+   * here is that the roster asks the right question and renders nothing when it cannot
+   * answer.
+   */
+  describe('how old the ladder is', () => {
+    it('says how long ago the last sync landed', async () => {
+      // `beforeEach` refreshed, so the stamp is moments old.
+      const { result } = await mount();
+
+      expect(result.current.state).toMatchObject({
+        header: { lastSyncedLabel: 'Updated just now' },
+      });
+    });
+
+    it('renders no staleness label when nothing has synced on this device', async () => {
+      // Fresh preferences over rows that are already there — which is exactly what a
+      // restore from a file leaves behind (ADR-0033): a full ladder no sync produced.
+      // Rendering nothing beats dating it by a sync that did not happen.
+      const repo = createTestRepository(handle.db).repository;
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      expect(result.current.state).toMatchObject({ header: { lastSyncedLabel: null } });
+      expect(namesOf(result.current.state)).toHaveLength(4);
+    });
+
+    it('is not syncing when nothing is in flight', async () => {
+      const { result } = await mount();
+
+      expect(result.current.state).toMatchObject({ header: { isSyncing: false } });
+    });
+
+    it('keeps the staleness label through a failed sync, because it is still true', async () => {
+      // The ladder did not move, so how old it is did not change. Blanking the label on a
+      // failure would lose the one fact the user most needs when the server is unreachable.
+      const failing: RosterSource = {
+        name: 'failing',
+        fetchRoster: async () => err(new Error('airplane mode')),
+      };
+      const { repository: repo, preferences: prefs } = createTestRepository(handle.db, failing);
+      prefs.setLastSyncedAt(Date.now());
+      const { result } = await renderHook(() => useRoster(), { wrapper: wrapperFor(repo) });
+
+      await act(async () => {
+        result.current.onEvent({ type: 'refresh' });
+      });
+
+      await waitFor(() =>
+        expect(result.current.state).toMatchObject({
+          syncError: 'airplane mode',
+          header: { lastSyncedLabel: 'Updated just now' },
+        }),
+      );
     });
   });
 });

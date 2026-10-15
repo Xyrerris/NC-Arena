@@ -22,7 +22,7 @@ import { parseStatSheet, type StatSheetScan } from './statSheet';
 export type ScreenshotOutcome =
   /** Gone from the photo library. The working copy went with it. */
   | 'DELETED'
-  /** Only the app's working copy went — the library had no id for the original. */
+  /** Only the app's working copy went — nothing identified the original in the library. */
   | 'COPY_ONLY'
   /** Still in the photo library: permission refused, the system dialog declined, or an error. */
   | 'KEPT';
@@ -77,8 +77,8 @@ export const createStatScanner = ({ source, recogniser }: StatScannerDeps): Stat
    */
   const putAway = async (image: PickedImage): Promise<ScreenshotOutcome> => {
     await dropCopy(image.uri);
-    if (image.assetId === null) return 'COPY_ONLY';
-    const removed = await source.discardOriginal(image.assetId);
+    if (image.original === null) return 'COPY_ONLY';
+    const removed = await source.discardOriginal(image.original);
     return removed.ok ? 'DELETED' : 'KEPT';
   };
 

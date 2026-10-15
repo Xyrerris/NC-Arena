@@ -14,7 +14,7 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -33,15 +33,27 @@ import type { MatchOutcome, PlayerId, RosterSort } from '@/core/model';
 import { RosterRow } from './RosterRow';
 import {
   SORT_OPTIONS,
+  SYNCING_LABEL,
+  SYNC_RETRY_LABEL,
   playerCountLabel,
   type RosterHeaderUi,
   type RosterRowUi,
   type RosterUiState,
 } from './rosterUiState';
 import { useDebouncedValue } from './useDebouncedValue';
+import { rosterStrings } from './strings';
 import { useRoster } from './useRoster';
 
-export function RosterScreen() {
+export interface RosterScreenProps {
+  /**
+   * The Arena | Collection switcher. Supplied by the route, because the switcher belongs to
+   * neither screen and a feature may not import another (ARCHITECTURE.md §4). It sits above
+   * everything, outside the states below, so it is there while the ladder loads or fails too.
+   */
+  sectionTabs?: ReactNode;
+}
+
+export function RosterScreen({ sectionTabs }: RosterScreenProps = {}) {
   const { state, onEvent } = useRoster();
   const router = useRouter();
 
@@ -72,6 +84,7 @@ export function RosterScreen() {
 
   return (
     <ScreenScaffold applyBottomInset={false}>
+      {sectionTabs === undefined ? null : <View style={styles.sectionTabs}>{sectionTabs}</View>}
       {header === null ? null : (
         <RosterHeader
           header={header}
@@ -114,7 +127,7 @@ function RosterHeader({
     <View style={styles.header}>
       <View style={styles.titleRow}>
         <ArenaText variant="displayMedium" tone="primary" accessibilityRole="header">
-          Arena
+          {rosterStrings.title}
         </ArenaText>
         {header.seasonLabel === null ? null : (
           <ArenaText variant="numericMicro" tone="accent" testID="roster-season">
@@ -122,6 +135,26 @@ function RosterHeader({
           </ArenaText>
         )}
       </View>
+
+      {/*
+        How old this ladder is, and whether that is being fixed right now. Both are a line
+        of text rather than anything that covers the list: the owner's decision 2 is that
+        the roster does not block during a sync, so this is the whole of the indicator.
+
+        The two swap rather than stack. "Syncing…" answers the question "how stale is
+        this?" better than the stale number does while a sync is in flight, and two lines
+        that contradict each other for a second is worse than one that is always current.
+      */}
+      {header.isSyncing || header.lastSyncedLabel !== null ? (
+        <ArenaText
+          variant="bodyCaption"
+          tone={header.isSyncing ? 'accent' : 'subtle'}
+          accessibilityLiveRegion="polite"
+          testID="roster-sync-status"
+        >
+          {header.isSyncing ? SYNCING_LABEL : header.lastSyncedLabel}
+        </ArenaText>
+      ) : null}
 
       {/*
         The add control sits beside the count rather than floating over the list. A FAB
@@ -133,10 +166,10 @@ function RosterHeader({
           {playerCountLabel(header.totalPlayers)}
         </ArenaText>
         <ArenaButton
-          label="+ New player"
+          label={rosterStrings.addPlayer}
           variant="secondary"
           onPress={onAddPlayer}
-          accessibilityLabel="Add a new player to the roster"
+          accessibilityLabel={rosterStrings.addPlayerA11y}
           testID="roster-add-player"
         />
       </View>
@@ -160,13 +193,13 @@ function RosterHeader({
         numbers moved" are answered on the same screen (ADR-0022).
       */}
       <ArenaButton
-        label={header.viewer === null ? 'Who are you?' : 'Update my stats'}
+        label={header.viewer === null ? rosterStrings.whoAreYou : rosterStrings.updateMyStats}
         variant="secondary"
         onPress={onOpenViewer}
         accessibilityLabel={
           header.viewer === null
-            ? 'Choose which player is your avatar'
-            : `Update your own stats — ${header.viewer.name}`
+            ? rosterStrings.whoAreYouA11y
+            : rosterStrings.updateMyStatsA11y(header.viewer.name)
         }
         testID="roster-viewer"
       />
@@ -203,7 +236,7 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
         <View style={styles.centred} testID="roster-loading">
           <ActivityIndicator color={color.accent} />
           <ArenaText variant="bodySmall" tone="subtle">
-            Reading the ladder…
+            {rosterStrings.loading}
           </ArenaText>
         </View>
       );
@@ -212,7 +245,7 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
       return (
         <View style={styles.centred} testID="roster-error">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            The ladder could not be read
+            {rosterStrings.errorTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="negative" align="center">
             {state.message}
@@ -220,7 +253,7 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
           {state.canRetry ? (
             <Pressable accessibilityRole="button" onPress={onRetry} style={styles.retry}>
               <ArenaText variant="labelStrong" tone="accent">
-                TRY AGAIN
+                {rosterStrings.tryAgain}
               </ArenaText>
             </Pressable>
           ) : null}
@@ -253,9 +286,49 @@ function RosterBody({ state, onOpenPlayer, onRecord, onRetry, onAddPlayer }: Ros
             </View>
           ) : null}
 
+          {/*
+            A sync that failed says so here, above a ladder that is still entirely usable.
+            It is not the `error` state and that is the point: being offline does not make
+            the rows already on this device unreadable, and taking them away to report it
+            would do so at exactly the moment the user cannot get them back.
+
+            It carries its own retry because pull-to-refresh is a gesture with nothing on
+            screen to announce it — and because this banner is reachable in the empty
+            state, where there may be no rows to pull against.
+          */}
+          {state.syncError === null ? null : (
+            <View style={styles.syncError}>
+              <ArenaText
+                variant="bodySmall"
+                tone="negative"
+                accessibilityLiveRegion="polite"
+                testID="roster-sync-error"
+              >
+                {state.syncError}
+              </ArenaText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={rosterStrings.syncRetryA11y}
+                onPress={onRetry}
+                style={styles.syncRetry}
+                testID="roster-sync-retry"
+              >
+                <ArenaText variant="labelStrong" tone="accent">
+                  {SYNC_RETRY_LABEL}
+                </ArenaText>
+              </Pressable>
+            </View>
+          )}
+
           <FlashList
             data={state.kind === 'ready' ? state.rows : NO_ROWS}
             extraData={state.header.sort}
+            // Pull-to-refresh, which is what fires a sync (the owner's decision 1). Until
+            // now the only way to reach one was the `error` screen's TRY AGAIN — and that
+            // screen is no longer where a sync failure lands, so without this gesture a
+            // sync would have become unreachable.
+            refreshing={state.header.isSyncing}
+            onRefresh={onRetry}
             keyExtractor={(row) => row.id}
             renderItem={({ item }) => (
               <RosterRow row={item} onPress={onOpenPlayer} onRecord={onRecord} />
@@ -280,12 +353,10 @@ function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () =>
   return (
     <View style={styles.centred} testID="roster-empty">
       <ArenaText variant="titleMedium" tone="primary" align="center">
-        {needle === '' ? 'No players yet' : 'No player by that name'}
+        {needle === '' ? rosterStrings.emptyRosterTitle : rosterStrings.emptySearchTitle}
       </ArenaText>
       <ArenaText variant="bodySmall" tone="subtle" align="center">
-        {needle === ''
-          ? 'Add the players you want to track. Everything stays on this device.'
-          : `Nothing in the roster matches "${needle}".`}
+        {needle === '' ? rosterStrings.emptyRosterBody : rosterStrings.emptySearchBody(needle)}
       </ArenaText>
       {/*
         Offered only when the roster itself is empty, not when a search missed. "Add a
@@ -294,9 +365,9 @@ function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () =>
       */}
       {needle === '' ? (
         <ArenaButton
-          label="+ New player"
+          label={rosterStrings.addPlayer}
           onPress={onAddPlayer}
-          accessibilityLabel="Add the first player to the roster"
+          accessibilityLabel={rosterStrings.addFirstPlayerA11y}
           testID="roster-empty-add-player"
         />
       ) : null}
@@ -308,6 +379,7 @@ function RosterEmpty({ query, onAddPlayer }: { query: string; onAddPlayer: () =>
 const NO_ROWS: readonly RosterRowUi[] = [];
 
 const styles = StyleSheet.create({
+  sectionTabs: { paddingHorizontal: layout.screenGutter, paddingTop: space[6] },
   header: {
     paddingHorizontal: layout.screenGutter,
     paddingTop: space[6],
@@ -331,6 +403,21 @@ const styles = StyleSheet.create({
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
   recordError: { paddingHorizontal: layout.screenGutter, paddingTop: space[8] },
+  syncError: {
+    flexDirection: 'row',
+    // Wraps rather than shrinks, like every other text-beside-control row: at 200 % font
+    // scale the sentence and the button cannot share a line.
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: layout.screenGutter,
+    paddingTop: space[8],
+    gap: space[8],
+  },
+  syncRetry: {
+    minHeight: layout.minTouchTarget,
+    justifyContent: 'center',
+  },
   list: { paddingBottom: space[40] },
   centred: {
     flex: 1,

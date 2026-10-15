@@ -1,12 +1,71 @@
 /**
- * Network boundary. Gated on open decision 1 — there may not be a backend at all yet.
+ * Network boundary (ADR-0035). Both halves of Phase 5's backend integration: DTO schemas
+ * validated against `backend/openapi.yaml`'s contract, an error taxonomy shared with the
+ * server, domain mappers in both directions, and `RemoteRosterSource` implementing the
+ * `RosterSource` and `RosterSink` ports from `core/common`.
  *
- * Filled in Phase 5: Zod DTO schemas, the fetch client, domain mappers, error taxonomy.
+ * Every stat field's schema carries `.int().safe()` (`Number.isSafeInteger`). That check is
+ * the whole §2.1 defence on this platform: TypeScript's `number` cannot express "integral and
+ * below 2^53", so the check has to be executable. Above that ceiling a server's JSON response
+ * would lose precision silently if this module trusted it unchecked — and the same schema
+ * guards the request body, so a value that could not survive the wire never reaches it.
  *
- * Every stat field's schema carries `.int().refine(Number.isSafeInteger)`. That refinement
- * is the whole §2.1 defence on this platform: TypeScript's `number` cannot express
- * "integral and below 2^53", so the check has to be executable. Above that ceiling
- * JSON.parse loses precision silently — 9007199254740993 parses as ...992.
+ * What is still open is the *wiring*: `arenaRepository`/`useRoster` do not call either port
+ * yet, and the `LOCAL` -> `REMOTE` origin transition has nowhere to be applied until they do.
+ * That, and the product decisions about when a push fires, is what remains of Phase 5 — see
+ * ADR-0035's "Consequences".
  */
 
-export {};
+export {
+  apiErrorSchema,
+  createAccountResponseSchema,
+  headToHeadDtoSchema,
+  linkAccountRequestSchema,
+  linkAccountResponseSchema,
+  newPlayerDtoSchema,
+  playerDtoSchema,
+  playerEditDtoSchema,
+  rosterSnapshotDtoSchema,
+  rosterSyncRequestSchema,
+  rosterSyncResponseSchema,
+} from './dto';
+export type {
+  ApiErrorDto,
+  CreateAccountResponseDto,
+  HeadToHeadDto,
+  LinkAccountRequestDto,
+  LinkAccountResponseDto,
+  NewPlayerDto,
+  PlayerDto,
+  PlayerEditDto,
+  RosterSnapshotDto,
+  RosterSyncRequest,
+  RosterSyncResponse,
+} from './dto';
+
+export { offlineError, parseApiError, timeoutError } from './errors';
+export type { NetworkError, NetworkErrorCode } from './errors';
+
+export {
+  assignedIdsFromDto,
+  headToHeadFromDto,
+  headToHeadToDto,
+  newPlayerToDto,
+  playerEditToDto,
+  playerFromDto,
+  rosterPushToDto,
+  rosterSnapshotFromDto,
+} from './mappers';
+
+export { DEFAULT_TIMEOUT_MS, HttpClient } from './httpClient';
+export type { ApiKeySource, HttpClientOptions } from './httpClient';
+
+export { FallbackAvatarSource } from './fallbackAvatarSource';
+export { FallbackCollectionSource } from './fallbackCollectionSource';
+export { GameSheetSource, LIB9C_COLLECTION_SHEET_URL } from './gameSheetSource';
+export { MimirAvatarSource } from './mimirAvatarSource';
+export { NodeAvatarSource } from './nodeAvatarSource';
+export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';
+export { NODE_ENDPOINTS, NodeCollectionSource } from './nodeCollectionSource';
+export { RemoteAccountGateway } from './remoteAccountGateway';
+export { RemoteRosterSource } from './remoteRosterSource';

@@ -1,10 +1,16 @@
+import { useRouter } from 'expo-router';
+import { useCallback } from 'react';
+
+import { AccountConnectPrompt } from '@/features/accountSetup';
 import { ViewerScreen } from '@/features/playerForm';
 import { RosterBackupControls } from '@/features/rosterBackup';
+import { ViewerAvatarSection } from '@/features/viewerAvatar';
 
 /**
- * "You" route (ADR-0022), and the home of the roster backup controls (ADR-0033).
+ * "You" route (ADR-0022), and the home of the roster backup controls (ADR-0033) and of the
+ * viewer's Nine Chronicles avatar (ADR-0044).
  *
- * Thin, like every other route — but not *only* a name any more: it composes two features,
+ * Thin, like every other route — but not *only* a name any more: it composes features,
  * which is the one thing a route may do that neither of them can. ARCHITECTURE.md §4 forbids
  * a feature importing another, and getting the roster off this device is not part of editing
  * a player, so the pair meets here rather than inside `playerForm`.
@@ -17,5 +23,21 @@ import { RosterBackupControls } from '@/features/rosterBackup';
  * live in different directories, and nothing here is a player id.
  */
 export default function ViewerRoute() {
-  return <ViewerScreen footer={<RosterBackupControls />} />;
+  const router = useRouter();
+  // Offered only while the device is unpaired, which after ADR-0038 is a state the user can
+  // choose — so the way back to an account lives here, beside the other "this device's copy"
+  // controls.
+  const connect = useCallback(() => router.push('/account'), [router]);
+
+  return (
+    <ViewerScreen
+      footer={
+        <>
+          <ViewerAvatarSection />
+          <AccountConnectPrompt onConnect={connect} />
+          <RosterBackupControls />
+        </>
+      }
+    />
+  );
 }

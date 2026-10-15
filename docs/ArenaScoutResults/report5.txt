@@ -1,0 +1,22 @@
+Di seguito è riportato un elenco di opportunità per migliorare l'accessibilità di Arena Scout. Ciascun elemento corrisponde a un'area delineata sullo screenshot allegato.
+
+Testo non esposto
+stat-HP
+Possibile testo rilevato: 1,36 B
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+stat-ATK
+Possibile testo rilevato: 0,19 B
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+stat-DEF
+Possibile testo rilevato: 0,09 B
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+
+Testo non esposto
+stat-HIT
+Possibile testo rilevato: 0,25 B
+Assicurati che l'etichetta di accessibilità di questo elemento includa il testo visibile.
+

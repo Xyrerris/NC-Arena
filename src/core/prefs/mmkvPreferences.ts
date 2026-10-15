@@ -12,7 +12,7 @@
 import { createMMKV } from 'react-native-mmkv';
 
 import { isShortUnit } from '../common';
-import { asPlayerId, isRosterSort } from '../model';
+import { asPlayerId, isRosterSort, parseStoredAvatar } from '../model';
 import { DEFAULT_ROSTER_SORT, DEFAULT_SHORT_UNIT, PREF_KEYS, type ArenaPreferences } from './types';
 
 // react-native-mmkv 4 is Nitro-based: the instance comes from a factory, not a
@@ -44,6 +44,28 @@ export const mmkvPreferences: ArenaPreferences = {
     storage.remove(PREF_KEYS.viewerId);
   },
 
+  getPendingViewerId: () => {
+    const stored = storage.getString(PREF_KEYS.pendingViewerId);
+    return stored === undefined || stored === '' ? null : asPlayerId(stored);
+  },
+  setPendingViewerId: (id) => storage.set(PREF_KEYS.pendingViewerId, id),
+  clearPendingViewerId: () => {
+    storage.remove(PREF_KEYS.pendingViewerId);
+  },
+
+  // Stored as JSON and validated on the way out, like the season: a value written by code
+  // that no longer exists reads as "no avatar" rather than as a chain address nobody typed.
+  getViewerAvatar: () => parseStoredAvatar(storage.getString(PREF_KEYS.viewerAvatar)),
+  setViewerAvatar: (avatar) => storage.set(PREF_KEYS.viewerAvatar, JSON.stringify(avatar)),
+  clearViewerAvatar: () => {
+    storage.remove(PREF_KEYS.viewerAvatar);
+  },
+  isViewerAvatarPending: () => storage.getBoolean(PREF_KEYS.viewerAvatarPending) === true,
+  setViewerAvatarPending: () => storage.set(PREF_KEYS.viewerAvatarPending, true),
+  clearViewerAvatarPending: () => {
+    storage.remove(PREF_KEYS.viewerAvatarPending);
+  },
+
   getSeason: () => {
     const stored = storage.getNumber(PREF_KEYS.season);
     // `undefined` is "never synced"; a non-integer is a value written by code that no
@@ -51,4 +73,30 @@ export const mmkvPreferences: ArenaPreferences = {
     return stored === undefined || !Number.isSafeInteger(stored) ? null : stored;
   },
   setSeason: (season) => storage.set(PREF_KEYS.season, season),
+
+  getLastSyncedAt: () => {
+    const stored = storage.getNumber(PREF_KEYS.lastSyncedAt);
+    // Validated like the season, and for the same reason: a value written by code that no
+    // longer exists, or a fractional one, would render as a staleness label nobody can
+    // explain. `<= 0` catches a cleared-to-zero write as "never synced" too.
+    return stored === undefined || !Number.isSafeInteger(stored) || stored <= 0 ? null : stored;
+  },
+  setLastSyncedAt: (at) => storage.set(PREF_KEYS.lastSyncedAt, at),
+  clearLastSyncedAt: () => {
+    storage.remove(PREF_KEYS.lastSyncedAt);
+  },
+
+  getApiKey: () => {
+    const stored = storage.getString(PREF_KEYS.apiKey);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setApiKey: (key) => storage.set(PREF_KEYS.apiKey, key),
+  // Removed rather than blanked, for the same reason as `clearViewerId`: a key that is gone
+  // cannot be read back by a later version that stops treating the empty string as absent.
+  clearApiKey: () => {
+    storage.remove(PREF_KEYS.apiKey);
+  },
+
+  getSetupSkipped: () => storage.getBoolean(PREF_KEYS.setupSkipped) === true,
+  setSetupSkipped: () => storage.set(PREF_KEYS.setupSkipped, true),
 };

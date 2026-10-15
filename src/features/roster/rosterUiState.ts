@@ -12,8 +12,10 @@
  * `isLoading` flag beside a `rows` array.
  */
 
-import { statFormatter } from '@/core/common';
+import { statFormatter, timeSince } from '@/core/common';
 import type { MatchOutcome, Player, PlayerId, RosterEntry, RosterSort } from '@/core/model';
+
+import { rosterStrings } from './strings';
 
 /** Wins and losses stay numeric: `RecordBadge` owns how a record reads and announces. */
 export interface RosterRecordUi {
@@ -78,6 +80,24 @@ export interface RosterHeaderUi {
   /** The whole roster, not the rows a search left behind. */
   totalPlayers: number;
   sort: RosterSort;
+  /**
+   * `"Updated 5 min ago"`, or null when nothing here can honestly date this ladder — before
+   * the first sync, and again after a restore from a file (ADR-0033), where the rows came
+   * from somewhere a sync timestamp does not describe. Same rule as `seasonLabel`:
+   * rendering nothing beats rendering a guess.
+   */
+  lastSyncedLabel: string | null;
+  /**
+   * A sync is running. One flag, on the header, driving both the pull-to-refresh spinner
+   * and the badge beside the season — they are the same fact and a second field would be a
+   * second thing to keep in step.
+   *
+   * It is on the **header** rather than on `ready` because it has to be visible in the
+   * empty state too: a phone with nothing on the ladder yet is exactly the one whose first
+   * sync the user is waiting on. And it never takes the list down — the owner's decision 2
+   * is that data stays on screen while a small indicator says an operation is running.
+   */
+  isSyncing: boolean;
 }
 
 /**
@@ -90,13 +110,26 @@ export type RosterUiState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string; canRetry: boolean }
   /** The search matched nothing. `query` is empty only if the roster itself is empty. */
-  | { kind: 'empty'; query: string; header: RosterHeaderUi }
+  | { kind: 'empty'; query: string; header: RosterHeaderUi; syncError: string | null }
   | {
       kind: 'ready';
       header: RosterHeaderUi;
       rows: readonly RosterRowUi[];
       query: string;
-      isRefreshing: boolean;
+      /**
+       * Why the last sync failed, or null.
+       *
+       * It is **not** the `error` state, and that is the owner's decision 2 rather than a
+       * style choice: a ladder that is on screen and readable is not a broken screen
+       * because the network is unreachable. Taking it down to say so would be defect 5
+       * with a new cause — and it would take the roster away at the exact moment the user
+       * most needs to read it, which is when they are offline.
+       *
+       * It sits beside `recordError` for the same reason that one exists, and the two can
+       * be on screen at once: a refused swipe and an unreachable server are independent
+       * failures with independent remedies.
+       */
+      syncError: string | null;
       /**
        * Why the last swipe recorded nothing, or null. It is a *line above the list* rather
        * than the `error` state, because a refused increment is not a broken ladder — and
@@ -114,9 +147,9 @@ export type RosterEvent =
 
 /** Label and order from the prototype's three chips. */
 export const SORT_OPTIONS: readonly { sort: RosterSort; label: string }[] = [
-  { sort: 'RANK', label: 'RANK' },
-  { sort: 'COMBAT_POWER', label: 'CP' },
-  { sort: 'MY_WINS', label: 'MY WINS' },
+  { sort: 'RANK', label: rosterStrings.sortRank },
+  { sort: 'COMBAT_POWER', label: rosterStrings.sortCombatPower },
+  { sort: 'MY_WINS', label: rosterStrings.sortMyWins },
 ] as const;
 
 /**
@@ -125,7 +158,20 @@ export const SORT_OPTIONS: readonly { sort: RosterSort; label: string }[] = [
  * the repository caches it (ADR-0018). Nothing here invents a number.
  */
 export const seasonLabel = (season: number | null): string | null =>
-  season === null ? null : `SEASON ${season}`;
+  season === null ? null : rosterStrings.season(season);
+
+/**
+ * The staleness line the roadmap asks for by name ("a visible 'updated N ago'").
+ *
+ * `now` is passed in rather than read here so the label can be ticked by whatever owns the
+ * clock — a label that computes `Date.now()` once and never again freezes on "just now",
+ * which is worse than no label at all because it reads as a fresh sync.
+ */
+export const updatedLabel = (lastSyncedAt: number | null, now: number): string | null =>
+  lastSyncedAt === null ? null : rosterStrings.updated(timeSince(lastSyncedAt, now));
+
+export const SYNCING_LABEL = rosterStrings.syncing;
+export const SYNC_RETRY_LABEL = rosterStrings.syncRetry;
 
 const rankLabel = (rank: number): string => String(rank).padStart(2, '0');
 
@@ -148,7 +194,7 @@ export const toRosterRowUi = (entry: RosterEntry, hasViewer: boolean): RosterRow
   name: entry.player.name,
   rankLabel: rankLabel(entry.player.rank),
   combatPowerExact: statFormatter.exact(entry.player.combatPower),
-  scoreLabel: `${entry.player.score} pts`,
+  scoreLabel: rosterStrings.score(entry.player.score),
   // The viewer has no head-to-head against themselves, so their own row shows no badge.
   record: entry.isViewer || entry.record === null ? null : entry.record,
   isViewer: entry.isViewer,
@@ -156,5 +202,4 @@ export const toRosterRowUi = (entry: RosterEntry, hasViewer: boolean): RosterRow
   isLocal: entry.origin === 'LOCAL',
 });
 
-export const playerCountLabel = (total: number): string =>
-  `${total} registered ${total === 1 ? 'player' : 'players'}`;
+export const playerCountLabel = (total: number): string => rosterStrings.playerCount(total);

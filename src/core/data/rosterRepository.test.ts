@@ -15,7 +15,7 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 
 import { err, isOk, ok, type RosterSnapshot, type RosterSource } from '../common';
-import { headToHead, players, refoldPlayerNames } from '../db';
+import { deletedPlayers, headToHead, players, refoldPlayerNames } from '../db';
 import {
   asPlayerId,
   type HeadToHead,
@@ -26,6 +26,7 @@ import {
 } from '../model';
 import { createMemoryPreferences } from '../prefs';
 import { createTestDatabase, type TestDatabase } from '../testing';
+import { serialiseBackup } from './rosterBackup';
 import { PlayerDraftRejected, createRosterRepository } from './rosterRepository';
 
 const player = (id: string, name: string, rank: number, combatPower: number): Player => ({
@@ -282,7 +283,9 @@ describe('rosterRepository — refresh and an empty start', () => {
   it('treats a refresh with no source as nothing to do, not as a failure', async () => {
     // There is no upstream yet, and the roster is already showing everything there is.
     // An error here would put a working, hand-filled roster behind "The ladder could not
-    // be read" — see `RosterUiState`, where any failure replaces the whole list.
+    // be read" — the `error` state in `RosterUiState`, which is still where an unreadable
+    // *query* lands. A failed sync no longer goes there; it is a banner over a readable
+    // ladder (the owner's decision 2).
     const handle = createTestDatabase();
     const repo = createRosterRepository({
       db: handle.db,
@@ -436,15 +439,23 @@ describe('rosterRepository — adding a player by hand', () => {
     expect(repo.playerCount()).toBe(before);
   });
 
-  it('refuses a name already on the ladder, case-insensitively', () => {
+  it('updates the player its name and code already name, case-insensitively (ADR-0042)', () => {
     const repo = repositoryOn(handle);
-    // The roster's own search is case-insensitive, so two players it cannot tell apart are
-    // two the user cannot either.
-    const result = repo.createPlayer(localDraft('aUrEl'));
+    // `name + game code` is the key: typing a player who is already there rewrites them
+    // rather than adding them twice. Aurel is `p-a`, code `a1`, in the fixture.
+    const result = repo.createPlayer({ ...localDraft('aUrEl'), gameCode: '#A1', score: 7 });
 
-    expect(result.ok).toBe(false);
-    expect(!result.ok && result.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(isOk(result) && result.value.id).toBe('p-a');
+    expect(isOk(result) && result.value.score).toBe(7);
     expect(repo.playerCount()).toBe(4);
+  });
+
+  it('adds a namesake under a different code, because the name alone is not the key', () => {
+    const repo = repositoryOn(handle);
+    const result = repo.createPlayer(localDraft('Aurel'));
+
+    expect(result.ok).toBe(true);
+    expect(repo.playerCount()).toBe(5);
   });
 
   it('marks the row as local, and leaves synced rows alone', () => {
@@ -482,24 +493,69 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
     expect(isOk(result) && result.value.combatPower).toBe(9_999);
   });
 
+  it('saves an edit to a synced player who has a namesake under another code', () => {
+    // The defect behind ADR-0042: the guard compared names alone, so a synced player whose
+    // name another row shared could never be saved, however little the edit changed.
+    expect(repo.createPlayer(localDraft('Brann')).ok).toBe(true);
+
+    const result = repo.updatePlayer(asPlayerId('p-b'), {
+      ...localDraft('Brann'),
+      gameCode: 'a2',
+      combatPower: 1,
+    });
+
+    expect(isOk(result) && result.value.combatPower).toBe(1);
+  });
+
+  it("refuses an edit that moves a player onto another player's name and code", () => {
+    // Two rows under one key would be the duplicate the key exists to prevent, and which of
+    // them to keep is not something a Save press can decide.
+    const result = repo.updatePlayer(localId, { ...localDraft('Brann'), gameCode: 'a2' });
+
+    expect(result.ok).toBe(false);
+    expect(!result.ok && result.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(!result.ok && result.error.message).toBe('Brann #a2 is already on the ladder.');
+  });
+
   it('lets a player keep their own name across an edit', () => {
     // Without `exceptId` in the duplicate check, saving a player without renaming them
     // collides with themselves — which is the most common edit there is.
     expect(repo.updatePlayer(localId, { ...localDraft('Nyx'), score: 42 }).ok).toBe(true);
   });
 
-  it('refuses to edit a synced player, because the next sync would undo it', () => {
+  it('edits a synced player too, so every device on the account has the same say (ADR-0036)', () => {
     const synced = asPlayerId('p-b');
     const result = repo.updatePlayer(synced, { ...localDraft('Brann'), combatPower: 1 });
 
-    expect(result.ok).toBe(false);
+    expect(result.ok).toBe(true);
     const live = repo.observePlayer(synced);
-    expect(live.map(live.query.all())?.player.combatPower).toBe(400);
+    expect(live.map(live.query.all())?.player.combatPower).toBe(1);
+    // Still the server's row: it is pushed as an edit, never as a second player.
+    expect(live.map(live.query.all())?.origin).toBe('REMOTE');
   });
 
-  it('refuses to remove a synced player', () => {
-    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(false);
+  it('removes a synced player, and remembers the removal for the next sync (ADR-0039)', () => {
+    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(true);
+
+    expect(repo.playerCount()).toBe(4);
+    expect(ranksOf(repo)).toEqual([1, 2, 3, 4]);
+    expect(handle.db.select().from(deletedPlayers).all()).toEqual([{ id: 'p-b' }]);
+  });
+
+  it('leaves no tombstone for a hand-entered player, which the server never saw', () => {
+    expect(repo.deletePlayer(localId).ok).toBe(true);
+
+    expect(handle.db.select().from(deletedPlayers).all()).toEqual([]);
+  });
+
+  it('refuses to remove the synced player who is you', () => {
+    // The fixture's viewer is `p-a`, a synced row: the account's viewer on every device.
+    const refused = repo.deletePlayer(asPlayerId('p-a'));
+
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.error.message).toContain('Pick another avatar');
     expect(repo.playerCount()).toBe(5);
+    expect(handle.db.select().from(deletedPlayers).all()).toEqual([]);
   });
 
   it('closes the gap in the ranking when a player is removed', () => {
@@ -553,12 +609,10 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
   });
 
   it('leaves the preference standing when the removal is refused', () => {
-    expect(repo.setViewerId(localId).ok).toBe(true);
+    // The synced viewer: refused (ADR-0039).
+    expect(repo.deletePlayer(asPlayerId('p-a')).ok).toBe(false);
 
-    // A synced row: not this device's to remove (ADR-0020).
-    expect(repo.deletePlayer(asPlayerId('p-b')).ok).toBe(false);
-
-    expect(repo.getViewerId()).toBe(localId);
+    expect(repo.getViewerId()).toBe('p-a');
   });
 
   it('returns a failure rather than throwing for an id that was already removed', () => {
@@ -568,7 +622,8 @@ describe('rosterRepository — editing and removing a hand-entered player', () =
 });
 
 /**
- * ADR-0031: a screenshot import of somebody already on the ladder updates them.
+ * ADR-0031, ADR-0042: creating somebody already on the ladder — typed or scanned — updates
+ * them.
  *
  * The pair is the whole rule, so every case below moves exactly one half of it — same name
  * and same code, same name and a different code, a different name and the same code.
@@ -590,7 +645,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   afterEach(() => handle.close());
 
   it('adds the player when name and code match nobody', () => {
-    const imported = repo.importPlayer({ ...localDraft('Deus'), gameCode: 'a984' });
+    const imported = repo.createPlayer({ ...localDraft('Deus'), gameCode: 'a984' });
 
     expect(imported.ok).toBe(true);
     expect(repo.playerCount()).toBe(6);
@@ -598,7 +653,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   });
 
   it('rewrites the existing player when name and code both match', () => {
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
 
     expect(isOk(imported) && imported.value.id).toBe(localId);
     expect(isOk(imported) && imported.value.combatPower).toBe(9_999);
@@ -610,7 +665,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
     const before = repo.observePlayer(localId);
     expect(before.map(before.query.all())?.player.rank).toBe(5);
 
-    repo.importPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
+    repo.createPlayer({ ...localDraft('Nyx'), combatPower: 9_999 });
 
     const after = repo.observePlayer(localId);
     expect(after.map(after.query.all())?.player.rank).toBe(5);
@@ -618,42 +673,41 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   });
 
   it('matches the name case-insensitively, as every other name check does', () => {
-    const imported = repo.importPlayer({ ...localDraft('nYx'), combatPower: 7 });
+    const imported = repo.createPlayer({ ...localDraft('nYx'), combatPower: 7 });
 
     expect(isOk(imported) && imported.value.id).toBe(localId);
     expect(repo.playerCount()).toBe(5);
   });
 
   it('matches a code however it was written, because storage normalises it', () => {
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), gameCode: ' #AB12 ' });
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), gameCode: ' #AB12 ' });
 
     expect(isOk(imported) && imported.value.id).toBe(localId);
     expect(repo.playerCount()).toBe(5);
   });
 
-  it('refuses a same-name import under a different code, rather than overwriting', () => {
-    // A different code is a different player, and the ladder does not hold two of one
-    // name — so this is the ordinary duplicate rejection, said in the ordinary way.
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), gameCode: 'zz99' });
+  it('adds a same-name player under a different code, rather than overwriting', () => {
+    // A different code is a different player (ADR-0042).
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), gameCode: 'zz99' });
 
-    expect(imported.ok).toBe(false);
-    expect(!imported.ok && imported.error).toBeInstanceOf(PlayerDraftRejected);
-    expect(repo.playerCount()).toBe(5);
+    expect(isOk(imported) && imported.value.id).not.toBe(localId);
+    expect(repo.playerCount()).toBe(6);
   });
 
   it('adds rather than rewrites when the code matches but the name does not', () => {
-    const imported = repo.importPlayer(localDraft('Orrin'));
+    const imported = repo.createPlayer(localDraft('Orrin'));
 
     expect(imported.ok).toBe(true);
     expect(repo.playerCount()).toBe(6);
   });
 
-  it('refuses a synced player, rather than adding a second row for them', () => {
-    // `p-b` is REMOTE, and its code is `a2` (see the fixture). The match is found and the
-    // write is declined — the next sync would undo it (ADR-0020).
-    const imported = repo.importPlayer({ ...localDraft('Brann'), gameCode: 'a2' });
+  it('rewrites a synced player, rather than adding a second row for them', () => {
+    // `p-b` is REMOTE, and its code is `a2` (see the fixture). Since ADR-0036 the match is
+    // rewritten like a hand-entered one, and pushed as an edit by the next sync.
+    const imported = repo.createPlayer({ ...localDraft('Brann'), gameCode: 'a2', score: 77 });
 
-    expect(imported.ok).toBe(false);
+    expect(imported.ok).toBe(true);
+    if (imported.ok) expect(imported.value.id).toBe('p-b');
     expect(repo.playerCount()).toBe(5);
   });
 
@@ -666,9 +720,8 @@ describe('rosterRepository — importing a player from a screenshot', () => {
     expect(repo.playerCount()).toBe(5);
   });
 
-  it('names a synced match too, and says whose it is not', () => {
-    // The form needs the difference: one is a row Save rewrites, the other a row Save
-    // refuses — and a lookup that hid the second would let the notice promise an update.
+  it('names a synced match too, and says where it came from', () => {
+    // A lookup that hid synced rows would let an import add a second row for them.
     expect(repo.findImportMatch('Brann', 'a2')?.origin).toBe('REMOTE');
   });
 
@@ -678,7 +731,7 @@ describe('rosterRepository — importing a player from a screenshot', () => {
   });
 
   it('still validates the draft it is about to write', () => {
-    const imported = repo.importPlayer({ ...localDraft('Nyx'), atk: -1 });
+    const imported = repo.createPlayer({ ...localDraft('Nyx'), atk: -1 });
 
     expect(imported.ok).toBe(false);
     expect(!imported.ok && imported.error).toBeInstanceOf(PlayerDraftRejected);
@@ -720,17 +773,16 @@ describe('rosterRepository — names outside ASCII', () => {
     expect(namesOf(repo, 'RANK', 'är')).toEqual(['ÄRA']);
   });
 
-  it('refuses a second player whose name differs only by case', () => {
+  it('adds no second player whose name differs only by case', () => {
     const duplicate = repo.createPlayer(localDraft('ära'));
 
-    expect(duplicate.ok).toBe(false);
-    expect(!duplicate.ok && duplicate.error).toBeInstanceOf(PlayerDraftRejected);
+    expect(duplicate.ok).toBe(true);
     expect(repo.playerCount()).toBe(5);
   });
 
   it('updates the player a screenshot matches instead of adding a second row', () => {
     // ADR-0031's whole promise, which non-ASCII names were quietly exempt from.
-    const imported = repo.importPlayer({ ...localDraft('ära'), combatPower: 9_999 });
+    const imported = repo.createPlayer({ ...localDraft('ära'), combatPower: 9_999 });
 
     expect(isOk(imported) && imported.value.combatPower).toBe(9_999);
     expect(repo.playerCount()).toBe(5);
@@ -747,8 +799,10 @@ describe('rosterRepository — names outside ASCII', () => {
     const created = repo.createPlayer(localDraft(composed));
     expect(created.ok).toBe(true);
 
-    expect(repo.createPlayer(localDraft(decomposed)).ok).toBe(false);
-    expect(namesOf(repo, 'RANK', decomposed)).toEqual([composed]);
+    // Same key, so the second create rewrites the first row instead of adding one.
+    expect(repo.createPlayer(localDraft(decomposed)).ok).toBe(true);
+    expect(repo.playerCount()).toBe(6);
+    expect(namesOf(repo, 'RANK', composed)).toHaveLength(1);
   });
 
   it('still tells two genuinely different names apart', () => {
@@ -1302,5 +1356,83 @@ describe('rosterRepository — recording a match from the roster', () => {
     for (let i = 0; i < 5; i += 1) repo.recordMatch(asPlayerId('p-b'), 'WIN');
 
     expect(order()).toEqual(['Brann', 'Cinder', 'Aurel', 'Dross']);
+  });
+});
+
+describe('rosterRepository — how old the ladder is', () => {
+  /**
+   * The input to the roster's "updated N ago" (ROADMAP.md Phase 5's staleness policy). It
+   * is asserted here rather than through a screen because what it means is a data question:
+   * *when did rows from the server last land on this device*, which is not the same as
+   * "when did a request last succeed".
+   */
+  let handle: TestDatabase;
+
+  beforeEach(() => {
+    handle = createTestDatabase();
+  });
+
+  afterEach(() => {
+    handle.close();
+  });
+
+  it('is null before anything has ever been synced', () => {
+    const repo = createRosterRepository({
+      db: handle.db,
+      preferences: createMemoryPreferences(),
+    });
+
+    // The header renders no staleness label at all rather than dating an empty ladder.
+    expect(repo.getLastSyncedAt()).toBeNull();
+  });
+
+  it('is stamped when a snapshot is applied', async () => {
+    const before = Date.now();
+    const repo = repositoryOn(handle);
+
+    expect((await repo.refresh()).ok).toBe(true);
+
+    const stamped = repo.getLastSyncedAt();
+    expect(stamped).not.toBeNull();
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('is not stamped by a refresh that failed', async () => {
+    const failing: RosterSource = {
+      name: 'failing',
+      fetchRoster: async () => err(new Error('offline')),
+    };
+    const repo = repositoryOn(handle, failing);
+
+    expect((await repo.refresh()).ok).toBe(false);
+
+    // Nothing landed, so nothing here may claim the ladder is fresh.
+    expect(repo.getLastSyncedAt()).toBeNull();
+  });
+
+  it('moves forward on a later sync', async () => {
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    const first = repo.getLastSyncedAt();
+
+    // A real clock, so the second stamp has to be at least the first.
+    expect((await repo.refresh()).ok).toBe(true);
+
+    expect(repo.getLastSyncedAt()).toBeGreaterThanOrEqual(first ?? 0);
+  });
+
+  it('is forgotten by a restore, because the rows no longer came from a sync', async () => {
+    // ADR-0033 replaces every row from a file. A timestamp left behind would date that
+    // ladder by a sync that did not produce it, and "Updated 2 min ago" would be a claim
+    // about rows the server has never seen.
+    const repo = repositoryOn(handle);
+    expect((await repo.refresh()).ok).toBe(true);
+    expect(repo.getLastSyncedAt()).not.toBeNull();
+
+    const file = serialiseBackup(repo.exportSnapshot());
+    expect(repo.importSnapshot(file).ok).toBe(true);
+
+    expect(repo.getLastSyncedAt()).toBeNull();
   });
 });

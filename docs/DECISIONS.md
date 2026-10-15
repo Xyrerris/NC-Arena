@@ -1250,6 +1250,9 @@ for all three.
 - **Still unproven on device.** Both new packages are native, so as with ADR-0024 nothing in CI
   exercises the permission prompt or the system delete dialog.
 
+**Fixed on device, 2026-09-26 — see "The third cause" below.** The account of the first two causes
+is kept as it was written, because the third one is what they were both missing.
+
 **Known defect — deletion does not work on device (open, 2026-08-26).** Decision 3 is implemented and
 passes against the fake, and it does not happen on a real phone: the screenshot always survives. Two
 causes were found and fixed, the outcome did not change, so a third is still out there. Parked, not
@@ -1271,6 +1274,32 @@ The three-outcome note from Decision 5 is the diagnostic to read next: `COPY_ONL
 still null, so `legacy` is not in effect — suspect a stale JS bundle in an installed release APK.
 `KEPT` means the delete was attempted and refused or threw. Both fixes are JS-only, so the device has
 to be running a freshly built bundle before anything that note says is worth acting on.
+
+**The third cause — `legacy: true` is a request the system does not honour (fixed, 2026-09-26).**
+Reproduced on the project's emulator (API 36) with a live Metro bundle: the note said `COPY_ONLY`.
+`legacy` makes `expo-image-picker` send `ACTION_GET_CONTENT`, and on current Android that intent is
+answered by the system Photo Picker too (`PhotopickerGetContentActivity` outranks DocumentsUI), so the
+URI was a picker URI again and `assetId` was null — exactly the first cause, through a different door.
+There is no picker option that gets around it.
+
+What the Photo Picker result does carry is a file name and a pixel size. `PickedImage.assetId`
+became `original: OriginalPicture | null` — the library id when there is one, a `FINGERPRINT`
+otherwise — and `discardOriginal` finds the fingerprinted row in MediaStore before deleting it:
+
+- **The name is not the real one.** The Photo Picker reports `33.jpg`: its item id, which for a photo
+  on the device is the MediaStore row id. `findOriginal` (`src/core/ocr/originalLookup.ts`) accepts
+  either the real name or that digits-only form, and **also requires the same pixel size and exactly
+  one matching row**. An id alone is never trusted: if the picker's ids ever stopped being the
+  library's, the size check is what keeps an unrelated photo from being deleted.
+- **Finding the row needs read access**, which the id path never did. It is asked for inside
+  `discardOriginal`, so Decision 4 holds: only after a scan that produced stats. "Select photos" is
+  enough if the user selects the screenshot; a refusal is a `KEPT`.
+- **`Query.within` rejects plain numbers on Android** (its list-of-either argument does not convert),
+  so the size filter is a `gte`/`lte` range and `findOriginal` checks the exact pair.
+
+Verified end to end on the emulator: scan, read-permission prompt, the system's "delete this photo?"
+dialog showing the right screenshot, the note "The screenshot has been deleted.", and the row gone
+from MediaStore.
 
 ---
 
@@ -1911,3 +1940,802 @@ reads import statements.
   noticed a wrongly-resolved peer.
 - **The audit is a snapshot.** Nothing re-runs it. The next SDK upgrade can make an optional peer
   required, and this ADR will not notice.
+
+---
+
+## ADR-0035 — The backend: a self-hosted REST service, one account per roster owner
+
+**Date:** 2026-09-15 · **Status:** accepted · **Phase:** 5
+
+**Context.** Open decision 1 in ARCHITECTURE.md §9 has stood since Phase 0: "is there a backend, and
+what is it?" Everything in §7 was written against the _shape_ of an answer — a `RosterSource` port,
+a `RosterSnapshot` the sync hands to `replaceRoster`, a "last-write-wins from server" policy — without
+anything to implement it. ADR-0020 answered half of the surrounding question (manual entry is the
+data source, for now) and ADR-0033 answered what happens with no backend at all (export to a file).
+Neither answers what Phase 5 actually builds against.
+
+The owner has a self-managed OVH VPS and is willing to run the database on it. That rules out a
+managed BaaS (Supabase, Firebase) as the default answer — there is somewhere to put a database
+already — and it rules out treating "is there a backend" as still open. There is: it is a service this
+project builds and this owner operates.
+
+**Decision 1 — a small REST service in TypeScript, deployed as three containers on the VPS.**
+Fastify, not a framework the rest of the codebase has no reason to know: it is a thin layer over Node's
+`http`, its request/response validation is Zod-shaped (`@fastify/type-provider-zod`), and that is the
+same validation library ARCHITECTURE.md §3 already commits the client to for exactly the reason §2.1
+needs — `.int().refine(Number.isSafeInteger)` reads the same on both sides of the wire, and a
+contributor who has read `core/network`'s client schema has already read the server's.
+
+PostgreSQL, not SQLite, and not a managed database. SQLite is the right choice for one phone with one
+writer (§7); a backend has to survive concurrent writers, wants transactional migrations, and the OVH
+box has the disk and the CPU for it. It is self-hosted for the same reason the owner raised it: no
+third party holds this roster, and the export format ADR-0033 shipped stops being the _only_ copy
+without becoming the _authoritative_ one. Drizzle is kept as the ORM on this side of the wire too —
+schema-as-code, migrations committed as SQL, the same discipline §7 already applies to the client
+database — but it is a **second, independent Drizzle schema** against Postgres, not a shared one: the
+client's `sqlite-core` tables and the server's `pg-core` tables describe the same domain from two
+different storage engines and have no business being one module.
+
+Docker Compose ties `app` (the Fastify service) and `db` (Postgres 16, a named volume for the data
+directory) together as one deployable unit, built and redeployed by **Coolify** — the tool the owner
+already runs every application on that VPS through. Compose over a bare `systemd` unit because `app`
+has a real dependency order on `db`'s healthcheck, and because Coolify deploys a Docker Compose
+resource as one unit driven by a git push, which is what turns "the whole stack" into something a
+`git push` redeploys rather than a runbook. There is no reverse proxy or TLS termination in this
+compose file: Coolify runs one Traefik instance for the whole VPS and attaches every app's containers
+to it by their published port, so a second proxy inside this stack would either fight it for ports 80
+and 443 or sit there doing nothing. See "Addendum" below and `backend/README.md` for what that means
+concretely.
+
+**Decision 2 — an account is a roster owner, not a login.** Open decision 3 (ARCHITECTURE.md §9) is
+explicit that no auth story is budgeted, and ADR-0022 answered "who are you" as a **local** choice —
+which player on the roster is you, not who you are to a server. A backend still needs to know _whose_
+roster a request is about, which is a narrower question than authentication: it needs one durable
+identity per person who owns a ladder, not an identity system.
+
+So: `POST /v1/accounts` mints one with no email and no password, and returns two secrets once —
+an **API key** (a bearer token this device stores and sends on every request) and a **recovery code**
+(a second, human-typable secret, shown once, that a second device exchanges for its own API key via
+`POST /v1/accounts/link`). The server stores salted hashes of both, never the plaintext, so a leaked
+database does not hand out live credentials — the same reasoning a password table would get, applied
+to a product with no password. Losing the recovery code before pairing a second device means that
+account's roster cannot be joined from anywhere else; it does not mean the first device stops working,
+because the API key it already holds is independent of it.
+
+This is deliberately not what open decision 3 is asking. `viewerId` — which _player_ is you — stays a
+local preference exactly as ADR-0022 shipped it; nothing here changes what the app does when nobody
+has been chosen. The account identifies a _device's owner_ to the server, so the server knows which
+roster to hand back; it says nothing about which row on that roster is the viewer.
+
+**Decision 3 — pull is a whole `RosterSnapshot`; push is additive and returns the snapshot it
+produced.** `GET /v1/roster` returns exactly the shape `RosterSource.fetchRoster()` already promises
+in ARCHITECTURE.md §7 — `season`, `viewerId`, `players`, `headToHead` — so `RemoteRosterSource` is a
+translation of one DTO, not a redesign of the port. `POST /v1/roster/sync` is the "push direction for
+`LOCAL` rows" Phase 5's deliverables call "now required, not optional": it takes the rows this device
+has that the server has never seen, keyed by a client-generated `clientId` rather than a server id
+(because they do not have one yet), applies them, and answers with the map from `clientId` to the
+server id it assigned — which is what lets `origin` flip `LOCAL` → `REMOTE` in one round trip, exactly
+as §7 describes, rather than in a second request that could fail after the first succeeded.
+
+A pushed row that already carries a server id (an edit to something the account has synced before)
+overwrites the server's copy. Two devices editing the same row between syncs is decided by whichever
+`POST /v1/roster/sync` lands second — no merge, no per-field diff. This is a deliberately small answer
+for a deliberately small case: one person, at most a small handful of their own devices, editing a
+personal roster. It is the same "last-write-wins from server" policy ARCHITECTURE.md §7 already
+states for the _pull_ direction, extended to cover concurrent _pushes_ the same way rather than
+invented fresh.
+
+**Decision 4 — the client sees an error taxonomy, not an HTTP status code.** Every failure response
+is `{ "error": { "code", "message" } }` with a fixed, closed set of codes
+(`VALIDATION_ERROR`, `UNAUTHORIZED`, `NOT_FOUND`, `CONFLICT`, `RATE_LIMITED`, `INTERNAL`) rather than
+a contributor having to remember that 409 means one particular thing in this API and 422 was never
+used. `core/network`'s mapper turns each code into the `Result` failure shape the rest of the app
+already speaks (§7's `Result<T>`), so a screen that already renders "a field was refused" for a local
+validation failure renders the same sentence for a remote one — the network boundary produces the
+same vocabulary the database boundary does, deliberately.
+
+**Decision 5 — stats are validated as safe integers on both sides of the wire, not just one.**
+§2.1's ceiling is enforced today by Zod on the client and by nothing on a server that does not exist
+yet. The contract states it explicitly — every stat field is `z.number().int().max(Number.MAX_SAFE_INTEGER)`
+— and Postgres stores each as `bigint`, which holds every value the contract allows and plenty it
+does not; the `pg` driver's int8 parser is configured to return a JS `number` rather than a string,
+which is safe _because_ the Zod boundary already rejected anything above 2^53 before a row reaches the
+column. A value the contract accepted and the database still returned imprecisely would be the same
+class of bug §2.1 exists to prevent, moved one layer over.
+
+**Decision 6 — the contract is written down before the service is, in `backend/openapi.yaml`.**
+Phase 5's own deliverables ask for this ("API contract agreed and written down first"); the OpenAPI
+document is what both `RemoteRosterSource` and the Fastify route handlers are read against, and it is
+what a contract test (Phase 5's exit criteria) has something to assert against without booting either
+side.
+
+**Rejected — a managed BaaS (Supabase / Firebase / a hosted Postgres).** The owner already has a VPS
+and wants the database on it; paying for a second place to hold the same data answers a question that
+was not open. A managed service would also have made "self-hosted" a later migration rather than the
+starting design, which is backwards for a decision this load-bearing.
+
+**Rejected — GraphQL.** One resource (the roster) with two operations (pull the whole thing, push the
+new rows) has no query-shape problem for GraphQL to solve, and it would have meant a second schema
+language next to the Zod one `core/network` and the backend already share.
+
+**Rejected — real user accounts (email + password, or OAuth).** Open decision 3 is unambiguous that no
+auth story is budgeted, and building one to answer a narrower question (whose roster is this) would
+settle a product decision — whether this app ever has logins — as a side effect of the backend's
+plumbing. The account/API-key/recovery-code shape answers exactly what Phase 5 needs and nothing open
+decision 3 has not already declined to ask for.
+
+**Rejected — CRDTs or a per-field merge for concurrent syncs.** Correct for a product with many
+concurrent editors on one document; this roster has one owner and at most a few of their own devices,
+syncing occasionally rather than concurrently in practice. The complexity of a real merge algorithm
+buys correctness for a case (two devices editing the same player between two syncs) that last-write-
+wins already answers adequately, and ARCHITECTURE.md §7 already chose last-write-wins for the pull
+side — decision 3 above is the same choice, not a new one.
+
+**Consequences.**
+
+- **This closes open decision 1.** ARCHITECTURE.md §9 and ROADMAP.md's Phase 5 header are updated to
+  point here instead of describing the shape of an answer.
+- **`backend/` is a second, independent package**, with its own `package.json`, `tsconfig.json` and
+  dependency tree. It is excluded from the root `tsconfig.json` and `eslint.config.js` — the mobile
+  app's boundary rules (§4) describe `src/`, and a Fastify route handler is not a `feature` or a
+  `core/*` module by any definition those rules use. `npm run verify` at the root does not build,
+  lint or test `backend/`; it has its own scripts, documented in `backend/README.md`.
+- **`core/network` stops being an empty module.** It now holds the DTO schemas, the fetch client, the
+  domain mappers, the error taxonomy, and a `RemoteRosterSource` implementing the `RosterSource` port
+  from `core/common` — the pull half of §7's diagram. The push half (`POST /v1/roster/sync`, the
+  `origin` transition, and wiring either into `arenaRepository`/`useRoster` through TanStack Query) is
+  **not** part of this change; it is the remainder of Phase 5's deliverables and depends on product
+  decisions this ADR does not make (when a push fires — on every write, on an interval, on demand from
+  `/me` — and what the roster screen shows while one is in flight).
+- **A device's API key has to live somewhere `core/prefs` already trusts** — MMKV, alongside
+  `shortUnit`, the last sort and `viewerId` — rather than in a new store. That wiring is part of the
+  remaining Phase 5 work above, not of this ADR.
+- **The recovery code is shown exactly once.** If the owner wants "forgot my recovery code" to be
+  recoverable later, that is a new decision (support tooling on the VPS, most likely a signed admin
+  route), not a gap in this one — today, losing it before pairing a second device is final for that
+  pairing, by design.
+
+**Addendum, 2026-09-15 — the reverse proxy is Coolify's, not a `caddy` service.** Decision 1 as first
+written put `caddy` in the compose file as the third container, reasoning from a bare VPS with nothing
+else on it. The owner runs Coolify for every application on that VPS already, and Coolify supplies its
+own Traefik instance and its own Let's Encrypt automation for the whole server — a second reverse
+proxy inside this stack would compete with it for ports 80 and 443 rather than complement it. `caddy`
+and `Caddyfile` are removed; `app` exposes its port for Coolify's proxy to reach instead, and Coolify's
+own dashboard (or its "magic" `SERVICE_FQDN_*` environment variable) is what assigns the domain and
+certificate, not a file in this repo. `backend/README.md`'s deployment section is Coolify-specific for
+the same reason: the generic "any VPS with Docker" instructions this ADR first described are not how
+this service is actually going to be run, and a doc that describes a path nobody takes drifts from the
+one that matters. The design questions decision 1 actually answers — self-hosted vs. managed, the
+account/API-key shape, the sync contract — are unaffected; only which process terminates TLS changed.
+
+**Addendum, 2026-09-19 — `POST /v1/roster/sync` is idempotent, and decision 3 as first built was
+not.** Decision 3 describes `clientId` as the key that lets `origin` flip `LOCAL` -> `REMOTE` "in one
+round trip, rather than in a second request that could fail after the first succeeded". It was right
+about the shape and silent about what happens when the _one_ round trip fails — specifically when it
+fails after the server has committed. The client cannot distinguish a response lost in transit from a
+request that never arrived; offline-first means it will retry; and `applyRosterSync` read each
+`clientId` once, used it to build the response map, and discarded it. Nothing keyed the row, so the
+retry inserted a second copy of every row in `newPlayers`. Reproduced against PostgreSQL 16: pushing
+two players and replaying the identical request left four, under four different server ids, and the
+client would have adopted the second pair and orphaned the first.
+
+`players.client_id` now persists that key, with a unique index over `(account_id, client_id)`
+(`0001_client_id.sql`). The merge reads the clientIds in a push before writing and answers an
+already-accepted one with the id it was given the first time, consuming no rank; the index closes the
+narrower race where two concurrent pushes both read nothing, and the loser is read back rather than
+retried. The column is nullable because rows created before it have no such key, and Postgres treats
+NULLs as distinct in a unique index, so any number of them coexist per account.
+
+Nothing on the wire changed: `clientId` was already sent, already required, already the response's
+key. What changed is that the contract can now _promise_ replay safety, which `openapi.yaml` states,
+and that the promise is the reason the client may retry a failed push at all. The two other
+directions already had this property and were left alone — an edit is keyed by a server id and
+overwrites, a head-to-head row is upserted by its own key — which is why only `newPlayers` needed
+fixing.
+
+This also fixed a latent hole in the tooling: `migrations/meta/` held no `0000_snapshot.json`, so
+`db:generate` had no baseline and re-emitted all four `CREATE TABLE`s as the next migration instead
+of a diff. The snapshot was regenerated from the schema as of the baseline commit and checked against
+the hand-written `0000_init.sql` statement for statement; `.prettierignore` gained
+`backend/src/db/migrations/`, which had been covered for the client's generated migrations since
+Phase 2 but never for these.
+
+**Addendum, 2026-09-19 — what the client side of the sync actually had to grow.** Decision 3 says
+the snapshot a push returns is applied "exactly as a pull would". Building it showed that is true of
+the snapshot and not of the rows underneath it, in three ways worth writing down.
+
+**`LOCAL` -> `REMOTE` is an id rewrite, not a flag.** A pushed row has one id here and a different
+one upstream, so the snapshot that comes back describes it under an id `replaceRoster` has never
+seen. Left alone, that function does exactly what ARCHITECTURE.md §7 asks of it — it keeps a local
+row the snapshot does not claim — and the roster ends up holding the row twice, once local and once
+remote. `replaceRoster` therefore takes the `clientId` -> server id map as a third argument: an
+adopted id drops out of the kept set, and **every head-to-head end is read through the map before
+the three preservation rules run**. That second half is what keeps 4.10.2's promise across a sync
+that renames the rows: a swipe recorded against `local-m8f2…` is a swipe against whatever that row
+became, and rule 1 discards a record whose ends did not survive. Nothing updates a primary key in
+place — the ids move by way of the delete and re-insert already in that transaction, which is also
+what keeps it correct under `PRAGMA foreign_keys` ON, as the Node project runs it and the device
+does not.
+
+**A record cannot be pushed in the same sync that creates its players.** Both ends are typed as
+uuids on the wire, and a `LOCAL` row's id is not one — the server has no row to attach it to until
+the very push that assigns it. So a record is pushed only once both ends are rows the server already
+knows, which means a match swiped in against a hand-entered player reaches the server on the sync
+_after_ the one that adopts them. It is not lost in the meantime; it is in SQLite, carried across by
+the paragraph above. Making it one round trip would mean letting a record name its ends by
+`clientId` and resolving them server-side after the inserts — a real contract change, deliberately
+not made here.
+
+**A first sync usually takes three round trips, because of the viewer.** `RosterSnapshot.viewerId`
+is not optional, and a freshly created account has none until `PUT /v1/me/viewer` has run — so the
+push comes back with no snapshot at all. When the device knows who the user is, it seats that row
+upstream by the id the push just assigned it, then pulls. When it does not, there is nothing to seat
+and nothing to apply: the rows are upstream, the local ones stay `LOCAL`, and the next sync re-sends
+them. That re-send is safe only because of the idempotency addendum above — without it, "nobody has
+chosen a viewer yet" would have quietly duplicated the ladder on every refresh.
+
+**The API key lives in MMKV, next to `viewerId` and the sort.** That is storage, not a security
+claim. MMKV is not an encrypted keystore, and an attacker with the device unlocked, a backup of it,
+or root can read the key exactly as they can read the roster it protects. The key is worth what the
+account is worth — one person's ladder, no email, no password, nothing reused anywhere else — and
+ADR-0035's decision 2 is explicit that this is identification, not authentication. If that ever
+stops being true, the move is `expo-secure-store` behind the same `ArenaPreferences` methods, which
+is why the port names them rather than exposing a store. `EXPO_PUBLIC_API_URL` is the matching
+build-time half: unset, no source is constructed and the app is the hand-filled ladder ADR-0021
+describes; the setup flow is what guarantees a key exists before the roster is reachable.
+
+**Addendum, 2026-09-21 — the setup gate, and why it does not close itself.** Decision 2 says an
+account is minted by `POST /v1/accounts` and joined by `POST /v1/accounts/link`, and the addendum
+above ends by saying "the setup flow is what guarantees a key exists before the roster is
+reachable". This is that flow. Three things about building it are worth writing down.
+
+**The gate latches at mount; it does not watch `needsAccount`.** The obvious shape — render setup
+while no key is stored, render the app once one is — is wrong, and quietly so. The key is stored the
+instant `POST /v1/accounts` answers, so `needsAccount` goes false **while the recovery code is still
+on screen**. A gate reading it live swaps the roster in over the one and only time that code is ever
+displayed, and the server keeps only its SHA-256 (`backend/src/auth/token.ts`), so nothing can show
+it again: the account becomes unreachable from any second device, permanently, and the failure looks
+exactly like a successful setup. So `ArenaGate` reads the condition once, at mount, and closes only
+when the screen says the user has read the code. `AccountSetupScreen.test.tsx` asserts that pairing
+— `needsAccount()` false, code still on screen, `onDone` not called — because it is the one
+invariant here whose breach is silent and irreversible.
+
+**The failure taxonomy the screen needs is not the wire's.** `NetworkError` has eight codes;
+`AccountGateway` answers with three — `UNRECOGNISED`, `OFFLINE`, `FAILED` — because the screen has
+only two remedies to offer (fix what you typed, or try again later) and a fourth code with no
+distinct remedy behind it is a distinction the user cannot act on. `NOT_FOUND` maps to
+`UNRECOGNISED` **only on `linkAccount`**: the same status from `createAccount` means the base URL is
+wrong, and sending somebody off to check a recovery code they never typed is worse than saying
+nothing. The port declares its own error type in `core/common` rather than importing the wire's,
+which §4 forbids anyway — the boundary and the product agree here.
+
+**One action, two labels.** The field is either filled in or it is not, and that is the whole
+decision, so the button says `Create an account` or `Link this device` accordingly. Two buttons
+would ask the user to choose again something they have already said by typing, and would have to
+answer "what happens if I press Create with a code in the box?" — a question this shape cannot pose.
+A code is trimmed before it decides the branch: a value pasted with the newline the clipboard
+carried is a code, and creating a second account because of one is unrecoverable in exactly the way
+this screen exists to prevent.
+
+**Operationally, this is the commit that makes `0001_client_id.sql` urgent.** While no client called
+the backend, an unapplied migration was harmless. The gate is what puts a real key on a real device,
+and from the first sync after it `applyRosterSync` writes to a column that may not exist. See
+HANDOFF.md's "Operational".
+
+## ADR-0036 — Every device on an account may edit every player
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5 · **Amends:** ADR-0020 Decision 2
+
+**Context.** ADR-0020 let the user edit only a `LOCAL` row, because a synced row was overwritten by
+the next refresh and an accepted edit would have vanished. Phase 5 turned that from a corner case
+into the whole app: the first sync flips every row to `REMOTE`, and a device joined with the
+recovery code receives nothing _but_ `REMOTE` rows. The owner reported exactly that — after linking,
+nothing could be edited, on any device. The owner's requirement: every device holding the account
+has the same power to edit.
+
+The reason ADR-0020 gave no longer holds. The push half already carried `editedPlayers`, and
+`applyRosterSync` already applies them with last-write-wins. Nothing on the client ever filled the
+field.
+
+**Decision 1 — any row can be edited.** `updatePlayerRow` (was `updateLocalPlayer`) accepts both
+origins. The detail screen always offers Edit, the form opens for a synced player, and a screenshot
+import that matches a synced player rewrites it.
+
+**Decision 2 — a synced row carries `edited_at` until the server has the edit.** Migration
+`0004_remote_edits.sql`. Non-null means pending: `collectPush` sends every such row as an edit, and
+`replaceRoster` keeps its stats over the snapshot's. It is a timestamp, not a flag, because the push
+remembers the stamp each edit left with (`pushedEdits`): a row whose stamp still matches when the
+answer arrives was pushed, so the snapshot carries it and the stamp clears. A row saved again while
+the request was in flight has a newer stamp and stays pending, so neither a slow sync nor a plain
+pull can undo an edit.
+
+**Decision 3 — removal stays `LOCAL`-only, and the form no longer offers it on a synced row.**
+_Superseded by ADR-0039._ The
+wire has no way to say a row is gone, so a removed synced player would be back after the next pull.
+Deleting across devices needs a `deletedPlayers` field on `POST /v1/roster/sync` and a tombstone on
+the device until it is pushed — a backend change, deliberately not made here.
+
+**Consequences.**
+
+- Two devices editing the same player between syncs: the sync that lands second wins, whole row, no
+  per-field merge (ADR-0035, decision 3).
+- An edit to a row the server does not hold answers 404 and fails the whole sync. Unreachable while
+  the server has no delete; it becomes reachable the day it gets one.
+- A backup does not carry `edited_at`. A restored synced row is clean, so an edit not yet pushed
+  when the backup was taken is restored as a value the next pull may overwrite.
+
+## ADR-0037 — Choosing "who am I" on a device is sent to the server
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5
+
+**Context.** The account has one viewer upstream (`PUT /v1/me/viewer`), and every sync that applies
+a snapshot wrote the snapshot's `viewerId` into the preferences. `setViewerId` changed the
+preference only. So picking a different player worked until the next pull-to-refresh, which put the
+old viewer back. The owner hit exactly that. The only time the client ever seated a viewer upstream
+was the bootstrap case: a fresh account with no viewer at all.
+
+**Decision.** A viewer picked on the device is stored as `pendingViewerId` beside `viewerId`. The
+next sync seats it with `setViewer` (by its adopted id if the push just assigned one), then pulls.
+Until that succeeds, applying a snapshot keeps the pending choice over the snapshot's, the same rule
+ADR-0036 gives a pending row edit. The flag clears only if it still names the viewer that was
+seated, so a second pick made while the sync was in flight goes out on the next one. A pending
+viewer whose row no longer exists is dropped, and the snapshot's is used.
+
+**Consequences.**
+
+- "Who am I" is per account, not per device. A pick on one device reaches the others on their next
+  sync. A device that picked nothing follows the server.
+- Two devices picking different viewers between syncs: the one that syncs last wins.
+- Removing the viewer's row clears the pending choice together with the preference.
+
+## ADR-0038 — The setup gate can be skipped, and the device paired later
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5 · **Amends:** ADR-0035's fifth addendum
+
+**Context.** With a backend configured, a first launch showed the setup screen and nothing else
+until the device was paired. With no signal or with the server down, both actions fail, and the
+user was stuck on that screen with no way into the app. The owner also wants the roster to be
+usable offline only, by choice.
+
+**Decision.** The setup screen has a second action, "Continue offline". It stores `setupSkipped` in
+the preferences and closes the gate. `needsAccount` is now _backend, no key, and not skipped_, so
+the gate does not come back on the next launch. A new `canLinkAccount` (_backend and no key_) is
+what the "You" screen reads: while it is true, `/me` shows "Connect to server", which opens the same
+setup screen at the `/account` route. Pairing there sends the hand-entered players up with the
+first sync, as pairing always has.
+
+While unpaired, `syncRoster` returns ok without a request. Every request would be refused as
+unauthenticated, and the roster on screen is already everything there is. The same holds for the
+periodic task.
+
+Skipping is refused while a request is in flight. That request may be about to mint an account, and
+closing the screen over it would lose the only view of its recovery code.
+
+**Consequences.**
+
+- The latch in `ArenaGate` is unchanged. Skipping calls `onDone` like the other two exits.
+- While the recovery code is on screen, Android's back button is swallowed (`BackHandler`), on the
+  gate and on `/account` alike, and `/account` has no swipe-back. On the gate, back would have
+  closed the app over the code; on `/account` it would have popped the route. The key is already
+  stored at that point, so nothing would ever bring the code back. "I have written it down" is the
+  one way out.
+
+## ADR-0039 — Removing a synced player removes it on every device
+
+**Date:** 2026-09-24 · **Status:** accepted · **Phase:** 5 · **Supersedes:** ADR-0036 decision 3
+
+**Context.** After ADR-0036 every device could edit every player but remove only the ones it had
+created, because `POST /v1/roster/sync` had no way to say a row was gone: a removed synced player
+came back on the next pull.
+
+**Decision 1 — the push carries `deletedPlayers`, a list of server ids.** The server removes each
+one with its records and closes the rank gap behind it. The field defaults to empty, so a client
+that predates it still parses. An id the account does not hold is skipped, which keeps a replay
+idempotent and keeps one account from touching another's rows.
+
+**Decision 2 — the account's viewer is never removed.** The server skips that id, and the device
+refuses it first, with a sentence, and offers no Remove on that row. Removing it would leave the
+account's `viewerId` pointing at nothing, and every other device's next sync would fail on it. A
+_hand-entered_ viewer can still be removed as before (4.10.4): the server has never heard of it.
+
+**Decision 3 — the device keeps a tombstone until the server has answered.** Table
+`deleted_players` (migration `0005`). `deletePlayerRow` writes one for a `REMOTE` row, `collectPush`
+sends them, and `replaceRoster` clears the ones the push carried and leaves out of any snapshot the
+players still pending, closing the ranks behind them. It is the pattern ADR-0036 used for edits. A
+tombstone the server declined, because that player had become the viewer elsewhere, is cleared
+anyway, and the player comes back with the snapshot. The server's answer is the truth once the
+push has been made. A restore clears every tombstone: the file says what the ladder is.
+
+**Decision 4 — a missing row no longer fails a push.** An edit to a row another device removed, a
+record naming one, and a repeated delete are all skipped. Before this, an edit to a missing row
+answered 404 and failed that sync, and every sync after it, with nothing on screen able to fix it.
+Records are also filtered to players the account holds, which closes a hole where a record naming
+another account's player was accepted.
+
+**Consequences.**
+
+- **Deploy the backend before shipping the APK.** An old server's Zod schema strips unknown keys,
+  so it would drop `deletedPlayers` without an error. The device would then clear its tombstones
+  and the players would come back.
+- Removing a player on one device while another edits it: the removal wins, and the edit is
+  skipped.
+- Picking a new viewer and removing the old one before a sync: the push runs before the viewer is
+  seated, so the server still sees the old viewer, skips the removal, and the player comes back.
+  Removing it again after that sync works.
+- Verified against the real backend on PGlite (Postgres in WebAssembly), since there is no Postgres
+  on the development machine: removal with records and rank closure, the viewer skipped, replay
+  idempotence, an older client's body, an edit to a missing row, and an attempt from another
+  account. The script lived outside the repository. The backend still has no test runner.
+
+## ADR-0040 — `expo-background-task` is patched, and built from source
+
+**Date:** 2026-09-27 · **Status:** accepted · **Phase:** 5
+
+**Context.** The periodic sync was checked on the emulator by forcing its WorkManager job with
+`adb shell cmd jobscheduler run -f`. A run in a process that already held the task worked. A run in
+a process WorkManager had just started headless, which is the case the task exists for, cancelled
+itself before the sync finished, and rescheduled the next run 60 minutes later. `lastSyncedAt`
+confirmed it: that run wrote nothing.
+
+The cause is in `expo-background-task` 57.0.16, and 57.0.20 still has it. Each run appends its
+successor to one unique-work chain, so the chain can still hold the previous run as `SUCCEEDED` in
+front of the live one. `BackgroundTaskScheduler.getWorkerInfo` reads `firstOrNull()`, finds the
+finished run, and misses the one that is `RUNNING`. The guard against re-registration therefore
+does not fire, and the `REPLACE` enqueue cancels the worker that is running. After a device's first
+background run, every cold wake would do this until WorkManager prunes the finished entry.
+
+**Decision 1 — patch the library with `patch-package`.** `patches/expo-background-task+57.0.16.patch`
+makes `getWorkerInfo` return the first unfinished entry, or the last one if every entry is
+finished. `postinstall` applies it, locally and on EAS.
+
+**Decision 2 — build the module from source.** Expo ships the module as a precompiled AAR in
+`local-maven-repo`, and Gradle links that AAR, not the patched source. A patch alone therefore
+changes nothing in the APK. `package.json`'s `expo.autolinking.android.buildFromSource` lists
+`expo-background-task` so the source is compiled. This was the first rebuild's mistake: the patch
+was applied, the AAR was linked, and the bug reproduced unchanged.
+
+**Consequences.**
+
+- **Remove both when upstream fixes it.** When an `expo-background-task` upgrade changes
+  `getWorkerInfo`, `patch-package` warns on install about the new version, and fails if the patch
+  no longer applies. Delete the patch and the
+  `buildFromSource` entry together.
+- Verified on the `Galaxy_S22_Ultra` AVD with a debug build: a run after a successful one, in a
+  process with no activity, logs "Worker is already scheduled, skipping cancel-and-replace", then
+  "Task successfully finished", and stamps `lastSyncedAt`.
+- A testing trap that is not this bug: `adb shell am kill` records the exit as `USER_REQUESTED`,
+  which WorkManager treats as a force-stop. It reschedules every job on the next start, so a job
+  forced into a killed process disappears ("Job didn't exist in JobStore"). Force the job **again**
+  once the process is up: that second run is the cold headless case.
+
+## ADR-0041 — The backend is tested with Vitest against PGlite
+
+**Date:** 2026-09-27 · **Status:** accepted · **Phase:** 5
+
+**Context.** `backend/` had no test runner, and the root `npm run verify` did not touch it. ADR-0039
+was verified by a PGlite script kept outside the repository, so nothing stopped a later change from
+undoing what that script checked. The development machine has no Postgres, and CI should not need
+one either.
+
+**Decision 1 — Vitest, not Jest.** The backend is native ESM with NodeNext `.js` specifiers and
+top-level `await`. Vitest runs that as written. The root's Jest would need a second transform and
+module-mapping setup for one package it shares nothing with (ADR-0035 keeps the two apart).
+
+**Decision 2 — a real Postgres, in-process: PGlite.** Each test file replaces `src/db/client.ts`
+with `test/support/pgliteClient.ts` (`vi.mock`). That module boots PGlite and applies the
+**committed migrations**, not `schema.ts`, because the migrations are what production runs and
+`0000_init.sql` is hand-written. The routes, auth and `applyRosterSync` run unchanged through
+`fastify.inject`. Nothing in `src/` changed to allow it.
+
+**Decision 3 — part of `verify`, and its own CI job.** `backend/`'s `npm run verify` runs the
+typecheck (source and tests), `vitest run` and `tsc` build. The root `verify` now ends with
+`verify:backend`, so **a machine needs `npm install` inside `backend/` once**. CI runs the same
+command in a separate `backend` job with its own lockfile.
+
+**Consequences.**
+
+- 33 tests: accounts, linking, the bearer check, the viewer, and every rule in `rosterSync.ts`'s
+  header (ranks, idempotent replay, edits, ADR-0039 removals, head-to-head scoping, a stat above
+  `Int32.MAX`, a stat past `MAX_SAFE_INTEGER` refused).
+- The suite was checked by breaking the code. Five mutations of `rosterSync.ts` each failed at
+  least one test: replay idempotence, rank closure, the viewer skip, the held-players filter, and
+  the account scope on edits.
+- **What it cannot prove.** PGlite is one connection, so the concurrent-push race that the unique
+  index on `(account_id, client_id)` handles is not exercised. The `pg` driver and its `int8`
+  parser in `client.ts` are also replaced, so the big-stat test proves the column type and
+  Drizzle's `mode: 'number'`, not that parser.
+- Tests live in `backend/test/`, outside `tsconfig.json`'s `rootDir`, so `npm run build` and the
+  Docker image never contain them. `tsconfig.test.json` typechecks them.
+
+## ADR-0042 — A player is keyed by `name + game code`, and creating an existing key updates it
+
+**Status:** accepted, 2026-09-27. Owner's request. Supersedes ADR-0031 decision 2.
+
+**Context.** Two defects with one cause. The guard behind every save, `isNameTaken`, compared the
+name alone. The synced ladder can hold two players with one name — the server has never enforced
+it — so editing such a synced player was refused ("already on the ladder") however little the edit
+changed. Meanwhile a hand-typed create of a player already on the ladder was refused rather than
+updating them; only a screenshot import did that (ADR-0031).
+
+**Decision.** The key is the pair `name + game code`, compared the way `findPlayerByIdentity`
+already compared it: the name through `name_folded` (ADR-0032), the code through
+`normaliseGameCode`.
+
+- `isNameTaken` becomes `isIdentityTaken(db, name, gameCode, exceptId?)`. A namesake under a
+  different code is a different player and no longer blocks anything.
+- `createPlayer` updates the row its pair already names — either origin, as ADR-0036 allows — and
+  inserts only when the pair is new. `importPlayer` is gone: typed and scanned creates are one path.
+- The form's "Saving updates that player" notice and the UPDATE PLAYER label now show for any create
+  whose pair matches, not only after a scan.
+- An **edit** that moves a player onto another row's pair is refused, naming the pair. Which row to
+  keep is not something a Save press can decide.
+- A synced row's game code is normalised on arrival, like its name is folded, so a server value
+  like `#A984` is still found by a typed `a984`.
+
+**Consequences.** Two players with the same name and no code are one player. The key is enforced on
+the device only; the backend still accepts duplicate pairs, and two rows that already share a pair
+(e.g. created on two devices before a sync) stay two rows until one is removed.
+
+## ADR-0043 — Release builds are minified with R8, and one class is kept by name
+
+**Status:** accepted, 2026-09-30. ROADMAP.md Phase 6, "R8 verified against a release build".
+
+**Context.** The Expo template leaves `android.enableMinifyInReleaseBuilds` off, so until now a
+"release" build was unminified and the R8 question had never been asked. Turned on, a release
+build of this app removed `expo.modules.adapters.react.apploader.RNHeadlessAppLoader`. Nothing in
+the code graph points at it: it is named only as a meta-data string in `expo-modules-core`'s
+manifest and instantiated by reflection when WorkManager wakes the app with no UI. Without it the
+periodic sync (ADR-0040) cannot start on the one path it exists for, and nothing on screen says so
+— `ClassNotFoundException` in logcat and no sync. It was found by listing the 89 classes the merged
+manifest names against R8's `usage.txt`; it was the only one removed.
+
+**Decision.** `app.config.ts` turns on `enableMinifyInReleaseBuilds` and
+`enableShrinkResourcesInReleaseBuilds` through `withGradleProperties`, and appends
+`-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }` to
+`android/app/proguard-rules.pro` through `withDangerousMod`. Both live in the config because
+`android/` is generated and git-ignored; a setting written there would never reach an EAS build.
+
+**Consequences.** Checked on an x86_64 release build with nothing passed on the command line: the
+loader is in `mapping.txt` and not in `usage.txt`, the app starts on the synced ladder, and a
+forced WorkManager job on a killed process logs `Executing task`, `Started headless task` and
+`Finished task 'arena-roster-sync'`, after which the roster reads "Updated just now". **Whoever
+adds a native module that is loaded by reflection or named only in a manifest repeats the
+manifest-against-`usage.txt` check**; R8 fails silently for exactly that kind of class.
+Not measured: an arm64 build, and a run on a physical device.
+
+## ADR-0044 — The collection tracker: the chain is the truth, a manual tick is a claim
+
+**Status:** proposed, 2026-10-01. Spike only: the sheet parser and the reconciliation rule exist in
+`src/core/collection/`; there is no screen, no migration and no network call yet.
+
+**Context.** The owner wants a section, parallel to the arena, that tracks the collection of the
+player marked as "me" and lists what is missing to complete it. "Collection" is Nine Chronicles'
+own feature: lib9c's `CollectionSheet.csv` has 942 collections, each a set of 1-6 items
+(equipment or costumes, by id) that grants a permanent stat bonus once the avatar owns all of them.
+716 need a single item, 123 need two. The sheet has ids and no names. The set of unlocked
+collections is on-chain: raw state, account `0x…1f`, keyed by the avatar address, as a list of
+ids (`docs/research/nc-cp/README.md`).
+
+Two sources of "what do I own", and they will disagree: the node (complete, but needs the network
+and an avatar address) and a tick by hand (works offline, but is only a memory).
+
+**Decision.**
+
+1. **The chain is the truth; a manual tick is a provisional claim.** `collectionStatus` returns one
+   of four values: `UNLOCKED` (the chain says so, whatever was ticked), `CLAIMED` (ticked, and no
+   chain read has ever been applied), `DISPUTED` (ticked, a complete chain read says it is not
+   unlocked) and `MISSING`.
+2. **A dispute is shown, never erased.** The node may be behind, or the tick may be a mistake;
+   the code cannot tell which. The row stays, labelled as unconfirmed, with an action to drop the
+   tick. A disputed collection counts as open in the missing list, so hiding it would hide the
+   disagreement as well.
+3. **A chain unlock needs no tick.** It updates silently and wins from then on.
+4. **Only a complete, valid read is applied.** A failed, empty-because-it-failed or partial
+   response is not an empty set: passing `∅` would turn every tick into a dispute. The caller
+   passes `null` until a real read has landed. This is the same stance as the roster, where a
+   failed sync must not blank the data (HANDOFF.md, decision 2).
+5. **Offline shows the stored state with "updated N ago"**, using the indicator the roster
+   already has.
+6. **The sheet and the names ship in the bundle**, generated once, so the section works offline.
+   The source and its commit are recorded next to the file, so a drift from the live sheets is
+   visible.
+7. **Whose collection: the player marked as "me".** The avatar address is stored with that
+   choice, locally and then on the backend; it is **not** a field of `Player`, so the roster's
+   sync rules (ADR-0035, ADR-0036) are untouched.
+
+**Verified against Heimdall, 2026-10-01** (`Xyrerris`, avatar
+`0x1023d8f22c6f5a8701e56a95e18fb2dbe436b41f`, with `heimdall-rpc-1.nine-chronicles.com` and
+`heimdall6.9capi.com` answering identically):
+
+- **The game code is the start of the avatar address.** `#1023` is `0x1023…`. It is a 4-hex
+  prefix, so it narrows a search but is not a key.
+- **The unlocked collections are readable from a plain node, with no key.** Root query
+  `state(address: <avatar>, accountAddress: "0x…1f")` returns Bencodex as hex; decoded it is a
+  list of integer ids (`lli1ei2e…ee`). It gave **442** ids for this avatar, every one present in
+  the 942-row sheet — the same 442 as `docs/research/nc-cp/fixture.ts`. 500 collections are
+  missing; 423 of them need a single item. An avatar with no state answers `null`, and that must
+  be told apart from a failed request (decision 4).
+- **From an agent address, its avatars are listed:** `stateQuery.agent(address).avatarStates
+{ address name level }` returned three avatars, `Xyrerris` among them.
+- **Mimir answers the same question as JSON.** `https://mimir.nine-chronicles.dev/heimdall/graphql/`
+  (Odin beside it) is Planetarium's indexer: chain state in MongoDB behind GraphQL, no key.
+  `collection(address) { ids }` returned the same **442** ids as the node's raw state, with no
+  Bencodex to decode. It can lag the chain (`metadata(collectionName) { latestBlockIndex }` says
+  by how much), so the node's raw state, read by `parseUnlockedCollectionIds`, stays as the
+  fallback and as the cross-check.
+- **There is still no way to go from a name to an address.** Neither Mimir (`avatar(address)`
+  only; the CP rankings take `skip`/`take` and no filter, and give no total) nor the node nor
+  9CAPI has such a query, and scanning a ranking page by page is not something a phone should do.
+  Resolving by planet + name + code therefore needs a source that has not been found; until then
+  **the address is entered by hand**, validated by reading `avatar(address).name` (Mimir or the
+  node) and showing that name for confirmation. That check also catches a mistyped address and a
+  wrong planet.
+- **Mimir serves the game's sheets**: `sheet(sheetName) { csv }`, 118 sheets, among them
+  `CollectionSheet`, `EquipmentItemSheet`, `MaterialItemSheet`, `CostumeItemSheet` and
+  `ConsumableItemSheet`. The item sheets carry a `_name` column, which is where the names are, so
+  the bundled copy of the sheet (decision 6) can be refreshed from the chain instead of from
+  GitHub.
+- **English item names: 242 of the 424 items.** The `_name` column is the on-chain value and is
+  not always English: **110** of the 424 are Korean (49 equipment, 48 consumables, 11 costumes, 2
+  materials) and **72** are in no item sheet at all (families 107, 106, 104, 103, 101, 800, 499,
+  401…). `getcraftlist` adds nothing beyond the sheets. Item names for the client UI live in the
+  game client's localisation files, whose path has not been found, so those 182 items still show
+  family and id, or the Korean name marked as such, until it is. `800120`, the item the most open
+  collections need, is among the unnamed.
+
+**Built (2026-10-01): the avatar address beside "me".**
+
+- **Backend:** `accounts.viewer_avatar_planet` and `viewer_avatar_address` (migration `0002`,
+  additive, nullable); `PUT` and `GET /v1/me/avatar`. The address is `0x` and 40 hex digits and
+  is stored lower-cased; the planet is `odin`, `heimdall` or `thor`. A `PUT` before the account
+  has a viewer is a 404, and `PUT /v1/me/viewer` with a **different** player clears the avatar,
+  because the address belongs to the previous viewer. It is on the account, not on `players`, so
+  the roster's sync rules (ADR-0035, ADR-0036) did not change.
+- **Client:** `ViewerAvatar` and `normaliseAvatarAddress` in `core/model`; a preference with a
+  _pending_ flag, shaped like `pendingViewerId`; `RosterSink.setViewerAvatar`. The repository
+  sends it **last in a sync**, once the viewer upstream is the one it belongs to; a refusal keeps
+  it pending and fails the sync, and an address typed while the request was in flight is not
+  marked as sent. It is dropped wherever the viewer changes: choosing someone else, a pull that
+  shows another device chose differently (a local row adopted under a server id is still the same
+  viewer), removing the viewer, and a restore.
+- **Screen:** `features/viewerAvatar`, rendered by `/me` beside the backup; it shows nothing until
+  somebody is "you". The route composes it, as it does the backup (ARCHITECTURE.md §4).
+- **Not built yet:** a second device does not learn the avatar from the server (there is no pull
+  of it), and there is no way to remove an avatar, only to replace it. (The address used to be
+  checked for shape only; see "Built (2026-10-01): reading the chain" below.)
+
+**Built (2026-10-01): reading the chain.**
+
+- **Ports in `core/common`, implementations in `core/network`.** `CollectionSource.readUnlocked`
+  and `AvatarSource.readAvatar`, each over Mimir and over a plain node, each behind a
+  `Fallback…Source` that tries them in order (`firstUseful`). A read is complete or a failure; `ok(null)`
+  is "the chain has nothing at this address". A failure falls through to the next source and so does
+  `ok(null)` — Mimir can lag, so its "nothing" may only mean "newer than my index" — and `ok(null)`
+  comes out only when **every** source said it. One said null and another failed is the failure.
+- **A GraphQL failure is HTTP 200.** Observed on both services: a missing document, a bad address and a
+  resolver exception all answer 200 with `errors`. Mimir's "nothing there" is `errors[0]` starting
+  "Document not found" on `path: ["collection"]` (or `["avatar"]`); the node's is `avatar: null` plus a
+  NULL_REFERENCE per selected field under `["stateQuery","avatar"]`. Both are matched on the path, so
+  another failure is not read as "no such avatar".
+- **Thor has no endpoint.** Mimir answers 404 on `/thor/` and `thor-rpc-1` answered 502, so a read on
+  Thor is a `FAILED` and the address can still be saved unchecked.
+- **The address is confirmed when it is saved.** The avatar block asks `AvatarSource` and shows
+  "Xyrerris · level 494 — is this you?"; nothing is stored until the user says yes. No avatar there, or
+  a lookup that did not happen, are different sentences, and only the second offers "save without
+  checking". An answer that arrives after the address was edited is dropped.
+- **The tracker's store** (`collection_ticks`, `collection_reads`, migration `0006`; `SCHEMA_VERSION` 7).
+  Both are keyed by planet and avatar address, so choosing another avatar never has to clear anything.
+  A read replaces the stored one whole, and a failed or "nothing there" answer leaves the last good one
+  alone (decision 4). A stored read whose ids do not parse is no read at all.
+
+**Built (2026-10-01): the screen, on placeholder data.**
+
+- **Reconciliation is pure** (`core/collection/reconciliation.ts`): rows with what can be ticked or
+  dropped, counts per state, `filterRows`, a stable `sortRows` by items needed, and the hunt grouped
+  by item kind. A chain-unlocked id the sheet does not contain is **returned, not dropped**
+  (`unknownUnlockedIds`) — it is how the screen tells the user their progress is a lower bound.
+- **No inventory, so no "items left".** The app tracks collections, not what the user owns, so a
+  row's size is how many distinct items it asks for. For the 716 one-item collections that is "one
+  away"; for the others it is the size of the hunt, not what is left of it.
+- **No sort by bonus value.** HP, ATK and DEF are different units, and `Add` and `Percentage` are
+  different scales (a `Percentage` value is in percentage points — see "Built (2026-10-14): reward
+  filter" — so `2` is 2 %, but it still does not rank against a flat amount), so a single
+  ranking would be arbitrary. It is only meaningful within one stat, and waits for a design.
+- **A route, `/collection`, beside the roster**, and an `Arena | Collection` switcher
+  (`features/sectionTabs`) that both routes render. It uses `replace`, so flipping between the two
+  builds no history. The roster takes it as an optional prop because a feature may not import
+  another. This is a switcher on a Stack, **not** tab navigation: the app has no tab bar, and
+  adding one would be a navigation change of its own.
+- **The sheet is a prop.** The route parses `SAMPLE_SHEET_CSV` (six invented collections in lib9c's
+  column layout) and passes `sampleData`, so the screen says "Sample data" until the real sheet is
+  bundled. Swapping it changes `src/app/collection.tsx` and nothing under it.
+- **Opening the tab reads the chain once**; a failure leaves the last read on screen with its age,
+  and pull-to-refresh and RETRY read again. `ArenaData.collections` is optional and the screen
+  throws without it, so a build that forgot to wire it fails loudly rather than showing a tracker
+  that cannot save.
+- **Not built yet:** the "hunting" and "ignore" marks (nowhere to store them), item names, collection
+  names, and the real sheet.
+
+**Correction to decision 6 — where the sheet comes from.** Mimir's `sheet("CollectionSheet")` is **not**
+current. Measured against the avatar above on 2026-10-01 (444 unlocked ids):
+
+| Sheet                                       | Rows | Unlocked ids it contains |
+| ------------------------------------------- | ---- | ------------------------ |
+| Mimir `sheet()`, Heimdall and Odin          | 822  | 420                      |
+| The installed client (`resources.assets`)   | 882  | 440                      |
+| lib9c, `Lib9c/TableCSV/CollectionSheet.csv` | 942  | 444                      |
+
+Only lib9c's covers every unlocked collection. The bundle is therefore generated from lib9c, not from
+Mimir, and the source and commit are recorded beside it as decision 6 already says. A collection the
+chain unlocked and the bundle does not know is something the screen must not drop silently.
+
+**Where item names are, and what is still open.** The Windows client carries its localisation under
+`StreamingAssets/Localization/`: `item_name.csv` (`ITEM_NAME_<id>`, one column per language) and
+`collection.csv` (`COLLECTION_NAME_<id>`, the collections' own names). Of the **424** items the 942
+collections need: **210** have an English name there, **89** more have an English `_name` in the chain's
+item sheets (developer-written, with typos such as "Saphire DUst"), **55** have only a Korean one and **70**
+have none — mostly equipment 107xxxxx and 106xxxxx, and family 800, which includes `800120`. 772 of the 942
+collections have every item named in English. **Open for the owner: licence.** lib9c is GPL-3.0 and the
+client repository, where those CSVs live, is AGPL-3.0. Shipping either in a distributed app is a decision
+about obligations, not a build step, so the bundle and the names are not generated until it is made.
+
+**Built (2026-10-14): the missing equipment, by name, level, element and skill.** Asked for by the
+owner: for an avatar, the list of equipment its open collections still need, each with a name, a
+level (`+0`, `+4`…), an element and — "if it is easy" — how many collections it helps.
+
+- **Where each field is.** `CollectionSheet` has the item id, `count`, `level` and `skill` (lib9c's
+  `SkillContains`: the piece must carry a skill when TRUE, none when FALSE) and no name or element.
+  The name, the element and the kind are columns of the chain's `EquipmentItemSheet` (`_name`,
+  `elemental_type`, `item_sub_type`), and the element belongs to the **id** (`10111000` is the Fire
+  Long Sword), so the join is id → equipment, plus the level and the flag from the collection.
+- **A piece is `(id, level, skill)`**, not an id: a `Long Sword +0` and a `Long Sword +4` are different
+  things to go and get, and so are one with a skill and one without. "Helps N" is the number of open
+  collections that ask for exactly that piece (`missingEquipment`, `core/collection/equipmentCatalog.ts`).
+  On 2026-10-14 the test avatar had 458 of 942 unlocked and 422 distinct pieces still open.
+- **The sheets are fetched, not bundled.** `SheetSource` (a port in `core/common`) is implemented by
+  `GameSheetSource`: the collection sheet as text from lib9c on GitHub (`Lib9c/TableCSV/CollectionSheet.csv`,
+  `development`), the equipment sheet from Mimir. Both or a failure. `createSheetLibrary` in `core/data`
+  keeps a success for the run and does not keep a failure, so the screen's retry asks again. The route
+  no longer hands the screen a sheet: `CollectionScreen` loads it (`useGameSheets`), shows "loading" or a
+  failure with a retry, then the tracker. A `sheet` prop still works and means "exactly this list, bare
+  ids", which is what the screen tests use. Fetching at run time is not shipping a copy, so it does not
+  settle the licence question above for a bundled one; it sidesteps it.
+- **A blank level or skill is 0 and FALSE.** The real lib9c sheet has 433 requirements with a blank
+  `level` (the first is a material, `201000`); lib9c's own parser reads it as 0, and so does ours now. Found
+  by reading the live sheet, not by the tests, which had only the invented one — a reason to keep the
+  live check in mind when the sheet changes.
+- **Known gaps.** In memory only: a cold start offline has no sheet and says so. The `development` branch
+  can be ahead of what the chain runs, so an id the chain unlocked and the sheet lacks is still returned,
+  not dropped (`unknownUnlockedIds`), and the reverse — a collection in the sheet that is not live — is not
+  detected. Twelve equipment names are Korean (the chain's `_name` is not always English).
+  Equipment is the whole list: 217 requirement slots of the open collections are costumes and materials.
+
+**Built (2026-10-14): reward filter, and `%` for a percentage bonus.**
+
+- **Filter by the stats a collection rewards**, in both views. The choices are the stats found in the
+  sheet (`rewardStats`, in the game's order HP, ATK, DEF, SPD, HIT, CDMG, CRI), so one lib9c adds appears
+  without a change. Selected stats combine with **AND**: `ATK` + `HIT` keeps the collections that give
+  both, and any others besides (`filterByRewardStats`). A flat and a percentage bonus of one stat are the
+  same stat to the filter. It narrows the items view too, which then lists what the remaining
+  collections still need; the progress numbers in the header stay those of the whole sheet. It
+  composes with the status filter (OPEN, UNLOCKED…), which belongs to the collections view alone.
+- **`%`, not "(percentage)".** lib9c's `StatModifier` applies a `Percentage` value as
+  `value * Value / 100` and prints it with a `%` (`ToString`), so the value is in percentage points and
+  `HP,Percentage,2` is `HP +2%`. The earlier wording existed only because the unit had not been
+  checked. A percentage still cannot be ranked against a flat amount, so sorting by bonus stays open.
+
+**Next step (not started): costumes and materials in the same list.** Do this **once the above works
+on a device and the numbers have been checked against the game** — not before. The 217 open slots that
+are not equipment are in `CostumeItemSheet` and `MaterialItemSheet` (served by Mimir the same way) and
+in the consumable sheet, with `_name` columns and no element or level (a material slot has a count
+instead, and its level is blank). The work: a catalog per sheet, a `kind` on the missing-piece entry
+(equipment / costume / material), the count of units needed rather than collections helped for
+materials, and the "N slots not in this list yet" note dropped. About 70 of the 424 items have no name
+in any sheet, so family and id remain the fallback there (see "Where item names are").
+
+**Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
+`core-common` only, with two probes in `scripts/check-boundaries.mjs`. `core/network` may now read it
+too — the node's state is Bencodex hex and the decoder is already there — with a probe each way. The parser throws on a row
+it cannot read instead of skipping it, because a shorter list reads as more progress than there
+is. A backend change (an address column and its migration) will deploy on push to the backend
+branch (HANDOFF.md, Operational) and is deliberately left out of the spike.

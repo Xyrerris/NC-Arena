@@ -9,6 +9,13 @@
 
 export { ArenaDataProvider, useArenaData, type ArenaData } from './arenaContext';
 export type { BackupFile } from './backupFile';
+export {
+  createCollectionRepository,
+  type CollectionRepository,
+  type CollectionRepositoryDeps,
+  type StoredChainRead,
+} from './collectionRepository';
+export { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
 export type { LiveData, UseLiveData } from './liveData';
 /**
  * `expoBackupFile.ts` is deliberately NOT re-exported, for the reason `arenaRepository.ts`
@@ -33,4 +40,15 @@ export {
   type RosterRepository,
   type RosterRepositoryDeps,
 } from './rosterRepository';
+export {
+  BACKGROUND_SYNC_POLICY,
+  SYNC_MUTATION_KEY,
+  runBackgroundSync,
+  syncMutation,
+  type BackgroundSyncOutcome,
+  type BackgroundSyncPolicy,
+} from './syncMutation';
+export { useCanLinkAccount } from './useCanLinkAccount';
+export { useNeedsAccount } from './useNeedsAccount';
 export { useViewerId } from './useViewerId';
+export { useViewerAvatar } from './useViewerAvatar';

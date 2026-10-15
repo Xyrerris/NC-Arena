@@ -8,7 +8,7 @@
  */
 
 import type { ShortUnit } from '../common';
-import type { PlayerId, RosterSort } from '../model';
+import type { PlayerId, RosterSort, ViewerAvatar } from '../model';
 
 export interface ArenaPreferences {
   getShortUnit(): ShortUnit;
@@ -36,12 +36,83 @@ export interface ArenaPreferences {
   clearViewerId(): void;
 
   /**
+   * The viewer picked on this device that the server has not been told about yet, or null
+   * (ADR-0037). The account has one viewer upstream, and a sync applies the server's; while
+   * this is set, the sync seats this one upstream first and a pull may not replace it.
+   */
+  getPendingViewerId(): PlayerId | null;
+  setPendingViewerId(id: PlayerId): void;
+  clearPendingViewerId(): void;
+
+  /**
+   * The Nine Chronicles avatar the viewer plays (ADR-0044), or null. It belongs to whoever
+   * `viewerId` names, so whoever changes the viewer clears it.
+   */
+  getViewerAvatar(): ViewerAvatar | null;
+  setViewerAvatar(avatar: ViewerAvatar): void;
+  clearViewerAvatar(): void;
+  /**
+   * Whether the avatar was set here and the server has not been told. The same shape as
+   * `getPendingViewerId`: a sync sends it, and a pull may not take the server's place.
+   */
+  isViewerAvatarPending(): boolean;
+  setViewerAvatarPending(): void;
+  clearViewerAvatarPending(): void;
+
+  /**
    * The season the last sync described. Null before the first one. It is a preference
    * rather than a column because it belongs to the snapshot as a whole, and giving a
    * single scalar its own table would be a migration for one integer (ADR-0018).
    */
   getSeason(): number | null;
   setSeason(season: number): void;
+
+  /**
+   * When a snapshot from the server was last written to this device, as epoch
+   * milliseconds. Null before the first sync — and the roster renders no staleness label
+   * at all rather than guessing, the same rule `getSeason` follows.
+   *
+   * It is set where `setSeason` is, because it is the same kind of fact: a scalar that
+   * belongs to the snapshot as a whole rather than to any row in it.
+   */
+  getLastSyncedAt(): number | null;
+  setLastSyncedAt(at: number): void;
+  /**
+   * Forgets when the ladder last came from the server. A **restore** is the caller
+   * (ADR-0033): it replaces every row from a file, so a timestamp left behind would date
+   * rows the server never sent. Back to null is the honest answer — the same "render
+   * nothing rather than a guess" the season label already makes.
+   */
+  clearLastSyncedAt(): void;
+
+  /**
+   * This device's bearer token for the backend — null until an account exists (ADR-0035,
+   * decision 2). `core/network` takes it as a constructor argument and cannot read it
+   * itself: `core/data` is the only layer allowed to reach `core/prefs` (§4), so it is also
+   * the only layer that can hand one over.
+   *
+   * It lives here, beside `viewerId` and the sort, rather than in a store of its own. The
+   * ADR is explicit that this is not an authentication system: the key identifies whose
+   * roster a request is about, the way `viewerId` identifies which row is you. A second
+   * store would imply a security boundary MMKV does not provide and this product does not
+   * claim — see the addendum in ADR-0035 for what that does and does not mean.
+   */
+  getApiKey(): string | null;
+  setApiKey(key: string): void;
+  /**
+   * Forgets the account this device was paired to. The counterpart to `clearViewerId`, and
+   * owed for the same reason: a key the server no longer recognises is not the same state
+   * as never having paired, and only one of the two should send the user back to setup.
+   */
+  clearApiKey(): void;
+
+  /**
+   * The user chose to keep this ladder on this device only, and to skip the setup gate
+   * (ADR-0038). It does not stop them pairing later from the "You" screen; it only stops the
+   * gate standing in front of the roster on every launch.
+   */
+  getSetupSkipped(): boolean;
+  setSetupSkipped(): void;
 }
 
 export const DEFAULT_SHORT_UNIT: ShortUnit = 'BILLIONS';
@@ -51,5 +122,11 @@ export const PREF_KEYS = {
   shortUnit: 'pref.shortUnit',
   rosterSort: 'pref.rosterSort',
   viewerId: 'pref.viewerId',
+  pendingViewerId: 'pref.pendingViewerId',
+  viewerAvatar: 'pref.viewerAvatar',
+  viewerAvatarPending: 'pref.viewerAvatarPending',
   season: 'pref.season',
+  lastSyncedAt: 'pref.lastSyncedAt',
+  apiKey: 'pref.apiKey',
+  setupSkipped: 'pref.setupSkipped',
 } as const;

@@ -28,6 +28,8 @@ import {
   type PlayerId,
 } from '@/core/model';
 
+import { playerFormStrings } from './strings';
+
 /**
  * Create, edit the player with this id, or edit **you** (ADR-0022).
  *
@@ -61,35 +63,45 @@ export interface PlayerFormFieldSpec {
  * conversion by hand.
  */
 export const PLAYER_FORM_FIELDS: readonly PlayerFormFieldSpec[] = [
-  { field: 'name', label: 'Name', numeric: false, maxLength: MAX_PLAYER_NAME_LENGTH },
-  { field: 'level', label: 'Level', hint: 'The Lv. beside the name.', numeric: true },
+  {
+    field: 'name',
+    label: playerFormStrings.fieldLabel.name,
+    numeric: false,
+    maxLength: MAX_PLAYER_NAME_LENGTH,
+  },
+  {
+    field: 'level',
+    label: playerFormStrings.fieldLabel.level,
+    hint: playerFormStrings.levelHint,
+    numeric: true,
+  },
   {
     field: 'gameCode',
-    label: 'Game code',
-    hint: 'The #a984 beside the name. Optional — the # is added for you.',
+    label: playerFormStrings.fieldLabel.gameCode,
+    hint: playerFormStrings.gameCodeHint,
     numeric: false,
     maxLength: MAX_GAME_CODE_LENGTH + 1,
   },
-  { field: 'combatPower', label: 'Combat power', numeric: true },
+  { field: 'combatPower', label: playerFormStrings.fieldLabel.combatPower, numeric: true },
   {
     field: 'score',
-    label: 'Score',
+    label: playerFormStrings.fieldLabel.score,
     // The one field a screenshot cannot supply, said out loud: the game's profile panel
     // does not show it, so a scan leaves this box exactly as it found it (ADR-0024).
-    hint: 'Not on the profile screen — type this one in.',
+    hint: playerFormStrings.scoreHint,
     numeric: true,
   },
-  { field: 'hp', label: 'HP', numeric: true },
-  { field: 'atk', label: 'ATK', numeric: true },
-  { field: 'def', label: 'DEF', numeric: true },
+  { field: 'hp', label: playerFormStrings.fieldLabel.hp, numeric: true },
+  { field: 'atk', label: playerFormStrings.fieldLabel.atk, numeric: true },
+  { field: 'def', label: playerFormStrings.fieldLabel.def, numeric: true },
   {
     field: 'critPercent',
-    label: 'Crit %',
-    hint: 'A whole percentage — 113 means 113 %.',
+    label: playerFormStrings.fieldLabel.critPercent,
+    hint: playerFormStrings.critHint,
     numeric: true,
   },
-  { field: 'hit', label: 'HIT', numeric: true },
-  { field: 'spd', label: 'SPD', numeric: true },
+  { field: 'hit', label: playerFormStrings.fieldLabel.hit, numeric: true },
+  { field: 'spd', label: playerFormStrings.fieldLabel.spd, numeric: true },
 ] as const;
 
 /**
@@ -198,16 +210,14 @@ export type StatScanUiState =
   | { kind: 'failed'; message: string };
 
 /** The control that opens the picker. */
-export const SCAN_LABEL = 'Fill from screenshot';
+export const SCAN_LABEL = playerFormStrings.scanLabel;
 
 /**
  * What the control is about to do, said **before** it is pressed — including the deleting,
  * because a picture removed from someone's photo library is not something to mention
  * afterwards (ADR-0026).
  */
-export const SCAN_HINT =
-  'Reads a profile screenshot from your photos and then deletes it. Nothing is saved to ' +
-  'the roster until you press save.';
+export const SCAN_HINT = playerFormStrings.scanHint;
 
 const FIELD_LABELS: Readonly<Record<PlayerDraftField, string>> = Object.fromEntries(
   PLAYER_FORM_FIELDS.map((spec) => [spec.field, spec.label]),
@@ -222,9 +232,9 @@ const FIELD_LABELS: Readonly<Record<PlayerDraftField, string>> = Object.fromEntr
  * person who trusted the promise (ADR-0026).
  */
 const SCREENSHOT_NOTES: Readonly<Record<ScreenshotOutcome, string>> = {
-  DELETED: 'The screenshot has been deleted.',
-  COPY_ONLY: 'The screenshot is still in your photos — this app could not identify it there.',
-  KEPT: 'The screenshot is still in your photos.',
+  DELETED: playerFormStrings.screenshotDeleted,
+  COPY_ONLY: playerFormStrings.screenshotCopyOnly,
+  KEPT: playerFormStrings.screenshotKept,
 };
 
 /**
@@ -243,49 +253,42 @@ export const scanNote = (
 ): string => {
   const loaded =
     missing.length === 0
-      ? 'Stats loaded — every field was read.'
-      : `Stats loaded — ${found.length} of ${found.length + missing.length} fields. ` +
-        `Still to type: ${missing.map((field) => FIELD_LABELS[field]).join(', ')}.`;
+      ? playerFormStrings.scanAllRead
+      : playerFormStrings.scanPartial(
+          found.length,
+          found.length + missing.length,
+          missing.map((field) => FIELD_LABELS[field]).join(', '),
+        );
   return `${loaded} ${SCREENSHOT_NOTES[screenshot]}`;
 };
 
 /**
- * What Save is about to do, when a screenshot has matched somebody already on the ladder
- * (ADR-0031).
+ * What Save is about to do, when the form's `name + game code` matches somebody already on
+ * the ladder (ADR-0031, ADR-0042).
  *
- * It exists because the import's one surprising move — pressing *Add player* and rewriting
+ * It exists because a create's one surprising move — pressing *Add player* and rewriting
  * a player instead — happens after the screen has already navigated away, so an
  * after-the-fact confirmation has nowhere to appear. Said **before** the press it is also
  * the more useful sentence: the user can still change the name or the code, or cancel.
  *
- * `writable` is the difference between the two matches a scan can make. A `LOCAL` row is
- * one Save rewrites; a `REMOTE` one is a row Save refuses (ADR-0020), and a notice that
- * promised the update in both cases would be wrong in one.
+ * Either kind of match is one Save rewrites: a synced row is as editable as a hand-entered
+ * one since ADR-0036.
  */
 export interface ImportNotice {
   message: string;
-  writable: boolean;
 }
 
-/** `null` when the scanned pair matches nobody — Save adds a player and needs no warning. */
+/** `null` when the pair matches nobody — Save adds a player and needs no warning. */
 export const importNotice = (match: ImportMatch | null): ImportNotice | null => {
   if (match === null) return null;
   const who = `${match.player.name}${match.player.gameCode === '' ? '' : ` ${gameCodeLabel(match.player.gameCode)}`}`;
-  return match.origin === 'LOCAL'
-    ? {
-        writable: true,
-        message: `${who} is already on the ladder. Saving updates that player rather than adding a second row.`,
-      }
-    : {
-        writable: false,
-        message: `${who} came from the roster sync, so this screenshot cannot be saved over them.`,
-      };
+  return { message: playerFormStrings.alreadyOnLadder(who) };
 };
 
 export type PlayerFormUiState =
   /** Edit mode only, while the player is being read out of SQLite. */
   | { kind: 'loading' }
-  /** Edit mode only: the id in the URL matches nothing, or matches a synced player. */
+  /** Edit mode only: the id in the URL matches nothing. */
   | { kind: 'unavailable'; message: string }
   | {
       kind: 'ready';
@@ -300,8 +303,13 @@ export type PlayerFormUiState =
       /** True between pressing Save and the write returning. Blocks a double submit. */
       isSaving: boolean;
       scan: StatScanUiState;
-      /** Non-null only when a scan has matched a player already on the ladder (ADR-0031). */
+      /** Non-null only when a create's `name + game code` matches a player already on the ladder. */
       importNotice: ImportNotice | null;
+      /**
+       * Whether Remove is offered. For every player except a synced one who is you, which the
+       * account needs as its viewer on every device (ADR-0039).
+       */
+      canDelete: boolean;
     };
 
 export type PlayerFormEvent =
@@ -311,31 +319,29 @@ export type PlayerFormEvent =
   | { type: 'delete' };
 
 export const formTitle = (mode: PlayerFormMode, name: string): string =>
-  mode.kind === 'create' ? 'New player' : name;
+  mode.kind === 'create' ? playerFormStrings.newPlayer : name;
 
 /**
  * The viewer screen shows the player's name as its title like an edit does, and says whose
  * it is above it (`VIEWER_EYEBROW`). Naming the screen "You" instead would hide the one
  * thing worth confirming — *which* player the app currently believes is you.
  */
-export const VIEWER_EYEBROW = 'YOUR AVATAR';
+export const VIEWER_EYEBROW = playerFormStrings.viewerEyebrow;
 
 /**
  * What the button will do, on the button.
  *
  * `notice` is the import's doing: a create whose scan matched a player the user owns is
  * about to *update* somebody, and a control still reading "Add player" would be the one
- * place on the screen still saying otherwise (ADR-0031). A match the user cannot write —
- * a synced row — keeps the ordinary label, because Save will be refused rather than
- * turning into an update.
+ * place on the screen still saying otherwise (ADR-0031).
  */
 export const submitLabel = (mode: PlayerFormMode, notice: ImportNotice | null = null): string => {
   switch (mode.kind) {
     case 'create':
-      return notice?.writable === true ? 'Update player' : 'Add player';
+      return notice === null ? playerFormStrings.addPlayer : playerFormStrings.updatePlayer;
     case 'edit':
-      return 'Save changes';
+      return playerFormStrings.saveChanges;
     case 'viewer':
-      return 'Save my stats';
+      return playerFormStrings.saveMyStats;
   }
 };

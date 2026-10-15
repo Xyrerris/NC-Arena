@@ -53,11 +53,44 @@ const NO_TO_FIXED = {
     'contract is tested at. Use divideHalfUp from core/common.',
 };
 
+// ---------------------------------------------------------------------------
+// User-visible words live in a strings module (ROADMAP.md Phase 6)
+// ---------------------------------------------------------------------------
+// Text written straight into JSX is what the externalisation pass removed, and nothing else
+// would notice it coming back. These select the four ways a word reaches the screen from a
+// component: bare JSX text, a string or template literal as a child, and a literal in one of
+// the props that a user or a screen reader reads. `JSXElement >` keeps the child selectors off
+// attribute values such as a template-literal `testID`.
+const LETTERS = '/[A-Za-z]{2,}/';
+const NO_JSX_TEXT = {
+  selector: `JSXText[value=${LETTERS}]`,
+  message:
+    "ROADMAP.md Phase 6: words belong in the feature's strings.ts (or core/design-system/strings.ts), not in JSX.",
+};
+const NO_JSX_LITERAL_CHILD = {
+  selector: `JSXElement > JSXExpressionContainer > Literal[value=${LETTERS}]`,
+  message: 'ROADMAP.md Phase 6: move this string into the strings module.',
+};
+const NO_JSX_TEMPLATE_CHILD = {
+  selector: `JSXElement > JSXExpressionContainer > TemplateLiteral > TemplateElement[value.raw=${LETTERS}]`,
+  message: 'ROADMAP.md Phase 6: move this string into the strings module.',
+};
+const NO_JSX_LITERAL_PROP = {
+  selector:
+    'JSXAttribute[name.name=/^(label|title|placeholder|accessibilityLabel|accessibilityHint)$/]' +
+    ` > Literal[value=${LETTERS}]`,
+  message: 'ROADMAP.md Phase 6: move this string into the strings module.',
+};
+const NO_UI_WORDS = [NO_JSX_TEXT, NO_JSX_LITERAL_CHILD, NO_JSX_TEMPLATE_CHILD, NO_JSX_LITERAL_PROP];
+
 module.exports = defineConfig([
   expoConfig,
   prettier,
   {
-    ignores: ['dist/*', '.expo/*', 'node_modules/*', 'design/*', 'android/*', 'ios/*'],
+    // backend/ is a second, independent package (ADR-0035), with its own lint config if it
+    // ever wants one — the boundary rules below describe src/, and a Fastify route handler
+    // is not a `feature` or `core/*` module by any definition they use.
+    ignores: ['dist/*', '.expo/*', 'node_modules/*', 'design/*', 'android/*', 'ios/*', 'backend/*'],
   },
 
   // ---------------------------------------------------------------------------
@@ -81,6 +114,7 @@ module.exports = defineConfig([
         { type: 'core-network', pattern: 'src/core/network' },
         { type: 'core-prefs', pattern: 'src/core/prefs' },
         { type: 'core-ocr', pattern: 'src/core/ocr' },
+        { type: 'core-collection', pattern: 'src/core/collection' },
         { type: 'core-testing', pattern: 'src/core/testing' },
         { type: 'app', pattern: 'src/app' },
       ],
@@ -106,9 +140,12 @@ module.exports = defineConfig([
               allow: to('core-model', 'core-common'),
             },
             { from: { element: { type: 'core-db' } }, allow: to('core-model', 'core-common') },
+            // core/network may read core/collection: the node answers with a Bencodex hex
+            // string, and the decoder that turns it into ids is pure and already tested there.
+            // Copying it would be two decoders to keep in step with one chain (ADR-0044).
             {
               from: { element: { type: 'core-network' } },
-              allow: to('core-model', 'core-common'),
+              allow: to('core-model', 'core-common', 'core-collection'),
             },
             { from: { element: { type: 'core-prefs' } }, allow: to('core-model', 'core-common') },
 
@@ -116,6 +153,10 @@ module.exports = defineConfig([
             // core/data: a scan is a suggestion the user still has to accept, and a module
             // that could write would make "scanned" and "saved" the same act (ADR-0024).
             { from: { element: { type: 'core-ocr' } }, allow: to('core-model', 'core-common') },
+
+            // core/collection is pure: the sheet parser and the owned-versus-claimed rule
+            // (ADR-0044). It depends on nothing, so it stays testable in plain Node.
+            { from: { element: { type: 'core-collection' } }, allow: to('core-common') },
 
             // core/data is the only place that knows both the database and the network
             // exist.
@@ -127,7 +168,14 @@ module.exports = defineConfig([
             // Features may not reach the database or the network.
             {
               from: { element: { type: 'feature' } },
-              allow: to('core-model', 'core-common', 'core-design-system', 'core-data', 'core-ocr'),
+              allow: to(
+                'core-model',
+                'core-common',
+                'core-design-system',
+                'core-data',
+                'core-ocr',
+                'core-collection',
+              ),
             },
             // ...and may not reach *each other*. Matching the captured folder name to the
             // importer's is what makes a feature a unit rather than a flat namespace.
@@ -154,6 +202,7 @@ module.exports = defineConfig([
                 'core-data',
                 'core-db',
                 'core-ocr',
+                'core-collection',
                 'core-prefs',
               ),
             },
@@ -179,7 +228,27 @@ module.exports = defineConfig([
   {
     files: ['src/**/*.{ts,tsx}'],
     ignores: ['src/core/design-system/**/*'],
+    rules: { 'no-restricted-syntax': ['error', NO_RAW_COLOR, NO_RAW_SPACING, ...NO_UI_WORDS] },
+  },
+
+  // ---------------------------------------------------------------------------
+  // Tests say what a screen says, so they may write it out — but they keep the token rules,
+  // which the block above would otherwise stop applying to them (see the note by NO_RAW_COLOR).
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/**/*.test.{ts,tsx}'],
+    ignores: ['src/core/design-system/**/*'],
     rules: { 'no-restricted-syntax': ['error', NO_RAW_COLOR, NO_RAW_SPACING] },
+  },
+
+  // ---------------------------------------------------------------------------
+  // The design system may write raw colours and spacing, but not words. `Catalogue` is the dev
+  // gallery, whose whole job is to show sample text, and the tests are exempt as above.
+  // ---------------------------------------------------------------------------
+  {
+    files: ['src/core/design-system/**/*.tsx'],
+    ignores: ['src/core/design-system/Catalogue.tsx', 'src/core/design-system/**/*.test.tsx'],
+    rules: { 'no-restricted-syntax': ['error', ...NO_UI_WORDS] },
   },
 
   // ---------------------------------------------------------------------------

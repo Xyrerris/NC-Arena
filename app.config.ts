@@ -1,5 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import type { ExpoConfig } from 'expo/config';
-import { AndroidConfig, withAndroidManifest, type ConfigPlugin } from 'expo/config-plugins';
+import {
+  AndroidConfig,
+  withAndroidManifest,
+  withDangerousMod,
+  withGradleProperties,
+  type ConfigPlugin,
+} from 'expo/config-plugins';
 
 /**
  * Arena Scout — Expo app config.
@@ -37,12 +46,12 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router',
-    // No `expo-background-task` here. Its config plugin is `withInfoPlist` and nothing else —
-    // it writes iOS `UIBackgroundModes` and `BGTaskSchedulerPermittedIdentifiers`, and the
-    // module's own AndroidManifest.xml is empty — so on an Android-only build it contributed
-    // exactly nothing while reading as though the app had background work. The package stays
-    // (it is a Phase 5 deliverable); the declaration belongs beside the code that uses it,
-    // which is also when it stops being a no-op if iOS lands (ARCHITECTURE.md §9.6).
+    // Back since Phase 5, beside the code that uses it (ADR-0034, decision 5): the periodic
+    // sync in `src/core/data/backgroundSync.ts`. Its plugin is still `withInfoPlist` and
+    // nothing else, so on Android it changes no native file — WorkManager needs no manifest
+    // entry — but the app now *does* have background work, so the declaration reads true, and
+    // it is what an iOS build would need (ARCHITECTURE.md §9.6).
+    'expo-background-task',
     [
       // ADR-0024. The permission string is written here rather than left to the plugin's
       // default, because Android shows it verbatim and the default says "the app" — which
@@ -79,6 +88,13 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  // The EAS project the builds belong to. Written by hand because `eas init` cannot write into
+  // a dynamic config, and without it `eas build` stops at linking the project. `owner` pins it
+  // to one account: the login can create projects in two, and EAS will not guess between them.
+  owner: 'xyrerris',
+  extra: {
+    eas: { projectId: 'cfaf7d02-5126-428e-bde0-6f2d478ff716' },
+  },
   experiments: {
     typedRoutes: true,
     // On by default in the SDK 57 template. Kept, and recorded in ADR-0003 —
@@ -121,4 +137,61 @@ const withPickerSurvivingConfigChanges: ConfigPlugin = (expoConfig) =>
     return mod;
   });
 
-export default withPickerSurvivingConfigChanges(config);
+/**
+ * R8 and resource shrinking in release builds (ROADMAP.md Phase 6, "R8 verified against a
+ * release build").
+ *
+ * The template leaves both off, so until now "release" meant an unminified build and the R8
+ * question was never asked. Turning them on is what makes the build the size a user downloads —
+ * and what removed a class the app needs, see `KEEP_RULES`. As gradle properties rather than
+ * edits to `android/app/build.gradle` because `android/` is generated and git-ignored: this is
+ * the only place a setting can live and reach an EAS build.
+ */
+const RELEASE_SHRINKING = {
+  'android.enableMinifyInReleaseBuilds': 'true',
+  'android.enableShrinkResourcesInReleaseBuilds': 'true',
+};
+
+const withShrunkenRelease: ConfigPlugin = (expoConfig) =>
+  withGradleProperties(expoConfig, (mod) => {
+    const keys = new Set(Object.keys(RELEASE_SHRINKING));
+    const others = mod.modResults.filter((item) => item.type !== 'property' || !keys.has(item.key));
+    mod.modResults = [
+      ...others,
+      ...Object.entries(RELEASE_SHRINKING).map(([key, value]) => ({
+        type: 'property' as const,
+        key,
+        value,
+      })),
+    ];
+    return mod;
+  });
+
+/**
+ * What R8 must not remove.
+ *
+ * `RNHeadlessAppLoader` is named only in `expo-modules-core`'s manifest, as a meta-data string,
+ * and instantiated by reflection when WorkManager wakes the app with no UI. Nothing in the
+ * code graph points at it, so R8 removed it, and the periodic sync (ADR-0040) would have died
+ * on the one path it exists for: `ClassNotFoundException` in logcat, no sync, no error on
+ * screen. Found by listing every class the merged manifest names against R8's `usage.txt` —
+ * this was the only one of 89.
+ */
+const KEEP_RULES = ['-keep class expo.modules.adapters.react.apploader.RNHeadlessAppLoader { *; }'];
+
+const withKeepRules: ConfigPlugin = (expoConfig) =>
+  withDangerousMod(expoConfig, [
+    'android',
+    async (mod) => {
+      const file = path.join(mod.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
+      const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+      const missing = KEEP_RULES.filter((rule) => !current.includes(rule));
+      if (missing.length > 0) {
+        const separator = current === '' || current.endsWith('\n') ? '' : '\n';
+        fs.writeFileSync(file, `${current}${separator}\n# Phase 6\n${missing.join('\n')}\n`);
+      }
+      return mod;
+    },
+  ]);
+
+export default withKeepRules(withShrunkenRelease(withPickerSurvivingConfigChanges(config)));

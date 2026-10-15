@@ -8,6 +8,7 @@
 import { StyleSheet, View, Pressable } from 'react-native';
 
 import { ArenaText } from './ArenaText';
+import { designStrings } from './strings';
 import { color, layout, radius, space } from './tokens';
 
 export interface SegmentedTab<TValue extends string> {
@@ -27,7 +28,7 @@ export function SegmentedTabs<TValue extends string>({
   tabs,
   selected,
   onSelect,
-  accessibilityLabel = 'View',
+  accessibilityLabel = designStrings.segmentedTabs.a11y,
   testID,
 }: SegmentedTabsProps<TValue>) {
   return (

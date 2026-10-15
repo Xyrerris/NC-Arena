@@ -717,10 +717,16 @@ a way a reader would believe.
 
 ## Phase 5 — Backend integration & offline-first (5 days)
 
-Gated on open decision 1. **Phase 4.10 is no longer a gate — it is done**: this is the phase that
-makes `replaceRoster` run in anger, and the record-preservation fix it needed (4.10.2) is in. If
-open decision 1 is unanswered by the start of Phase 5, this phase stalls while 6 and 7 continue —
-sequence accordingly.
+**Open decision 1 is answered (ADR-0035, 2026-09-15):** a self-hosted Fastify + PostgreSQL service,
+deployed on the owner's own VPS, contract-first in `backend/openapi.yaml`. **Phase 4.10 is no longer
+a gate either — it is done**: this is the phase that makes `replaceRoster` run in anger, and the
+record-preservation fix it needed (4.10.2) is in.
+
+The backend service itself and the client's pull-side scaffolding (`core/network`'s DTOs, mappers,
+error taxonomy, `RemoteRosterSource`) exist ahead of this phase's start — see ADR-0035. What is left
+of this phase's deliverables below is the push direction's wiring (`POST /v1/roster/sync`, the
+`origin` transition) into `arenaRepository` and `useRoster` through TanStack Query, and the product
+decisions ADR-0035 deliberately left open: when a push fires, and what the roster shows meanwhile.
 
 Two things 4.10 leaves on this phase's desk: `expo-background-task`'s config plugin declaration,
 removed from `app.config.ts` because it contributed nothing on Android and belongs beside the code
@@ -744,18 +750,53 @@ that uses it (ADR-0034, decision 5); and `zod` and `@tanstack/react-query`, whic
   phase rather than discovering them inside it.
 - TanStack Query owning the sync call; success writes to SQLite; **no component reads `useQuery`
   data** (ARCHITECTURE.md §7).
-- `expo-background-task` periodic refresh, pull-to-refresh, sync-failure surfacing.
-- Conflict/staleness policy: last-write-wins from server, with a visible "updated N ago".
+- `expo-background-task` periodic refresh, pull-to-refresh, sync-failure surfacing. **All three are
+  in.** The periodic task (`core/data/backgroundSync.ts`) runs the pull's own mutation on the same
+  client, so it queues behind a pull rather than racing it and shows the same badge; it retries
+  twice where a pull retries never, and it is defined from the app's entry (`index.ts`) because a
+  headless run evaluates no route. Seen firing headless on the emulator (2026-09-27), once
+  `expo-background-task` was patched so a cold wake no longer cancels its own worker (ADR-0040).
+- Conflict/staleness policy: last-write-wins from server, with a visible "updated N ago". **The
+  label is in**, from a `lastSyncedAt` preference stamped where a snapshot is applied; it ticks
+  itself and renders nothing at all before a first sync or after a restore, rather than guessing.
 
 **Exit criteria**
 
-- App functions fully offline on previously synced data.
-- Airplane-mode → refresh shows a recoverable error, never a crash or a blank screen.
+- App functions fully offline on previously synced data. **Met.** Nothing but a sync or the
+  account endpoints reaches the network; every read and write is local SQLite and MMKV.
+  `src/core/data/offline.test.ts` wires the repository as a device with a URL does — real
+  `RemoteRosterSource` and `RemoteAccountGateway`, a stored key — syncs once, then makes `fetch`
+  reject as React Native does in airplane mode, and **counts every request**: a restart opens on
+  the synced ladder with no setup gate, every write (create, edit, match, delete, backup restore)
+  runs with zero requests, a sync fails as a `Result` without moving the ladder or
+  `lastSyncedAt`, and the first sync back online pushes all of it. Probed: a write that quietly
+  calls the source first, and a gate that ignores the stored key, each fail it. OCR is ML Kit's
+  bundled model and the fonts are bundled, so neither needs a download. A network that accepts
+  the connection and never answers (captive portal, Wi-Fi with no uplink) is covered too:
+  `HttpClient` gives every request a 20 s deadline, headers and body alike, and ends it as
+  `OFFLINE`, so a sync there fails like airplane mode instead of spinning the badge and queueing
+  every later sync behind it. Asserted in `httpClient.test.ts` ("the deadline") and end to end
+  in `offline.test.ts`; probed by removing the deadline, which fails both.
+- Airplane-mode → refresh shows a recoverable error, never a crash or a blank screen. **Met.** A
+  failed sync is a banner with its own retry over a ladder that stays entirely readable; only an
+  unreadable _query_ reaches the `error` state. Asserted in
+  `RosterScreen.test.tsx` — "keeps every row on screen when a sync fails".
 - A contract test asserts a stat value above `Int32.MAX` survives the full
   JSON → Zod → SQLite → domain → UI path unchanged, **and** that a value above
   `Number.MAX_SAFE_INTEGER` is rejected at parse time rather than silently rounded. These are the
-  §2.1 regression guards, and the second is the one this platform actually needs.
-- The `features/` diff for this phase is empty.
+  §2.1 regression guards, and the second is the one this platform actually needs. **Met.**
+  `src/features/player/statContract.test.tsx` sends the body as raw JSON text through the real
+  `RemoteRosterSource`, into SQLite, and reads the digits off `PlayerDetailScreen` (up to
+  `MAX_SAFE_INTEGER` itself); `2^53 + 1` is refused and the stored ladder is untouched. Probed: it
+  fails with a 32-bit narrowing in the SQLite mapper, and with the safe-integer rule removed from
+  the DTO. Removing `.safe()` alone is **not** a break — Zod 4's `.int()` already refuses unsafe
+  integers.
+- The `features/` diff for this phase is empty **of changes the swap forced**. Read as written this
+  is now literally false — `features/accountSetup` is new (ADR-0035's fifth addendum) — and the
+  distinction is the one that was always meant: no existing feature had to change to move the roster
+  from SQLite-only to server-backed, which is what this criterion exists to prove. The setup gate
+  and the sync indicator are UI the owner asked for on top, not the boundary giving way. If a
+  _pre-existing_ feature directory acquires a diff, the boundary was wrong.
 
 ---
 
@@ -783,7 +824,16 @@ visual gate, both of which were cheaper on the JVM.
 
 - Cold start < 2.0 s to first meaningful paint on a mid-tier device, measured not felt. The budget
   is looser than the Kotlin plan's 1.5 s for the reasons in ARCHITECTURE.md §11 — if it is missed,
-  the response is to fix the app, not to widen the number again.
+  the response is to fix the app, not to widen the number again. **Measured on a flagship, not
+  on a mid-tier phone (2026-10-01).** On a Samsung Galaxy S22 Ultra, from a release build that
+  carried R8 (ADR-0043): `am start -W` `TotalTime` of 434–450 ms averaged over repeated cold
+  starts, and the roster with its rows visible about 0.5 s after the tap, timed by hand from a
+  screen recording. That is a quarter of the budget. **The criterion names a mid-tier device and
+  this is not one**, so it is not yet shown to hold there; the by-hand figure also carries an
+  error of a tenth of a second or two. A phone several times slower would still fit, which is an
+  estimate and not a measurement. `TotalTime` ends at the activity's first frame, so it
+  understates first meaningful paint; the by-hand figure is the one that answers the criterion.
+  Left open: one run on a mid-tier device.
 - No accessibility scanner errors outstanding.
 - A release build runs correctly end to end. This is where minification and any missing native
   config surface, so it must be an actual run on a device, not a successful build.

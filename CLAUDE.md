@@ -2,22 +2,13 @@
 
 ## Branches
 
-**Every point of Phase 4.10 goes on `close-the-gaps-before-the-backend`.** One branch for the whole
-phase, not one per point.
+**There is no single mandatory branch any more.** The main backend work is done, so the standing
+instruction of 2026-09-21 (all work on `claude/backend-data-management-w98hph`) is lifted
+(owner, 2026-10-14). Branch as the task warrants.
 
-The phase is a single defect sweep with a single exit gate — Phase 5 does not start until _all_ of
-4.10's criteria are met (ROADMAP.md) — so its points are not independently shippable and splitting
-them across branches buys nothing. What it costs is real: each point builds on the one before
-(4.10.3's restore had to know what 4.10.2 decided about records, and 4.10.4's `deletePlayer` fix
-reuses the `clearViewerId` 4.10.3 added), so a per-point branch either forks from a stale base or
-spends its first commits catching up.
-
-If your session instructions name a different branch — a per-task name like
-`claude/punto-4-10-4-<id>` — that instruction and this file disagree. Say so and ask before you
-push; do not silently pick one. The per-task name is generated outside this repository, so this
-file cannot override it, only make the conflict visible.
-
-Work outside Phase 4.10 is not covered by this rule. Branch as the task warrants.
+One thing to know: Coolify deploys the backend automatically from
+`claude/backend-data-management-w98hph`, so a push to that branch that touches `backend/` is a
+deploy, migrations included. Don't push there by accident.
 
 ## Before you push
 
@@ -36,8 +27,10 @@ compliant codebase — which is what happened for two phases (ADR-0006). Treat a
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, module boundaries (§4), the data layer (§7), the testing split (§10) |
 | [docs/DECISIONS.md](docs/DECISIONS.md)       | Every ADR. The _why_ behind anything that looks arbitrary                   |
 | [docs/ROADMAP.md](docs/ROADMAP.md)           | Phases, exit criteria, and what is deliberately still open (marked ⚠️)      |
+| [docs/HANDOFF.md](docs/HANDOFF.md)           | Where Phase 5 stopped, what is decided, and what to pick up next            |
 
-ARCHITECTURE.md first; the roadmap references its section numbers throughout.
+ARCHITECTURE.md first; the roadmap references its section numbers throughout. HANDOFF.md is the
+short one — read it before you plan anything, because it says which decisions are already made.
 
 ## Two conventions that are easy to break by accident
 

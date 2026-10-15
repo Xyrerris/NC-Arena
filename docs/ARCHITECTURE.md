@@ -365,12 +365,25 @@ Native reflex is to render `data` straight out of `useQuery`. Doing so here rein
 the branching the offline-first design exists to delete, so it is called out in review and guarded
 by the §4 boundary (a feature cannot import `core/network` at all).
 
+**Live since Phase 5.** There is one mutation in the app — `syncMutation` in `core/data`, one key
+and one scope — fired by two callers: `useRoster` on pull-to-refresh, and the periodic task in
+`core/data/backgroundSync.ts`. Both run it on the one `QueryClient`, which lives beside the
+repository in `core/data/arenaRepository.ts` because the task has no layout to reach it through.
+There is no `useQuery` anywhere, and the mutation's `mutationFn` returns `void` — so there is no
+cached data for a component to read even by mistake, which is this rule stated as a fact about the
+wiring rather than as a convention to remember. `retry` is each caller's to set: 0 on the pull,
+because somebody is watching it; 2 on the task, because nobody is, and `POST /v1/roster/sync`'s
+idempotency is what makes that safe. The shared scope runs them one after another, never together.
+
 ```ts
 export interface RosterRepository {
   observeRoster(sort: RosterSort, query: string): LiveQuery<RosterEntry[]>;
   observePlayer(id: PlayerId): LiveQuery<PlayerDetail | null>;
   observeViewer(): LiveQuery<Player | null>;
+  /** Pull only. Still the background-safe path, and what syncRoster falls back to. */
   refresh(): Promise<Result<void>>;
+  /** Push then pull, as one operation. This is what pull-to-refresh calls (ADR-0035). */
+  syncRoster(): Promise<Result<void>>;
 
   // ADR-0020. The app writes players offline; an online database takes over later.
   createPlayer(draft: PlayerDraft): Result<Player>;
@@ -498,6 +511,16 @@ proposal** — they are product questions, and the framework has no opinion on t
    rather than a workaround, and Phase 5 needs a **push** direction it is not currently
    budgeted for. What the remote contract looks like is still open; what fills the app today is
    not.
+   **Answered, 2026-09-15 (ADR-0035): a self-hosted REST service.** A Fastify + PostgreSQL
+   service, deployed as three Docker containers (`app`, `db`, `caddy`) on the owner's own VPS,
+   with the contract written down first in `backend/openapi.yaml`. An account identifies a
+   roster owner — not a login; ADR-0022's local `viewerId` is unchanged — via an API key and a
+   one-time recovery code for pairing a second device. `GET /v1/roster` returns the
+   `RosterSnapshot` shape §7 already promises; `POST /v1/roster/sync` is the push direction this
+   decision was waiting on, keyed by a client-generated id so a new `LOCAL` row's `origin` can
+   flip to `REMOTE` in one round trip. `core/network` now holds the client half (DTOs, mappers,
+   error taxonomy, `RemoteRosterSource`); wiring the push half into `arenaRepository` and
+   `useRoster` is the Phase 5 work that remains.
 2. **How large is a real roster?** 14 rows needs nothing. 10 000 rows needs cursor pagination,
    FTS5, and a different sort strategy. This decision changes Phase 3 materially.
 3. **How is "your avatar" identified?** Login? A locally chosen player? A device-bound profile?

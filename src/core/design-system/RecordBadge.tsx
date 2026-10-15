@@ -9,6 +9,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { ArenaText, type Tone } from './ArenaText';
+import { designStrings } from './strings';
 import { space } from './tokens';
 
 export interface RecordBadgeProps {
@@ -26,12 +27,14 @@ const toneFor = (wins: number, losses: number): Tone => {
 export function RecordBadge({ wins, losses, testID }: RecordBadgeProps) {
   const played = wins + losses;
   const label =
-    played === 0 ? 'never fought' : `you won ${wins} of ${played} matches against this player`;
+    played === 0
+      ? designStrings.recordBadge.neverFought
+      : designStrings.recordBadge.wonOf(wins, played);
 
   return (
     <View accessible accessibilityLabel={label} style={styles.root} testID={testID}>
       <ArenaText variant="labelSmall" tone={toneFor(wins, losses)}>
-        {`${wins}W · ${losses}L`}
+        {designStrings.recordBadge.record(wins, losses)}
       </ArenaText>
     </View>
   );

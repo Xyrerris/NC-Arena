@@ -18,7 +18,12 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { err, isOk, ok, type Result, type RosterSnapshot, type RosterSource } from '@/core/common';
 import { ArenaDataProvider, type RosterRepository } from '@/core/data';
 import { asPlayerId, type Player, type PlayerId } from '@/core/model';
-import { createStatScanner, type ScannedLine, type StatScanner } from '@/core/ocr';
+import {
+  createStatScanner,
+  type OriginalPicture,
+  type ScannedLine,
+  type StatScanner,
+} from '@/core/ocr';
 import {
   createStubLiveData,
   createTestDatabase,
@@ -262,14 +267,18 @@ describe('PlayerFormScreen — adding a player', () => {
     await waitFor(() => expect(screen.queryByTestId('form-field-name-error')).toBeNull());
   });
 
-  it('refuses a name already on the ladder, and says which field', async () => {
+  it('updates the player a typed name and code already name, instead of adding them twice', async () => {
+    // ADR-0042: `name + game code` is the key, typed or scanned alike.
     await renderCreate();
     await type('name', 'aUrEl');
+    await type('gameCode', '#A1');
 
+    expect(await screen.findByTestId('form-import-notice')).toBeTruthy();
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
     fireEvent.press(screen.getByTestId('form-submit'));
 
-    await waitFor(() => expect(screen.getByTestId('form-field-name-error')).toBeTruthy());
-    expect(namesInRoster(repository)).toEqual(['Aurel', 'Brann']);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(namesInRoster(repository)).toEqual(['aUrEl', 'Brann']);
   });
 
   it('leaves without writing when cancelled', async () => {
@@ -348,11 +357,20 @@ describe('PlayerFormScreen — editing a player', () => {
     expect(mockBack).toHaveBeenCalled();
   });
 
-  it('refuses a synced player instead of offering an edit the next sync would undo', async () => {
+  it('edits and offers to remove a synced player too (ADR-0036, ADR-0039)', async () => {
     await renderEdit(asPlayerId('p-b'));
 
-    await waitFor(() => expect(screen.getByTestId('form-unavailable')).toBeTruthy());
-    expect(screen.queryByTestId('player-form')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Brann'));
+    expect(screen.queryByTestId('form-unavailable')).toBeNull();
+    expect(screen.getByTestId('form-delete')).toBeTruthy();
+  });
+
+  it('offers no Remove on the synced player who is you', async () => {
+    // The fixture's viewer, a synced row: the account needs it on every device.
+    await renderEdit(asPlayerId('p-a'));
+
+    await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Aurel'));
+    expect(screen.queryByTestId('form-delete')).toBeNull();
   });
 
   it('says so when the id matches nobody at all', async () => {
@@ -407,7 +425,10 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     { text: 'SPD 1014675713', frame: { left: 1398, top: 556, right: 1610, bottom: 590 } },
   ];
 
-  const ASSET_ID = 'content://media/external/images/media/12345';
+  const ORIGINAL: OriginalPicture = {
+    kind: 'ASSET',
+    assetId: 'content://media/external/images/media/12345',
+  };
 
   /**
    * A photo library that hands over one screenshot and remembers what it was told to
@@ -415,17 +436,17 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
    * sentence in the note (ADR-0026).
    */
   const libraryHolding = (
-    assetId: string | null,
+    original: OriginalPicture | null,
     onDelete: () => Result<void> = () => ok(undefined),
   ) => {
-    const deleted: string[] = [];
+    const deleted: OriginalPicture[] = [];
     return {
       deleted,
       source: {
         name: 'fake',
-        pick: async () => ok({ uri: 'file:///cache/scan.png', assetId }),
+        pick: async () => ok({ uri: 'file:///cache/scan.png', original }),
         discardCopy: async () => ok(undefined),
-        discardOriginal: async (id: string) => {
+        discardOriginal: async (id: OriginalPicture) => {
           const outcome = onDelete();
           if (outcome.ok) deleted.push(id);
           return outcome;
@@ -434,7 +455,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     };
   };
 
-  const scannerReading = (lines: ScannedLine[], library = libraryHolding(ASSET_ID)): StatScanner =>
+  const scannerReading = (lines: ScannedLine[], library = libraryHolding(ORIGINAL)): StatScanner =>
     createStatScanner({
       source: library.source,
       recogniser: { name: 'fake', recognise: async () => ok(lines) },
@@ -566,9 +587,8 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     );
   });
 
-  it('still refuses a name already on the ladder under a different code', async () => {
-    // Same name, a code that is not the screenshot's. The pair does not match, so this is
-    // an ordinary duplicate and the user is told so rather than silently overwriting Deus.
+  it('adds a namesake under a different code, rather than overwriting them', async () => {
+    // Same name, a code that is not the screenshot's: a different player (ADR-0042).
     const before = repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'zz99' });
     expect(before.ok).toBe(true);
 
@@ -577,12 +597,11 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Deus'));
     fireEvent.press(screen.getByTestId('form-submit'));
 
-    await waitFor(() => expect(screen.getByTestId('form-field-name-error')).toBeTruthy());
-    expect(namesInRoster(repository).filter((name) => name === 'Deus')).toHaveLength(1);
-    expect(mockReplace).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(namesInRoster(repository).filter((name) => name === 'Deus')).toHaveLength(2);
   });
 
-  it('declines to rewrite a synced player, and says why', async () => {
+  it('rewrites a synced player rather than adding a second row (ADR-0036)', async () => {
     const synced: ScannedLine[] = [
       { text: 'Lv.101 Aurel #a1', frame: { left: 700, top: 58, right: 922, bottom: 92 } },
       ...SHEET.slice(1),
@@ -592,11 +611,8 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     await waitFor(() => expect(screen.getByTestId('form-field-name').props.value).toBe('Aurel'));
     fireEvent.press(screen.getByTestId('form-submit'));
 
-    const message = await screen.findByTestId('form-message');
-    expect(message).toBeTruthy();
-    // Neither written nor duplicated: the next sync would undo the write (ADR-0020).
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(namesInRoster(repository).filter((name) => name === 'Aurel')).toHaveLength(1);
-    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   /**
@@ -640,7 +656,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
   });
 
-  it('warns rather than promises when the match is a synced player', async () => {
+  it('promises the update for a synced match too', async () => {
     const synced: ScannedLine[] = [
       { text: 'Lv.101 Aurel #a1', frame: { left: 700, top: 58, right: 922, bottom: 92 } },
       ...SHEET.slice(1),
@@ -649,20 +665,19 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
     fireEvent.press(screen.getByTestId('form-scan-button'));
 
     const notice = await screen.findByTestId('form-import-notice');
-    expect(notice.props.children).toContain('roster sync');
-    // Save is going to be refused, not turned into an update, so the label does not move.
-    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
+    expect(notice.props.children).toContain('already on the ladder');
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
   });
 
-  it('offers no notice on a hand-typed name, where a collision is still a rejection', async () => {
+  it('gives the same notice on a hand-typed match, which Save updates just the same', async () => {
     expect(repository.createPlayer({ ...NYX, name: 'Deus', gameCode: 'a984' }).ok).toBe(true);
 
     await renderScanning(scannerReading(SHEET));
     await type('name', 'Deus');
     await type('gameCode', 'a984');
 
-    expect(screen.queryByTestId('form-import-notice')).toBeNull();
-    expect(screen.getByTestId('form-submit')).toHaveTextContent('ADD PLAYER');
+    expect(await screen.findByTestId('form-import-notice')).toBeTruthy();
+    expect(screen.getByTestId('form-submit')).toHaveTextContent('UPDATE PLAYER');
   });
 
   it('names the fields it could not read, so a partial scan does not look complete', async () => {
@@ -675,7 +690,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
   });
 
   it('confirms the load and reports the screenshot gone, once it is', async () => {
-    const library = libraryHolding(ASSET_ID);
+    const library = libraryHolding(ORIGINAL);
     await renderScanning(scannerReading(SHEET, library));
 
     fireEvent.press(screen.getByTestId('form-scan-button'));
@@ -685,13 +700,13 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
       'Stats loaded — every field was read. The screenshot has been deleted.',
     );
     // The note is not taken at its word: the library says it happened.
-    expect(library.deleted).toEqual([ASSET_ID]);
+    expect(library.deleted).toEqual([ORIGINAL]);
   });
 
   it('says the screenshot survived when the deletion was refused', async () => {
     // The stats are good and the picture is still there. Reporting the first without the
     // second would be the app claiming something it did not do.
-    const library = libraryHolding(ASSET_ID, () => err(new Error('The user said no.')));
+    const library = libraryHolding(ORIGINAL, () => err(new Error('The user said no.')));
     await renderScanning(scannerReading(SHEET, library));
 
     fireEvent.press(screen.getByTestId('form-scan-button'));
@@ -703,7 +718,7 @@ describe('PlayerFormScreen — filling from a screenshot', () => {
   });
 
   it('keeps the screenshot when the scan found nothing to load', async () => {
-    const library = libraryHolding(ASSET_ID);
+    const library = libraryHolding(ORIGINAL);
     const scanner = createStatScanner({
       source: library.source,
       recogniser: {

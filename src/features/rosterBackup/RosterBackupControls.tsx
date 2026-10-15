@@ -19,10 +19,12 @@ import type { BackupFile } from '@/core/data';
 import { ArenaButton, ArenaText, color, layout, radius, space } from '@/core/design-system';
 
 import {
+  EXPORT_A11Y,
   EXPORT_LABEL,
   IMPORT_CONFIRM_BODY,
   IMPORT_CONFIRM_KEEP,
   IMPORT_CONFIRM_REPLACE,
+  IMPORT_A11Y,
   IMPORT_CONFIRM_TITLE,
   IMPORT_LABEL,
   SECTION_TITLE,
@@ -75,7 +77,7 @@ export function RosterBackupControls({ file }: RosterBackupControlsProps) {
           // Nothing to write, so nothing to press. The sentence above already says why —
           // a disabled control with no explanation beside it is the failure this avoids.
           disabled={!canExport}
-          accessibilityLabel="Export the roster to a file you can keep"
+          accessibilityLabel={EXPORT_A11Y}
           testID="roster-backup-export"
         />
         <ArenaButton
@@ -83,7 +85,7 @@ export function RosterBackupControls({ file }: RosterBackupControlsProps) {
           variant="secondary"
           onPress={confirmImport}
           busy={busy}
-          accessibilityLabel="Replace this roster with one from a file"
+          accessibilityLabel={IMPORT_A11Y}
           testID="roster-backup-import"
         />
       </View>

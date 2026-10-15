@@ -11,6 +11,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { ArenaText } from './ArenaText';
 import { RecordBadge } from './RecordBadge';
+import { designStrings } from './strings';
 import { color, radius, space } from './tokens';
 
 export interface ViewerCardProps {
@@ -38,15 +39,19 @@ export function ViewerCard({
       <View style={styles.header}>
         <View style={styles.identity}>
           <ArenaText variant="labelNano" tone="accent" style={styles.eyebrow}>
-            YOUR AVATAR
+            {designStrings.viewerCard.eyebrow}
           </ArenaText>
           <ArenaText variant="titleLarge" tone="primary">
             {name}
           </ArenaText>
         </View>
-        <View accessible accessibilityLabel={`Rank ${rank}`} style={styles.rank}>
+        <View
+          accessible
+          accessibilityLabel={designStrings.viewerCard.rankA11y(rank)}
+          style={styles.rank}
+        >
           <ArenaText variant="labelNano" tone="subtle">
-            RANK
+            {designStrings.viewerCard.rank}
           </ArenaText>
           <ArenaText variant="numericLarge" tone="accent">
             {String(rank).padStart(2, '0')}
@@ -54,9 +59,13 @@ export function ViewerCard({
         </View>
       </View>
 
-      <View accessible accessibilityLabel={`Combat power ${combatPowerExact}`} style={styles.power}>
+      <View
+        accessible
+        accessibilityLabel={designStrings.viewerCard.combatPowerA11y(combatPowerExact)}
+        style={styles.power}
+      >
         <ArenaText variant="labelNano" tone="subtle" style={styles.eyebrow}>
-          COMBAT POWER
+          {designStrings.viewerCard.combatPower}
         </ArenaText>
         <View style={styles.powerValues}>
           <ArenaText variant="numericHero" tone="primary" style={styles.powerExact}>
@@ -70,7 +79,7 @@ export function ViewerCard({
 
       <View style={styles.footer}>
         <ArenaText variant="bodyCaption" tone="subtle">
-          {`Score ${score}`}
+          {designStrings.viewerCard.score(score)}
         </ArenaText>
         {record ? <RecordBadge wins={record.wins} losses={record.losses} /> : null}
       </View>

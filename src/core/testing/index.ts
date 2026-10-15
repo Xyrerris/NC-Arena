@@ -13,8 +13,9 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import path from 'node:path';
 
 import { createRosterRepository, type RosterRepository, type UseLiveData } from '../data';
-import type { RosterSource } from '../common';
+import type { AccountGateway, RosterSink, RosterSource } from '../common';
 import { refoldPlayerNames, type ArenaDatabase } from '../db';
+import { RemoteRosterSource } from '../network';
 import { createMemoryPreferences, type ArenaPreferences } from '../prefs';
 
 const MIGRATIONS_FOLDER = path.resolve(__dirname, '..', 'db', 'migrations');
@@ -103,11 +104,56 @@ export interface TestRepository {
  * `refresh` should not have to invent one to say so, and one that does still passes the
  * fixture it wants. Omitted, the repository is wired exactly as the app's own is.
  */
-export const createTestRepository = (db: ArenaDatabase, source?: RosterSource): TestRepository => {
+export const createTestRepository = (
+  db: ArenaDatabase,
+  source?: RosterSource,
+  /**
+   * The account endpoints. Omitted, the repository has none — which is what makes
+   * `needsAccount` false, and is exactly the app as it ships with `EXPO_PUBLIC_API_URL`
+   * unset. A setup test passes a fake to open the gate.
+   */
+  gateway?: AccountGateway,
+  /**
+   * Where a local row goes when it leaves the device. Omitted, `syncRoster` has nothing to
+   * push to and falls back to a plain pull — which is what every test written before there
+   * was a backend assumes, and why this is last and optional rather than folded into
+   * `source`. Pass one to exercise the push half from above the repository.
+   */
+  sink?: RosterSink,
+): TestRepository => {
   const preferences = createMemoryPreferences();
   const build = (from: RosterSource | undefined = source) =>
-    createRosterRepository({ db, source: from, preferences });
+    createRosterRepository({ db, source: from, sink, gateway, preferences });
   return { repository: build(), preferences, restart: build };
+};
+
+/**
+ * The real `RemoteRosterSource`, answered by a server that sends exactly `body` — the raw
+ * text, not an object. That distinction is the point: a number above
+ * `Number.MAX_SAFE_INTEGER` can only be written as text, because a JS literal would already
+ * have been rounded before any code under test saw it. `JSON.parse` does that rounding in
+ * the app, so it does it here too, in the same place `Response.json()` would.
+ *
+ * Replaces `fetch` for the process until `restore` runs; call it in `afterEach`.
+ */
+export interface WireSource {
+  source: RosterSource;
+  restore(): void;
+}
+
+export const serveRosterJson = (body: string): WireSource => {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => ({
+    ok: true,
+    status: 200,
+    json: async () => JSON.parse(body) as unknown,
+  })) as unknown as typeof fetch;
+  return {
+    source: new RemoteRosterSource('https://arena.test', 'test-key'),
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
 };
 
 export type { ArenaPreferences };

@@ -1,0 +1,16 @@
+diff --git a/node_modules/expo-background-task/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt b/node_modules/expo-background-task/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt
+index 74c5719..6d3d542 100644
+--- a/node_modules/expo-background-task/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt
++++ b/node_modules/expo-background-task/android/src/main/java/expo/modules/backgroundtask/BackgroundTaskScheduler.kt
+@@ -262,7 +262,10 @@ object BackgroundTaskScheduler {
+ 
+     return try {
+       val workInfos = workManager.getWorkInfosForUniqueWork(WORKER_IDENTIFIER).await()
+-      return workInfos.firstOrNull()
++      // Each run appends its successor to the unique-work chain, so the chain can still hold
++      // the previous run as SUCCEEDED ahead of the live one. Reading the first entry then
++      // misses the RUNNING worker, and a cold headless start replaces (cancels) itself.
++      return workInfos.firstOrNull { !it.state.isFinished } ?: workInfos.lastOrNull()
+     } catch (e: Exception) {
+       Log.d(TAG, "Calling getWorkInfosForUniqueWork failed with error " + e.message)
+       null

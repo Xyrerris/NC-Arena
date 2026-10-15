@@ -15,6 +15,25 @@ import type { Result } from '../common';
 import type { ScannedLine } from './statSheet';
 
 /**
+ * How the original in the photo library can be found again, when it can.
+ *
+ * `ASSET` is the library's own id, and it is what the picker hands over when it routes
+ * through the document provider. `FINGERPRINT` is what it hands over otherwise: current
+ * Android serves the picker's request with the system Photo Picker whatever the app asks for,
+ * and a Photo Picker URI names no library row at all. The file's name and pixel size do
+ * survive the trip, and they are enough to find the row again — once the user has granted
+ * read access, which is asked for at the moment of deleting and not before (ADR-0026).
+ */
+export type OriginalPicture =
+  | { readonly kind: 'ASSET'; readonly assetId: string }
+  | {
+      readonly kind: 'FINGERPRINT';
+      readonly fileName: string;
+      readonly width: number;
+      readonly height: number;
+    };
+
+/**
  * A screenshot the user chose, in the two forms it exists in.
  *
  * The distinction is the whole reason deleting is not one call. The picker does not hand
@@ -26,11 +45,11 @@ export interface PickedImage {
   /** The working copy, in the app's cache. This is what gets read. */
   readonly uri: string;
   /**
-   * The library's id for the original, or null when there is no original this app can
-   * name — the user browsed the filesystem directly, or granted access to selected photos
-   * only. Null is a normal outcome, not a failure, and it means the screenshot stays.
+   * How to find the original, or null when there is nothing this app could find it by —
+   * the picker reported neither an id nor a file name. Null is a normal outcome, not a
+   * failure, and it means the screenshot stays.
    */
-  readonly assetId: string | null;
+  readonly original: OriginalPicture | null;
 }
 
 /**
@@ -63,7 +82,7 @@ export interface ImageSource {
    * the user is allowed to say no, which is an outcome the form reports rather than an
    * exception.
    */
-  discardOriginal(assetId: string): Promise<Result<void>>;
+  discardOriginal(original: OriginalPicture): Promise<Result<void>>;
 }
 
 /** Turns an image into lines of text with their positions. */

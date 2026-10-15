@@ -6,8 +6,31 @@
  * one of the three boundaries the formatting contract is tested at.
  */
 
+export type {
+  AccountCredentials,
+  AccountError,
+  AccountFailure,
+  AccountGateway,
+  LinkedAccount,
+} from './accountGateway';
+export type { AvatarError, AvatarIdentity, AvatarSource } from './avatarSource';
+export type {
+  CollectionError,
+  CollectionFailure,
+  CollectionSource,
+  UnlockedCollections,
+} from './collectionSource';
+export type { GameSheets, SheetError, SheetFailure, SheetSource } from './sheetSource';
 export { err, isOk, ok, type Result } from './result';
-export type { RosterSnapshot, RosterSource } from './rosterSource';
+export { UnsupportedByUpstream } from './rosterSource';
+export type {
+  RosterPush,
+  RosterPushResult,
+  RosterSink,
+  RosterSnapshot,
+  RosterSource,
+} from './rosterSource';
+export { nextChangeIn, timeSince } from './relativeTime';
 export { assertSafeInteger, divideHalfUp, pow10, rescaleHalfUp } from './rounding';
 export {
   DOT_SEPARATORS,

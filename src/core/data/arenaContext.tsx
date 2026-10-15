@@ -14,12 +14,33 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
+import type { AvatarSource } from '../common';
+import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
 import type { RosterRepository } from './rosterRepository';
+import type { SheetLibrary } from './sheetLibrary';
 
 export interface ArenaData {
   repository: RosterRepository;
   useLiveData: UseLiveData;
+  /**
+   * Reads the name behind a typed-in avatar address, so it can be shown for confirmation
+   * (ADR-0044). Optional because only the avatar block uses it: absent, that block saves an
+   * address on its shape alone, which is what every other screen's test provider relies on.
+   * `_layout.tsx` always supplies it.
+   */
+  avatarSource?: AvatarSource;
+  /**
+   * The collection tracker's ticks and chain read (ADR-0044). Optional for the same reason
+   * `avatarSource` is — only the collection screen reads it — and that screen refuses to render
+   * without it, loudly, rather than showing a tracker that cannot save.
+   */
+  collections?: CollectionRepository;
+  /**
+   * The game's collection and item sheets (ADR-0044). Optional like the two above: only the
+   * collection screen reads it, and only when its route did not hand it a sheet directly.
+   */
+  sheets?: SheetLibrary;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);

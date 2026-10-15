@@ -23,8 +23,24 @@ import { fileURLToPath } from 'node:url';
 import { report } from './lint-probe.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const JEST = join(ROOT, 'node_modules', '.bin', 'jest');
 const config = createRequire(import.meta.url)(join(ROOT, 'jest.config.js'));
+
+/**
+ * Runs Jest's own entry point under the current Node rather than `node_modules/.bin/jest`: on
+ * Windows that bin is `jest.cmd`, which `spawnSync` cannot start without a shell, so every probe
+ * got ENOENT and empty output, and reported a verdict on the config that was really about the
+ * spawn.
+ */
+const jest = (args) => {
+  const run = spawnSync(
+    process.execPath,
+    [join(ROOT, 'node_modules', 'jest', 'bin', 'jest.js'), ...args],
+    { cwd: ROOT, encoding: 'utf8' },
+  );
+  // A run that never started says nothing about the config; stop instead of judging it.
+  if (run.error) throw run.error;
+  return run;
+};
 
 const FAILING_TEST =
   "it('fails on purpose, to prove this file is picked up', () => {\n" +
@@ -37,11 +53,13 @@ const runsAndFails = (relativePath, source, project) => {
   mkdirSync(dirname(absolute), { recursive: true });
   writeFileSync(absolute, source, 'utf8');
   try {
-    const run = spawnSync(
-      JEST,
-      ['--selectProjects', project, '--ci', '--silent', relativePath.replace(/\\/g, '/')],
-      { cwd: ROOT, encoding: 'utf8' },
-    );
+    const run = jest([
+      '--selectProjects',
+      project,
+      '--ci',
+      '--silent',
+      relativePath.replace(/\\/g, '/'),
+    ]);
     const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
     // A non-zero exit is not enough on its own: "no tests found" also exits non-zero, and
     // that is precisely the outcome a too-narrow `testMatch` produces. The run has to have
@@ -96,19 +114,15 @@ check(
 );
 
 // 4 — the mechanism itself: an unmet threshold has to fail the run.
-const impossible = spawnSync(
-  JEST,
-  [
-    '--selectProjects',
-    'node',
-    '--ci',
-    '--silent',
-    '--coverage',
-    '--coverageThreshold',
-    JSON.stringify({ global: { statements: 100, branches: 100, functions: 100, lines: 100 } }),
-  ],
-  { cwd: ROOT, encoding: 'utf8' },
-);
+const impossible = jest([
+  '--selectProjects',
+  'node',
+  '--ci',
+  '--silent',
+  '--coverage',
+  '--coverageThreshold',
+  JSON.stringify({ global: { statements: 100, branches: 100, functions: 100, lines: 100 } }),
+]);
 check(
   'an unmet coverage threshold fails the run',
   impossible.status !== 0 &&

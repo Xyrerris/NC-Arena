@@ -353,11 +353,11 @@ describe('PlayerDetailScreen — editing a hand-entered player', () => {
     handle.close();
   });
 
-  it('offers no edit control for a player that came from the sync', async () => {
+  it('offers an edit control for a player that came from the sync too (ADR-0036)', async () => {
     await render(<PlayerDetailScreen id={VALKROS} />, { wrapper: wrapWith(repository) });
 
     expect(screen.getByTestId('player-detail')).toBeTruthy();
-    expect(screen.queryByTestId('player-edit')).toBeNull();
+    expect(screen.getByTestId('player-edit')).toBeTruthy();
   });
 
   it('offers an edit control for a player added on this device', async () => {

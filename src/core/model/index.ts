@@ -227,3 +227,48 @@ export const toPlayerDraft = (player: Player): PlayerDraft => ({
   hit: player.hit,
   spd: player.spd,
 });
+
+/** The planets Nine Chronicles runs on, named as 9CAPI and Mimir name them (ADR-0044). */
+export const PLANETS = ['odin', 'heimdall', 'thor'] as const;
+export type Planet = (typeof PLANETS)[number];
+
+export const isPlanet = (value: unknown): value is Planet =>
+  typeof value === 'string' && (PLANETS as readonly string[]).includes(value);
+
+/**
+ * The Nine Chronicles avatar the viewer plays: which planet it is on and its on-chain address.
+ * It is what the collection tracker reads, and it is a property of the *viewer*, not of
+ * `Player` — a roster row has no business carrying a chain address (ADR-0044).
+ *
+ * The address is always lower-cased, so two spellings of the same one compare equal.
+ */
+export interface ViewerAvatar {
+  readonly planet: Planet;
+  readonly address: string;
+}
+
+const AVATAR_ADDRESS = /^0x[0-9a-f]{40}$/;
+
+/** A pasted address, trimmed and lower-cased; null when it is not `0x` and 40 hex digits. */
+export const normaliseAvatarAddress = (raw: string): string | null => {
+  const address = raw.trim().toLowerCase();
+  return AVATAR_ADDRESS.test(address) ? address : null;
+};
+
+/** The avatar a stored string describes, or null if it is anything this code did not write. */
+export const parseStoredAvatar = (raw: string | undefined): ViewerAvatar | null => {
+  if (raw === undefined) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null) return null;
+    const { planet, address } = value as { planet?: unknown; address?: unknown };
+    if (!isPlanet(planet) || typeof address !== 'string') return null;
+    const normalised = normaliseAvatarAddress(address);
+    return normalised === null ? null : { planet, address: normalised };
+  } catch {
+    return null;
+  }
+};
+
+export const sameAvatar = (a: ViewerAvatar | null, b: ViewerAvatar | null): boolean =>
+  a === b || (a !== null && b !== null && a.planet === b.planet && a.address === b.address);

@@ -26,6 +26,7 @@ import {
 } from '@/core/design-system';
 import type { PlayerId } from '@/core/model';
 
+import { playerFormStrings } from './strings';
 import { useViewerChoice } from './useViewerChoice';
 import {
   candidateLabel,
@@ -61,21 +62,20 @@ export function ViewerChoiceScreen({
         {onCancel === undefined ? null : (
           <View style={styles.backRow}>
             <ArenaButton
-              label="Cancel"
+              label={playerFormStrings.cancel}
               variant="secondary"
               onPress={onCancel}
-              accessibilityLabel="Cancel and keep the current avatar"
+              accessibilityLabel={playerFormStrings.cancelChoiceA11y}
               testID="viewer-choice-cancel"
             />
           </View>
         )}
 
         <ArenaText variant="displaySmall" tone="primary" accessibilityRole="header">
-          Who are you?
+          {playerFormStrings.whoAreYou}
         </ArenaText>
         <ArenaText variant="bodySmall" tone="subtle">
-          Pick your own player. The roster marks them as your avatar, and their stats become the
-          ones every comparison is made against.
+          {playerFormStrings.whoAreYouBody}
         </ArenaText>
       </View>
 
@@ -98,7 +98,7 @@ function ChoiceBody({ state, onChoose, onAddPlayer, footer }: ChoiceBodyProps) {
         <View style={styles.centred} testID="viewer-choice-loading">
           <ActivityIndicator color={color.accent} />
           <ArenaText variant="bodySmall" tone="subtle">
-            {'Reading the ladder…'}
+            {playerFormStrings.choiceLoading}
           </ArenaText>
           {footer}
         </View>
@@ -108,7 +108,7 @@ function ChoiceBody({ state, onChoose, onAddPlayer, footer }: ChoiceBodyProps) {
       return (
         <View style={styles.centred} testID="viewer-choice-error">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            The ladder could not be read
+            {playerFormStrings.choiceErrorTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="negative" align="center">
             {state.message}
@@ -121,15 +121,15 @@ function ChoiceBody({ state, onChoose, onAddPlayer, footer }: ChoiceBodyProps) {
       return (
         <View style={styles.centred} testID="viewer-choice-empty">
           <ArenaText variant="titleMedium" tone="primary" align="center">
-            Nobody to pick yet
+            {playerFormStrings.nobodyTitle}
           </ArenaText>
           <ArenaText variant="bodySmall" tone="subtle" align="center">
-            Add yourself to the roster first — then come back and say which player you are.
+            {playerFormStrings.nobodyBody}
           </ArenaText>
           <ArenaButton
-            label="+ New player"
+            label={playerFormStrings.addPlayerButton}
             onPress={onAddPlayer}
-            accessibilityLabel="Add a player to the roster"
+            accessibilityLabel={playerFormStrings.addPlayerA11y}
             testID="viewer-choice-add-player"
           />
           {footer}
@@ -188,13 +188,13 @@ const CandidateRow = memo(function CandidateRow({
           {candidate.name}
         </ArenaText>
         <ArenaText variant="numericSmall" tone="subtle">
-          {`CP ${candidate.combatPowerExact}`}
+          {playerFormStrings.combatPower(candidate.combatPowerExact)}
         </ArenaText>
       </View>
 
       {candidate.isCurrent ? (
         <ArenaText variant="labelNano" tone="accent">
-          THIS IS YOU
+          {playerFormStrings.thisIsYou}
         </ArenaText>
       ) : null}
     </Pressable>

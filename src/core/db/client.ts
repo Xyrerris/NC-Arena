@@ -40,7 +40,7 @@ export const arenaDb: ArenaDatabase = expoDrizzle;
  * of it — the defect this phase exists to remove, not a transient worth tolerating. It is
  * idempotent and, after the first launch, one scan with no writes.
  */
-const arenaDbReady: Promise<void> = migrate(expoDrizzle, migrations).then(() => {
+export const arenaDbReady: Promise<void> = migrate(expoDrizzle, migrations).then(() => {
   refoldPlayerNames(arenaDb);
 });
 

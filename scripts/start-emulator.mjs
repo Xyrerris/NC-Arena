@@ -57,10 +57,15 @@ const attachedSerials = () =>
  * `sys.boot_completed` flips while the boot animation is still on screen and the package
  * manager is still settling; installing an APK in that window fails. Both properties together
  * are the usual "actually usable" signal.
+ *
+ * `init.svc.bootanim` is `running` mid-animation and `stopped` afterwards — but on images that
+ * ship with `debug.sf.nobootanimation=1` (the API 36 Galaxy profile does) the service never
+ * starts, so the property is simply absent. Requiring `stopped` there waits forever on a device
+ * that has been ready for minutes; only `running` means "not yet".
  */
 const isUsable = (serial) =>
   adbQuiet('-s', serial, 'shell', 'getprop', 'sys.boot_completed') === '1' &&
-  adbQuiet('-s', serial, 'shell', 'getprop', 'init.svc.bootanim') === 'stopped';
+  adbQuiet('-s', serial, 'shell', 'getprop', 'init.svc.bootanim') !== 'running';
 
 const firstUsableDevice = () => attachedSerials().find((serial) => isUsable(serial)) ?? null;
 

@@ -76,6 +76,70 @@ const CASES = [
     source: "export const probe = { padding: 24, color: '#5fd6a2' };\n",
     expect: 'allow',
   },
+
+  // Phase 6: words live in a strings module. Four ways one reaches the screen, each rejected.
+  {
+    name: 'bare text in a feature component is rejected',
+    file: 'src/features/roster/__token_probe.tsx',
+    source: 'export const Probe = () => <Text>Hello there</Text>;\n',
+    expect: 'reject',
+  },
+  {
+    name: 'a string literal child in a feature component is rejected',
+    file: 'src/features/roster/__token_probe.tsx',
+    source: "export const Probe = () => <Text>{'Hello there'}</Text>;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'a template literal child in a feature component is rejected',
+    file: 'src/features/roster/__token_probe.tsx',
+    source: 'export const Probe = ({ n }: { n: number }) => <Text>{`Score ${n}`}</Text>;\n',
+    expect: 'reject',
+  },
+  {
+    name: 'a literal accessibilityLabel in a feature component is rejected',
+    file: 'src/features/roster/__token_probe.tsx',
+    source: 'export const Probe = () => <Pressable accessibilityLabel="Go back" />;\n',
+    expect: 'reject',
+  },
+  {
+    name: 'bare text in a route is rejected',
+    file: 'src/app/__token_probe.tsx',
+    source: 'export default () => <Text>Hello there</Text>;\n',
+    expect: 'reject',
+  },
+  {
+    name: 'bare text in a shared component is rejected',
+    file: 'src/core/design-system/__token_probe.tsx',
+    source: 'export const Probe = () => <Text>Hello there</Text>;\n',
+    expect: 'reject',
+  },
+  {
+    name: 'a value from a strings module is legal',
+    file: 'src/features/roster/__token_probe.tsx',
+    source:
+      "import { rosterStrings } from './strings';\n" +
+      'export const Probe = () => <Text accessibilityLabel={rosterStrings.title}>{rosterStrings.title}</Text>;\n',
+    expect: 'allow',
+  },
+  {
+    name: 'a template-literal testID is not a word',
+    file: 'src/features/roster/__token_probe.tsx',
+    source: 'export const Probe = ({ id }: { id: string }) => <View testID={`row-${id}`} />;\n',
+    expect: 'allow',
+  },
+  {
+    name: 'a test may write text',
+    file: 'src/features/roster/__token_probe.test.tsx',
+    source: 'export const Probe = () => <Text>Hello there</Text>;\n',
+    expect: 'allow',
+  },
+  {
+    name: 'a test is still held to the token rules',
+    file: 'src/features/roster/__token_probe.test.tsx',
+    source: "export const probe = { color: '#5fd6a2' };\n",
+    expect: 'reject',
+  },
 ];
 
 const failures = await runProbes('Design tokens (ARCHITECTURE.md §2.4, §2.2)', RULES, CASES);

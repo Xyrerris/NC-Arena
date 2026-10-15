@@ -48,6 +48,7 @@ import { ArenaText, RecordBadge, color, layout, space } from '@/core/design-syst
 import type { MatchOutcome, PlayerId } from '@/core/model';
 
 import type { RosterRowUi } from './rosterUiState';
+import { rosterStrings } from './strings';
 
 export interface RosterRowProps {
   row: RosterRowUi;
@@ -72,20 +73,23 @@ const ACTIVATION_SLOP = 16;
 const RETURN_MS = 180;
 
 const RECORD_ACTIONS: readonly AccessibilityActionInfo[] = [
-  { name: 'recordWin', label: 'Record a win against this player' },
-  { name: 'recordLoss', label: 'Record a loss against this player' },
+  { name: 'recordWin', label: rosterStrings.recordWinAction },
+  { name: 'recordLoss', label: rosterStrings.recordLossAction },
 ];
 
-const announce = (row: RosterRowUi): string => {
-  const record =
-    row.record === null ? '' : `, your record ${row.record.wins} wins ${row.record.losses} losses`;
-  const you = row.isViewer ? ', your avatar' : '';
-  // Announced but not drawn — see the note on `RosterRowUi.isLocal`. A row the user can
-  // edit and one they cannot must not be indistinguishable to a screen reader just because
-  // the design has no badge for the difference yet.
-  const added = row.isLocal ? ', added on this device' : '';
-  return `Rank ${Number(row.rankLabel)}, ${row.name}${you}${added}, combat power ${row.combatPowerExact}, ${row.scoreLabel}${record}`;
-};
+// `isLocal` is announced but not drawn — see the note on `RosterRowUi.isLocal`. A row the user
+// can edit and one they cannot must not be indistinguishable to a screen reader just because
+// the design has no badge for the difference yet.
+const announce = (row: RosterRowUi): string =>
+  rosterStrings.rowAnnouncement({
+    rank: Number(row.rankLabel),
+    name: row.name,
+    isViewer: row.isViewer,
+    isLocal: row.isLocal,
+    combatPower: row.combatPowerExact,
+    score: row.scoreLabel,
+    record: row.record,
+  });
 
 export const RosterRow = memo(function RosterRow({ row, onPress, onRecord }: RosterRowProps) {
   const travel = useSharedValue(0);
@@ -143,12 +147,12 @@ export const RosterRow = memo(function RosterRow({ row, onPress, onRecord }: Ros
         <View style={styles.actions} pointerEvents="none" importantForAccessibility="no">
           <Animated.View style={[styles.action, lossAction]}>
             <ArenaText variant="labelStrong" tone="negative" testID={`roster-row-loss-${row.id}`}>
-              {'+1 LOSS'}
+              {rosterStrings.lossLabel}
             </ArenaText>
           </Animated.View>
           <Animated.View style={[styles.action, winAction]}>
             <ArenaText variant="labelStrong" tone="accent" testID={`roster-row-win-${row.id}`}>
-              {'+1 WIN'}
+              {rosterStrings.winLabel}
             </ArenaText>
           </Animated.View>
         </View>
@@ -160,9 +164,7 @@ export const RosterRow = memo(function RosterRow({ row, onPress, onRecord }: Ros
           <Pressable
             accessibilityLabel={announce(row)}
             accessibilityRole="button"
-            accessibilityHint={
-              row.canRecord ? 'Swipe left to add a win, right to add a loss.' : undefined
-            }
+            accessibilityHint={row.canRecord ? rosterStrings.swipeHint : undefined}
             accessibilityActions={row.canRecord ? RECORD_ACTIONS : undefined}
             onAccessibilityAction={row.canRecord ? onAccessibilityAction : undefined}
             onPress={() => onPress(row.id)}
@@ -183,7 +185,7 @@ export const RosterRow = memo(function RosterRow({ row, onPress, onRecord }: Ros
                 {row.name}
               </ArenaText>
               <ArenaText variant="numericSmall" tone="subtle">
-                {`CP ${row.combatPowerExact}`}
+                {rosterStrings.combatPower(row.combatPowerExact)}
               </ArenaText>
             </View>
 

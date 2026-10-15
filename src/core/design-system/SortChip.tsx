@@ -39,7 +39,14 @@ export function SortChip({ label, selected, onPress, testID }: SortChipProps) {
 }
 
 const styles = StyleSheet.create({
-  target: { minHeight: layout.minTouchTarget, justifyContent: 'center' },
+  // A minimum width as well as a height: the "CP" pill is 42 dp wide, and `hitSlop` is not
+  // something the Accessibility Scanner counts — it measures the node, so the target itself
+  // has to be 48 dp both ways.
+  target: {
+    minHeight: layout.minTouchTarget,
+    minWidth: layout.minTouchTarget,
+    justifyContent: 'center',
+  },
   pill: {
     paddingVertical: space[8],
     paddingHorizontal: space[14],

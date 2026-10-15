@@ -29,12 +29,13 @@ module.exports = {
    * The exclusions are not a lower bar; they are files this project structurally cannot load,
    * or that carry nothing to measure:
    *
-   *  - the native-backed adapters (`client.ts`, `arenaRepository.ts`, `expoBackupFile.ts`,
-   *    `expoLiveData.ts`, `mmkvPreferences.ts`, the three under `core/ocr`) import modules
+   *  - the native-backed adapters (`client.ts`, `arenaRepository.ts`, `backgroundSync.ts`,
+   *    `expoBackupFile.ts`, `expoLiveData.ts`, `mmkvPreferences.ts`, the three under
+   *    `core/ocr`) import modules
    *    plain Node cannot resolve. That is *why* each is deliberately thin, and each says so
    *    in its own header;
-   *  - `useViewerId.ts` is a React hook and `core/design-system` is components, so both
-   *    belong to the native project;
+   *  - `useViewerId.ts`, `useNeedsAccount.ts` and `useCanLinkAccount.ts` are React hooks and `core/design-system` is
+   *    components, so all of them belong to the native project;
    *  - `core/testing` is the fakes, and coverage of a fake measures nothing;
    *  - barrels and `.d.ts` carry no statements.
    */
@@ -46,8 +47,11 @@ module.exports = {
     '!src/core/design-system/**',
     '!src/core/db/client.ts',
     '!src/core/data/arenaRepository.ts',
+    '!src/core/data/backgroundSync.ts',
     '!src/core/data/expoBackupFile.ts',
     '!src/core/data/expoLiveData.ts',
+    '!src/core/data/useCanLinkAccount.ts',
+    '!src/core/data/useNeedsAccount.ts',
     '!src/core/data/useViewerId.ts',
     '!src/core/prefs/mmkvPreferences.ts',
     '!src/core/ocr/expoImageSource.ts',
@@ -76,7 +80,12 @@ module.exports = {
       // contrast assertions are pure arithmetic and belong in the fast project, while the
       // components need a renderer. A `.test.ts` in this project may not import
       // react-native, which is the convention the extension encodes.
-      testMatch: ['<rootDir>/src/core/**/*.test.ts'],
+      //
+      // `**/src/…`, not `<rootDir>/src/…`, in both projects: on Windows Jest turns the root's
+      // backslashes into slashes *except* before a regex character, so a checkout under a
+      // dot-directory (`.claude\worktrees\…`) became the glob `…\.claude/…`, which matches
+      // nothing and every run ended in "No tests found". `node_modules` is ignored by default.
+      testMatch: ['**/src/core/**/*.test.ts'],
       transform: {
         '^.+\\.tsx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
       },
@@ -93,13 +102,21 @@ module.exports = {
       // missing one. The extension already encodes the split the two projects care about,
       // so the folder list has no second job to do.
       testMatch: [
-        '<rootDir>/src/app/**/*.test.tsx',
-        '<rootDir>/src/features/**/*.test.tsx',
-        '<rootDir>/src/core/**/*.test.tsx',
+        '**/src/app/**/*.test.tsx',
+        '**/src/features/**/*.test.tsx',
+        '**/src/core/**/*.test.tsx',
       ],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
       },
+      // jest-expo's own list plus `@shopify/flash-list`, which ships ES modules from 2.3 on.
+      // The list is copied rather than extended because Jest replaces the preset's array
+      // instead of merging it: drop an entry here and that package stops being transformed.
+      transformIgnorePatterns: [
+        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list))',
+        '/node_modules/react-native-reanimated/plugin/',
+        '/node_modules/@react-native/babel-preset/',
+      ],
     },
   ],
 };

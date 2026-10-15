@@ -1,0 +1,239 @@
+# Handoff — Phase 5, mid-flight
+
+**As of 2026-09-27.** The backend was built on `claude/backend-data-management-w98hph`, which is
+still the branch Coolify deploys from. Since 2026-10-14 work is no longer confined to it (see
+CLAUDE.md).
+
+This file says where Phase 5 stopped and which decisions are already made, so the next session
+argues about the right things. It is not a substitute for ADR-0035 and its five addenda in
+DECISIONS.md, which carry the reasoning; this is the map.
+
+## Where things stand
+
+The backend is **built, deployed and verified**. It runs on the owner's OVH VPS through Coolify as a
+Docker Compose resource with `backend/` as its base directory. The owner has confirmed `/health`,
+the TLS certificate, the migrations and account creation against the live service. **Coolify
+deploys automatically from `claude/backend-data-management-w98hph`** (confirmed by the owner,
+2026-09-27): a push to this branch _is_ a backend deploy, migrations included. Treat a push that
+touches `backend/` accordingly.
+
+The client can do the **whole round trip** — pull, push, adopt the ids the server assigns, set the
+viewer — and the **setup gate is now the one part of it wired to a screen**: with a URL configured,
+a launch with no stored key shows `features/accountSetup` instead of the roster, and nothing else
+runs until this device is paired. `EXPO_PUBLIC_API_URL` is set in all three `eas.json` profiles
+(2026-09-23), so every EAS build talks to the live service. A local `expo start` does not read
+`eas.json`: without a `.env.local` carrying the same variable it builds no source, no gateway and
+therefore no gate, and behaves exactly as ADR-0021 describes — a ladder that starts empty and is
+filled by hand.
+
+Six commits carry it:
+
+| Commit    | What it settled                                                                                             |
+| --------- | ----------------------------------------------------------------------------------------------------------- |
+| `06fd643` | The client's push half: wire schemas, domain → DTO mappers, `pushRoster` behind `RosterSink`                |
+| `a63c4bd` | `POST /v1/roster/sync` made idempotent — `players.client_id` + a unique index                               |
+| `d8732e9` | `syncRoster` in the repository, and `LOCAL` → `REMOTE` as an id rewrite that keeps records                  |
+| `5c5b792` | The setup gate: `AccountGateway`, `RemoteAccountGateway`, the `core/data` key seam, `features/accountSetup` |
+| `08ab09f` | Pull-to-refresh calls `syncRoster` through a TanStack mutation; the one `QueryClient` lands in `_layout`    |
+
+`npm run verify` is green: 601 tests across both Jest projects, 94.68 % statements against a 93 %
+threshold.
+
+## Decided already — do not reopen without the owner
+
+The owner answered these in session. They are settled:
+
+1. **A sync is push-then-pull as one operation**, fired by pull-to-refresh and by the periodic
+   `expo-background-task` — **not** on every local write. Local rows stay `LOCAL` until the next
+   sync.
+2. **The roster does not block during a sync.** Data stays on screen; a minimal, non-blocking
+   indicator (a small spinner or badge) says an operation is running; plus the "updated N ago" the
+   roadmap already asks for. A failure is a recoverable banner, never a crash or a blank screen —
+   that one is an exit criterion, not a preference.
+3. **First launch asks for a recovery code.** Entered and valid → `POST /v1/accounts/link`, which
+   returns a fresh API key for this device. Left empty → `POST /v1/accounts`, which mints an account
+   and shows the API key and recovery code **once**.
+4. **`EXPO_PUBLIC_API_URL` is the off switch**, and the API key lives in `core/prefs` (MMKV) beside
+   `viewerId`. The setup gate from (3) is what guarantees a key exists before the roster is
+   reachable — nothing else guards that window.
+
+One tension the owner and I agreed on: the roadmap's "the `features/` diff for this phase is empty"
+reads as _swapping the data source must not force feature changes_, and stays true. The setup screen
+and the sync indicator are additive UI the owner asked for, not the swap forcing anyone's hand.
+
+## What to pick up
+
+Roughly in dependency order. All of it is above the data layer; none of it needs the ports to change.
+
+- ~~**The setup gate (decision 3).**~~ **Done.** `AccountGateway` (core/common) is implemented by
+  `RemoteAccountGateway` over the two unauthenticated endpoints; `createAccount`/`linkAccount` on
+  the repository store the key; `useNeedsAccount` and `ArenaGate` in `src/app/_layout.tsx` decide
+  whether the gate opens. **Read the fifth addendum to ADR-0035 before touching it** — the gate
+  latches its decision at mount rather than watching `needsAccount`, and the reason is the kind of
+  bug that looks like success.
+- ~~**`useRoster` calls `syncRoster`** through TanStack Query, on pull-to-refresh.~~ **Done.** The
+  one mutation is `syncMutation` in `core/data`, the one `QueryClient` is `arenaQueryClient` beside
+  the repository (it started in `_layout.tsx`; the periodic task moved it), and there is no
+  `useQuery` anywhere. `useRoster` sets `retry: 0` with the reasoning written down; the periodic
+  task sets its own.
+- ~~**The indicator, the banner and "updated N ago"** (decision 2).~~ **Done.** Only the reads feed
+  `failure` now; `sync.error` is a banner with its own retry. **Pull-to-refresh had to ship with
+  it** — there was no such gesture anywhere in the app, and the error screen's TRY AGAIN was the
+  only thing that could fire a sync. `lastSyncedAt` sits beside `season` in `core/prefs`, stamped
+  where a snapshot is _applied_ rather than where a request succeeded.
+- ~~**The periodic refresh.**~~ **Done, and seen running headless on the emulator (2026-09-27).**
+  The task is
+  `core/data/backgroundSync.ts`; its body is `runBackgroundSync` in `core/data/syncMutation.ts`,
+  proven in Node. Three things about it will bite whoever touches it:
+  - **It is defined from the entry, not from a route.** `package.json`'s `main` is now `index.ts`,
+    which imports `expo-router/entry` and then the task module. WorkManager wakes a closed app
+    headless, and no route — not even `_layout.tsx` — is evaluated then; a `defineTask` beside the
+    layout would not exist on the one run it is for. The body awaits `arenaDbReady` for the same
+    reason: there is no splash screen holding a headless run until the migrations finish.
+  - **It shares the pull's mutation.** Same key, same `scope`, same `mutationFn`
+    (`syncMutation`), on the same `QueryClient` — which moved from `_layout.tsx` to
+    `arenaRepository.ts` so both callers can reach it. The scope queues a pull behind a running
+    background sync instead of beside it; `header.isSyncing` reads `useIsMutating` on the key, so
+    the badge _and_ the pull-to-refresh spinner show a background sync with no new UI. A
+    background failure sets no banner — nobody asked for that sync.
+  - **Policy:** `retry: 2` with TanStack's backoff (`BACKGROUND_SYNC_POLICY`), a 60-minute
+    minimum interval, skipped while `needsAccount()` or while a sync is already in flight.
+    Registered from `_layout.tsx` once the database is ready, and **unregistered** when the build
+    has no URL.
+
+  - **The library is patched (ADR-0040).** In a process WorkManager had just started headless,
+    `expo-background-task` cancelled its own running worker whenever the previous run was still
+    in the unique-work chain, so after the first run no cold wake ever synced.
+    `patches/expo-background-task+57.0.16.patch` fixes `getWorkerInfo`, and `package.json`'s
+    `expo.autolinking.android.buildFromSource` is **what makes the patch count**: without it
+    Gradle links Expo's precompiled AAR and ignores the patched source. Drop both together once
+    upstream fixes it.
+
+  **How it was checked**, and how to check it again, on a debug build with the URL on:
+  `adb shell cmd jobscheduler run -f com.ncarena.arenascout <job id>`, where the id is the
+  `JOB #u0a…/<n>` line for `SystemJobService` in `adb shell dumpsys jobscheduler`. Look for
+  `TaskService: Finished task 'arena-roster-sync'` in logcat and a new "Updated just now". For the
+  cold case, `am kill` the backgrounded app and force the job **twice**. The first run only
+  starts the process, and WorkManager reschedules everything under a new id, because `am kill`
+  looks like a force-stop to it. The second run is the headless one.
+
+- ~~**Turn the URL on.**~~ **Done for EAS builds.** The service has a Let's Encrypt certificate
+  (Coolify, 2026-09-23; plain HTTP now redirects to HTTPS), and `eas.json` carries the `https://`
+  URL in every profile — no cleartext allowance was needed. Locally it is on only where a
+  `.env.local` sets it (git-ignored, so once per machine). **Seen on a device
+  (2026-09-24):** a first account created and a manual pull-to-refresh sync completed against the
+  live service.
+- ~~**Run the migrations on every redeploy, automatically.**~~ **Done.** The backend's `Dockerfile`
+  `CMD` is `node dist/db/migrate.js && exec node dist/index.js`: every container start applies what
+  is new, then serves. A failed migration keeps the server from starting and the container
+  restarts; that is deliberate — a server on a schema it does not match answers 500 anyway, and a
+  stopped one says why in its logs. **Seen on the live deploy (2026-09-24):** the migration message
+  is in the container log.
+
+## Status as of 2026-09-27
+
+Confirmed by the owner on a device: first account + manual sync, automatic migrations, and the
+"who am I" fix (ADR-0037). The end-to-end contract test for a stat above `Int32.MAX` is in
+(`src/features/player/statContract.test.tsx`). Removing a synced player works across devices
+(ADR-0039). The backend that carries it is live, because Coolify deploys this branch on every push.
+The periodic background sync is **seen running headless** on the emulator, after the library fix
+in ADR-0040. It has not yet run on the owner's phone, which needs an EAS build carrying the patch.
+The imported screenshot is now deleted even when the Photo Picker answers (`916d660`, ADR-0026
+amendment), and `check:projects` runs on Windows and in worktrees (`4bd4284`).
+
+**Still open, in order:**
+
+1. ~~**A backend test runner.**~~ **Done (ADR-0041).** Vitest against PGlite, in `backend/test/`;
+   the root `verify` runs it, and CI has a `backend` job.
+2. ~~**The exit criterion "the app functions fully offline on previously synced data".**~~
+   **Met (2026-09-28)** by `src/core/data/offline.test.ts`, which counts every request the
+   repository makes once `fetch` fails as it does in airplane mode. No device airplane-mode run
+   was recorded. The gap it first left — a request with no deadline on a network that never
+   answers — is closed: `HttpClient` ends every request after 20 s as `OFFLINE`.
+
+**Postgres backups are queued, not open:** the owner relies on Coolify's backups for now; a
+`pg_dump` sidecar with an off-site copy is the plan if that changes.
+
+The setup gate can now be skipped — "Continue offline" (ADR-0038). A skipped device is unpaired
+but not gated, `syncRoster` is a no-op for it, and `/me` offers "Connect to server", which opens
+the same screen at `/account`.
+
+## Things that will cost you a day if you rediscover them
+
+- **`POST /v1/roster/sync` is idempotent, and everything leans on that.** A replayed push is answered
+  with the ids assigned the first time. Before `a63c4bd` it duplicated every row; reproduced against
+  a real PostgreSQL 16 before fixing. If you touch `applyRosterSync`, the unique index on
+  `(account_id, client_id)` and the read-before-write are what hold it up.
+- **A head-to-head record cannot be pushed in the same sync that creates its players.** Both ends are
+  uuids on the wire and a `LOCAL` id is not one, so a record against a hand-entered player reaches
+  the server one sync later. It is not lost meanwhile — `replaceRoster` carries it across under the
+  adopted id. Making it one round trip means letting a record name its ends by `clientId` and
+  resolving them server-side: a real contract change, deliberately not made.
+- **A first sync usually takes three round trips.** `RosterSnapshot.viewerId` is not optional and a
+  fresh account has none, so the push returns no snapshot; the device seats the viewer with the id
+  the push just assigned, then pulls. With no local viewer there is nothing to seat and nothing to
+  apply, and the sync converges once somebody is the viewer.
+- **`replaceRoster`'s third argument is load-bearing in two places.** An adopted id drops out of the
+  kept set _and_ every record end is read through the map. Drop the second half and adopting a row
+  silently discards every match played against it — the promise 4.10.2 exists to keep.
+  `src/core/data/rosterSync.test.ts` fails if you break either half; that was checked by breaking
+  them.
+- **An async handler needs an `async` act scope, in every screen and hook test.** A synchronous
+  `act(() => { result.current.onEvent(...) })` around a handler that starts a promise lets that
+  promise settle outside any act scope, and RNTL then corrupts the renderer **for the rest of the
+  file** — the next `render` produces an empty tree and the failure lands on an unrelated test with
+  a message about a missing testID. It cost two bisects in one session. `await act(async () => ...)`
+  everywhere, and suspect ordering first when a test passes alone and fails in the file.
+- **The setup gate latches at mount, and must keep doing so.** The API key is stored the instant
+  `POST /v1/accounts` answers, so `needsAccount()` goes false **while the recovery code is still on
+  screen**. A gate that watched it instead of latching would close over the only time that code is
+  ever shown — and the server keeps only its hash, so the account would be permanently unreachable
+  from any second device, with the app looking like setup had succeeded.
+  `AccountSetupScreen.test.tsx`'s "keeps the code on screen although the key is already stored"
+  fails if you swap the latch for a live read.
+- **A failed sync is a banner; a failed _query_ is still the `error` state.** The split is in
+  `useRoster`'s `failure`, which reads `roster.error ?? viewer.error` and deliberately **not**
+  `sync.error`. Putting the sync back in there undoes the owner's decision 2 in one line, and the
+  screen it produces looks reasonable in every test that does not go offline.
+- **Every row is editable on every device (ADR-0036)**; `editedPlayers` carries the synced rows
+  with an `edited_at` stamp. The stamp is what keeps a pull or an in-flight sync from undoing an
+  edit the server has not seen yet — `rosterSync.test.ts`'s "an edit to a synced row" block fails if
+  `replaceRoster` stops honouring it. A removal works the same way through the `deleted_players`
+  tombstones (ADR-0039); only the synced viewer cannot be removed.
+- **`backend/` is a second, independent package.** Its own `package.json`, `tsconfig.json` and
+  lockfile. The root `npm run verify` now ends with `verify:backend` (typecheck, Vitest, build), so
+  **run `npm install` inside `backend/` once per machine** or root `verify` fails there. The tests
+  mock `src/db/client.ts` with PGlite built from the committed migrations (ADR-0041): a new
+  migration is exercised by the suite the moment it is committed.
+- **`npm run db:generate` needs no database**, and diffs against `migrations/meta/*_snapshot.json`.
+  The baseline snapshot exists now; before `a63c4bd` it did not, and generation silently re-emitted
+  the whole schema as the next migration.
+
+## Open — verify Nine Chronicles CP against an active arena round
+
+A spike kept aside in [`docs/research/nc-cp/`](research/nc-cp/README.md) recomputes an avatar's
+combat power from on-chain state (Adventure within 0.0045 % of the game client; Arena and World
+Boss overshoot by 0.38 % and 0.07 %, cause unknown). Nothing in `src/` uses it.
+
+**To do during a later phase, while an arena round is live** (none was on Heimdall or Odin on
+2026-09-30): pull the 9CAPI `arenaLeaderboardHeimdall` list, whose `cp` is the Arena value, run the
+module on a sample of those avatars to validate it, then choose the implementation that does the job
+best — reuse the published CP, recompute on the client, or recompute behind a backend endpoint. The
+README carries the three options and what each costs.
+
+## Operational
+
+- **A push to `claude/backend-data-management-w98hph` deploys the backend.** Coolify watches the
+  branch and rebuilds on every push, so a contract change reaches the live server with its
+  commit. An APK that needs a new server field can ship once that commit is pushed and the deploy
+  is green. There is no longer a manual redeploy step.
+- Migrations apply themselves on every container start (see the `Dockerfile`). Running
+  `node dist/db/migrate.js` from the `app` container's console still works and is idempotent. Not
+  `npm run db:migrate` — `tsx` is not in the production image and `src/` is not copied into it.
+- **`0001_client_id.sql` is applied to the live database** — the owner ran it from the container's
+  terminal on 2026-09-23. The live schema now matches `applyRosterSync`.
+- The Postgres volume is backed up only by Coolify's own backups, which the owner relies on for
+  now (see the status section). The `recoveryCode` shown at account creation is the only way a
+  second device ever joins that account.
+- **`patch-package` runs on `postinstall`.** If `npm install` warns that a patch was written for a
+  different version of `expo-background-task`, read ADR-0040 before accepting the upgrade.

@@ -11,6 +11,7 @@
  * jest-expo runs at fontScale 2, so every render here is also a 200 % font-scale render.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -102,14 +103,24 @@ const METRICS = {
  * That substitution is the whole reason the observers return `{ query, map }`, and it is
  * what lets this file assert on SQL results with no emulator in the loop.
  */
-const wrapWith = (repository: RosterRepository, useLiveData = createStubLiveData()) =>
-  function Harness({ children }: { children: ReactNode }) {
+/**
+ * A fresh `QueryClient` per harness, built outside the component. React Query caches per
+ * client, so a shared one would let a mutation started by one test be observed by the next;
+ * and a client constructed *inside* `Harness` would be a new client on every render, which
+ * silently discards the state the mutation is keeping.
+ */
+const wrapWith = (repository: RosterRepository, useLiveData = createStubLiveData()) => {
+  const client = new QueryClient();
+  return function Harness({ children }: { children: ReactNode }) {
     return (
-      <SafeAreaProvider initialMetrics={METRICS}>
-        <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>
-      </SafeAreaProvider>
+      <QueryClientProvider client={client}>
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <ArenaDataProvider value={{ repository, useLiveData }}>{children}</ArenaDataProvider>
+        </SafeAreaProvider>
+      </QueryClientProvider>
     );
   };
+};
 
 const renderRoster = (repository: RosterRepository, useLiveData = createStubLiveData()) =>
   render(<RosterScreen />, { wrapper: wrapWith(repository, useLiveData) });
@@ -460,7 +471,7 @@ describe('RosterScreen — reaching your own stats', () => {
 
     expect(screen.queryByTestId('viewer-card')).toBeNull();
     expect(screen.getByTestId('roster-viewer').props.accessibilityLabel).toBe(
-      'Choose which player is your avatar',
+      'Who are you? Choose which player is your avatar',
     );
   });
 
@@ -471,7 +482,7 @@ describe('RosterScreen — reaching your own stats', () => {
 
     expect(screen.getByTestId('viewer-card')).toBeTruthy();
     expect(screen.getByTestId('roster-viewer').props.accessibilityLabel).toBe(
-      'Update your own stats — Aurel',
+      'Update my stats — Aurel',
     );
   });
 
@@ -626,5 +637,136 @@ describe('RosterScreen — recording a match from a row', () => {
     fireEvent.press(screen.getByTestId('roster-row-p-b'));
 
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/player/[id]', params: { id: 'p-b' } });
+  });
+});
+
+/**
+ * The owner's decision 2, on screen: the roster does not block during a sync, a small
+ * indicator says one is running, and a failure is a recoverable banner over a ladder that
+ * is still entirely readable — never a crash and never a blank screen, which is also
+ * ROADMAP.md Phase 5's exit criterion.
+ */
+describe('RosterScreen — syncing, and saying so', () => {
+  let handle: TestDatabase;
+  let wired: TestRepository;
+
+  beforeEach(async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    mockPush.mockClear();
+    handle = createTestDatabase();
+    wired = createTestRepository(handle.db, sourceOf(FIXTURE));
+    expect((await wired.repository.refresh()).ok).toBe(true);
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    handle.close();
+  });
+
+  it('syncs when the list is pulled down', async () => {
+    // Until this gesture existed the only way to reach a sync was the `error` screen's
+    // TRY AGAIN — and a sync failure no longer lands there, so without this the feature
+    // would be unreachable.
+    let attempts = 0;
+    const counting: RosterSource = {
+      name: 'counting',
+      fetchRoster: async () => {
+        attempts += 1;
+        return ok(FIXTURE);
+      },
+    };
+    await renderRoster(wired.restart(counting));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+
+    await waitFor(() => expect(attempts).toBe(1));
+  });
+
+  it('shows how old the ladder is', async () => {
+    await renderRoster(wired.repository);
+
+    expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Updated just now');
+  });
+
+  it('keeps every row on screen when a sync fails, and explains above them', async () => {
+    const failing: RosterSource = {
+      name: 'failing',
+      fetchRoster: async () => err(new Error('airplane mode')),
+    };
+    await renderRoster(wired.restart(failing));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+
+    await waitFor(() => expect(screen.getByTestId('roster-sync-error')).toBeTruthy());
+    expect(screen.getByTestId('roster-sync-error')).toHaveTextContent('airplane mode');
+    // The exit criterion, stated as an assertion: not a crash, and not a blank screen.
+    expect(screen.queryByTestId('roster-error')).toBeNull();
+    await expectNames(['Aurel', 'Brann', 'Cinder', 'Dross']);
+  });
+
+  it('offers a retry on the banner that runs another sync', async () => {
+    let attempts = 0;
+    const flaky: RosterSource = {
+      name: 'flaky',
+      fetchRoster: async () => {
+        attempts += 1;
+        return attempts === 1 ? err(new Error('airplane mode')) : ok(FIXTURE);
+      },
+    };
+    await renderRoster(wired.restart(flaky));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+    await waitFor(() => expect(screen.getByTestId('roster-sync-error')).toBeTruthy());
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('roster-sync-retry'));
+    });
+
+    await waitFor(() => expect(screen.queryByTestId('roster-sync-error')).toBeNull());
+    expect(attempts).toBe(2);
+  });
+
+  it('says a sync is running, without taking the ladder away', async () => {
+    let land = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      land = resolve;
+    });
+    const slow: RosterSource = {
+      name: 'slow',
+      fetchRoster: async () => {
+        await held;
+        return ok(FIXTURE);
+      },
+    };
+    await renderRoster(wired.restart(slow));
+
+    await act(async () => {
+      fireEvent(screen.getByTestId('roster-list'), 'refresh');
+    });
+
+    // `waitFor`, not a bare expect: React Query notifies its observers through a batching
+    // scheduler, so `isPending` reaching the tree is not guaranteed by the time the act
+    // scope above returns. A bare assertion here passes alone and fails under a loaded
+    // suite, which is the worst kind of red.
+    await waitFor(() =>
+      expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Syncing…'),
+    );
+    // The whole of decision 2: the rows stay exactly where they were.
+    await expectNames(['Aurel', 'Brann', 'Cinder', 'Dross']);
+
+    await act(async () => {
+      land();
+      await held;
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('roster-sync-status')).toHaveTextContent('Updated just now'),
+    );
   });
 });

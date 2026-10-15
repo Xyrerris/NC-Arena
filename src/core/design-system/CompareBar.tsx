@@ -17,6 +17,7 @@ import { StyleSheet, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 
 import { ArenaText } from './ArenaText';
+import { designStrings } from './strings';
 import { color, radius, space } from './tokens';
 
 /**
@@ -42,12 +43,20 @@ export interface CompareBarProps {
 const clamp = (fraction: number) => Math.max(0, Math.min(1, fraction));
 
 export function CompareBar({ label, mine, theirs, delta, opponentAhead, testID }: CompareBarProps) {
-  const verdict = opponentAhead ? 'they lead' : 'you lead';
+  const verdict = opponentAhead
+    ? designStrings.compareBar.theyLead
+    : designStrings.compareBar.youLead;
 
   return (
     <View
       accessible
-      accessibilityLabel={`${label}. You ${mine.exact}, them ${theirs.exact}. ${verdict}, ${delta}.`}
+      accessibilityLabel={designStrings.compareBar.a11y({
+        label,
+        mine: mine.exact,
+        theirs: theirs.exact,
+        verdict,
+        delta,
+      })}
       style={styles.root}
       testID={testID}
     >
@@ -66,14 +75,14 @@ export function CompareBar({ label, mine, theirs, delta, opponentAhead, testID }
       </View>
 
       <Side
-        caption="you"
+        caption={designStrings.compareBar.you}
         exact={mine.exact}
         short={mine.short}
         fraction={mine.fraction}
         fill={color.compare.mine}
       />
       <Side
-        caption="them"
+        caption={designStrings.compareBar.them}
         exact={theirs.exact}
         short={theirs.short}
         fraction={theirs.fraction}

@@ -1,12 +1,17 @@
 /**
- * Roster search. The `TextInput` is 48 dp tall and labelled, because a placeholder is not
- * a label — it disappears the moment anyone types.
+ * Roster search. The `TextInput` is 48 dp tall.
+ *
+ * It carries no `accessibilityLabel` by default: that becomes the node's `contentDescription`,
+ * which TalkBack reads *instead of* what has been typed (the Accessibility Scanner's
+ * "editable label" finding), and the placeholder is already the field's name while it is empty.
+ * A caller that has a reason to name it differently can still pass one.
  */
 
 import { StyleSheet, TextInput, View } from 'react-native';
 
 import { color, layout, radius, space } from './tokens';
 import { FONTS_BUNDLED } from './fontAssets';
+import { designStrings } from './strings';
 import { fontAssetName, typeScale } from './typography';
 
 export interface SearchFieldProps {
@@ -22,8 +27,8 @@ const spec = typeScale.bodyMedium;
 export function SearchField({
   value,
   onChangeText,
-  placeholder = 'Search players',
-  accessibilityLabel = 'Search players by name',
+  placeholder = designStrings.searchField.placeholder,
+  accessibilityLabel,
   testID,
 }: SearchFieldProps) {
   return (

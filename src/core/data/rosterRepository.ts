@@ -11,20 +11,27 @@
 import {
   err,
   ok,
+  type AccountCredentials,
+  type AccountError,
+  type AccountGateway,
   type Result,
+  type RosterPush,
+  type RosterSink,
   type RosterSnapshot,
   type RosterSource,
   type ShortUnit,
+  UnsupportedByUpstream,
 } from '../common';
 import {
   SCHEMA_VERSION,
   allHeadToHeadQuery,
   allPlayersQuery,
-  deleteLocalPlayer,
+  deletePlayerRow,
+  deletedPlayers,
   findPlayerByIdentity,
   headToHeadCountQuery,
   insertLocalPlayer,
-  isNameTaken,
+  isIdentityTaken,
   playerCountQuery,
   playerDetailQuery,
   playerQuery,
@@ -34,7 +41,7 @@ import {
   sortedRosterQuery,
   toHeadToHead,
   toPlayer,
-  updateLocalPlayer,
+  updatePlayerRow,
   type ArenaDatabase,
   type PlayerDetailRow,
   type PlayerRow,
@@ -43,8 +50,11 @@ import {
 } from '../db';
 import {
   asPlayerId,
+  gameCodeLabel,
   isPlayerDraftValid,
+  normaliseGameCode,
   normalisePlayerName,
+  sameAvatar,
   validatePlayerDraft,
   type HeadToHead,
   type MatchDelta,
@@ -58,6 +68,7 @@ import {
   type RosterEntry,
   type RosterSort,
   type StoredPlayer,
+  type ViewerAvatar,
 } from '../model';
 import type { ArenaPreferences } from '../prefs';
 import {
@@ -160,15 +171,26 @@ const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
 /**
- * One message for "no such player" and for "that player is not yours to change". The two
- * are deliberately indistinguishable to the caller: a row synced from upstream will be
- * overwritten by the next refresh, so an edit the app appeared to accept would vanish —
- * which is a worse answer than declining it (ADR-0020).
+ * Why a synced player who is you cannot be removed (ADR-0039). The account has one viewer,
+ * shared by every device, and removing that row would leave every one of them pointing at
+ * nothing — so the server refuses it, and the device says so first instead of removing a row
+ * the next pull would put back.
  */
-const NOT_YOURS = 'Only players you added on this device can be edited or removed.';
+const CANNOT_REMOVE_VIEWER =
+  'This player is you on every device of this account. Pick another avatar before removing them.';
 
 /** `setViewerId` picks an existing row; it never creates one (ADR-0022). */
 const NO_SUCH_PLAYER = 'That player is not on the roster.';
+
+/**
+ * There is no backend in this build (`EXPO_PUBLIC_API_URL` unset), so there is no account to
+ * create. No screen can reach this: `needsAccount` is false without a gateway, so the setup
+ * gate never opens. It is the honest answer for a caller that asked anyway.
+ */
+const NO_BACKEND: AccountError = {
+  reason: 'FAILED',
+  message: 'This build has no backend configured.',
+};
 
 /**
  * A result is *yours against them*, so there has to be a "you" (ARCHITECTURE.md §2.3).
@@ -223,10 +245,35 @@ export interface RosterRepositoryDeps {
    * would be a repository whose boundary had moved.
    */
   source?: RosterSource;
+  /**
+   * Where a local row goes when it leaves the device — absent for the same reason `source`
+   * is, and supplied by the same object: `RemoteRosterSource` implements both ports, because
+   * the backend answers in both directions (ADR-0035, decision 3).
+   *
+   * Separate from `source` in the signature even so. A repository given only a `source` can
+   * still pull, which is what a read-only ladder would be, and nothing here should have to
+   * ask whether the two happen to be the same instance.
+   */
+  sink?: RosterSink;
+  /**
+   * How this device gets an API key in the first place (ADR-0035, decision 2) — absent for
+   * the same reason `source` is, and supplied alongside it.
+   *
+   * Its presence is what makes the setup gate a question at all. With no gateway there is no
+   * backend, so there is no account to create and nothing to stand in front of the roster:
+   * the app is the hand-filled ladder ADR-0021 describes, and `needsAccount` says so.
+   */
+  gateway?: AccountGateway;
   preferences: ArenaPreferences;
 }
 
-export const createRosterRepository = ({ db, source, preferences }: RosterRepositoryDeps) => {
+export const createRosterRepository = ({
+  db,
+  source,
+  sink,
+  gateway,
+  preferences,
+}: RosterRepositoryDeps) => {
   const viewerId = (): PlayerId => preferences.getViewerId() ?? NO_VIEWER;
 
   /**
@@ -245,10 +292,88 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     for (const listener of viewerListeners) listener();
   };
 
-  const write = (snapshot: RosterSnapshot): void => {
-    replaceRoster(db, snapshot);
-    preferences.setViewerId(snapshot.viewerId);
+  /**
+   * The viewer's avatar (ADR-0044), as one object per value. `useSyncExternalStore` compares
+   * snapshots by identity, and the preference layer builds a fresh object on every read, so
+   * returning that directly would re-render forever.
+   */
+  let avatarSeen: ViewerAvatar | null = null;
+  const viewerAvatar = (): ViewerAvatar | null => {
+    const stored = preferences.getViewerAvatar();
+    if (!sameAvatar(stored, avatarSeen)) avatarSeen = stored;
+    return avatarSeen;
+  };
+
+  /**
+   * The avatar describes whoever the viewer is, and the server drops it the moment the viewer
+   * changes. Clearing it here keeps the two in step, and keeps a stale address from being sent
+   * for somebody else.
+   */
+  const dropViewerAvatar = (): void => {
+    preferences.clearViewerAvatar();
+    preferences.clearViewerAvatarPending();
+  };
+
+  /**
+   * The setup gate's subscription, kept apart from the viewer's rather than folded into it.
+   * They change at different moments and are watched by different screens: the gate cares
+   * only whether a key exists, and re-running it every time a sync moved the viewer would
+   * re-render the whole app for an answer that had not changed.
+   */
+  const accountListeners = new Set<() => void>();
+
+  const notifyAccountChanged = (): void => {
+    for (const listener of accountListeners) listener();
+  };
+
+  /**
+   * Stores the key this device authenticates with from its very next request onwards.
+   *
+   * It takes effect immediately rather than on the next launch because `arenaRepository`
+   * hands `RemoteRosterSource` a *getter* for the key instead of its value — so the first
+   * sync after setup is already authenticated.
+   */
+  const adoptApiKey = (apiKey: string): void => {
+    preferences.setApiKey(apiKey);
+    notifyAccountChanged();
+  };
+
+  const write = (
+    snapshot: RosterSnapshot,
+    adopted?: ReadonlyMap<PlayerId, PlayerId>,
+    pushedEdits?: ReadonlyMap<string, number>,
+    pushedDeletes?: ReadonlySet<string>,
+  ): void => {
+    const viewerBefore = preferences.getViewerId();
+    replaceRoster(db, snapshot, adopted, pushedEdits, pushedDeletes);
+    // A viewer picked here and not yet seated upstream wins over the snapshot's, exactly as
+    // a pending row edit does (ADR-0037) — otherwise a pull puts back the player the user
+    // just stopped being. It follows the id rewrite, and is dropped if its row is gone.
+    const pending = preferences.getPendingViewerId();
+    const chosen = pending === null ? null : (adopted?.get(pending) ?? pending);
+    if (chosen !== null && playerQuery(db, chosen).all().length > 0) {
+      preferences.setViewerId(chosen);
+      if (chosen !== pending) preferences.setPendingViewerId(chosen);
+    } else {
+      if (pending !== null) preferences.clearPendingViewerId();
+      preferences.setViewerId(snapshot.viewerId);
+    }
+    // The same person under a new id (a local row the push just adopted) is still the same
+    // viewer; anybody else is not, and takes the avatar with them.
+    if (
+      viewerBefore !== null &&
+      (adopted?.get(viewerBefore) ?? viewerBefore) !== preferences.getViewerId()
+    ) {
+      dropViewerAvatar();
+    }
     preferences.setSeason(snapshot.season);
+    // Stamped here rather than where the request succeeded, and the difference is the whole
+    // meaning of the label: this records when rows from the server were last *applied* to
+    // this device, not when one was last asked for. A sync that lands on an account with no
+    // viewer yet returns ok with no snapshot (see `syncRoster`) and does not reach this
+    // line — nothing was updated, so "updated just now" would be a claim about a ladder
+    // that did not move.
+    preferences.setLastSyncedAt(Date.now());
     // A sync moves the same id the user can move, so it announces it the same way.
     notifyViewerChanged();
   };
@@ -268,6 +393,139 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     } catch (cause) {
       return err(toError(cause));
     }
+  };
+
+  /**
+   * What this device has that the server has not seen.
+   *
+   * `editedPlayers` are the synced rows changed here since the last sync — every `REMOTE` row
+   * with an `editedAt` stamp (ADR-0036). `pushedEdits` records which stamp each one left
+   * with, so `replaceRoster` can tell the edit this push carried from one made while it was
+   * in flight. Two devices editing the same player between syncs is settled by whichever
+   * sync lands second, which is the server's policy (ADR-0035, decision 3).
+   *
+   * A record is only pushed once **both** of its ends are rows the server already knows. The
+   * wire types both ends as uuids (`headToHeadDtoSchema`), and a `LOCAL` row's id is not one —
+   * it is `local-…`, and the server has no row to attach it to until this very push assigns
+   * one. So a match swiped in against a hand-entered player waits for the sync *after* the one
+   * that adopts them, when the id it needs exists. It is not lost in the meantime: it stays in
+   * SQLite, and `replaceRoster` carries it across the transition under the adopted id.
+   */
+  const collectPush = (): {
+    push: RosterPush;
+    pushedEdits: ReadonlyMap<string, number>;
+    pushedDeletes: ReadonlySet<string>;
+  } => {
+    const rows = allPlayersQuery(db).all();
+    const known = new Set<string>(
+      rows.filter((row) => row.origin === 'REMOTE').map((row) => row.id),
+    );
+    const edited = rows.filter((row) => row.origin === 'REMOTE' && row.editedAt !== null);
+    const removed = db
+      .select()
+      .from(deletedPlayers)
+      .all()
+      .map((row) => asPlayerId(row.id));
+
+    return {
+      push: {
+        newPlayers: rows.filter((row) => row.origin === 'LOCAL').map(toPlayer),
+        editedPlayers: edited.map(toPlayer),
+        headToHead: allHeadToHeadQuery(db)
+          .all()
+          .map(toHeadToHead)
+          .filter((record) => known.has(record.viewerId) && known.has(record.opponentId)),
+        deletedPlayers: removed,
+      },
+      pushedEdits: new Map(edited.map((row) => [row.id, row.editedAt ?? 0])),
+      pushedDeletes: new Set(removed),
+    };
+  };
+
+  /**
+   * One sync: push what this device has, then apply what the server answers with.
+   *
+   * Push before pull, in one operation, because the pull **replaces** the ladder
+   * (`replaceRoster`) and a local row that had not been pushed first would survive only as a
+   * row nothing upstream knows about — which is the bootstrap ADR-0035 replaced, not a design.
+   * Pushing first means the snapshot that comes back already describes those rows, under the
+   * ids the server issued, and `assignedIds` is what tells the writer they are the same rows.
+   *
+   * **The viewer is why a first sync can take three round trips.** `RosterSnapshot.viewerId`
+   * is not optional, and a freshly created account has none until `PUT /v1/me/viewer` has run
+   * — so the push comes back with no snapshot at all. When this device knows who the user is,
+   * it seats that row upstream (by the id the push just assigned it) and pulls again. When it
+   * does not, there is nothing to seat and nothing to apply: the rows are on the server, the
+   * local ones stay `LOCAL`, and the next sync re-pushes them. That re-push is safe because
+   * the endpoint is idempotent — it answers with the ids it assigned the first time rather
+   * than creating the rows twice — so the sync simply converges once somebody is the viewer.
+   */
+  const syncRoster = async (): Promise<Result<void>> => {
+    // Nothing upstream: fall back to `refresh`, which answers the same way for the same
+    // reason rather than reporting a failure at a roster that is working.
+    if (sink === undefined || source === undefined) return refresh();
+    // A backend, but this device is not paired to it — the user chose to stay offline
+    // (ADR-0038). Every request would be refused as unauthenticated, and the roster on screen
+    // is already everything there is, so there is nothing to do and nothing to report.
+    if (gateway !== undefined && preferences.getApiKey() === null) return ok(undefined);
+
+    const pendingViewer = preferences.getPendingViewerId();
+    const { push, pushedEdits, pushedDeletes } = collectPush();
+    const pushed = await sink.pushRoster(push);
+    if (!pushed.ok) return pushed;
+    const adopted = pushed.value.assignedIds;
+
+    let snapshot = pushed.value.snapshot;
+    // Two reasons to seat the viewer upstream: the user picked one here that the server has
+    // not heard of (ADR-0037), or the account has none yet and this device knows who it is.
+    const toSeat = pendingViewer ?? (snapshot === null ? preferences.getViewerId() : null);
+    // The push may have just given this row a server id; if it did not, the row was already
+    // the server's and its own id is the one to seat.
+    const target = toSeat === null ? null : (adopted.get(toSeat) ?? toSeat);
+    // Nothing to tell the server when the snapshot the push returned already names it.
+    if (target !== null && snapshot?.viewerId !== target) {
+      const seated = await sink.setViewer(target);
+      if (!seated.ok) return seated;
+
+      const pulled = await source.fetchRoster();
+      if (!pulled.ok) return pulled;
+      snapshot = pulled.value;
+    }
+
+    // Still nothing to apply: the push landed, but nobody has said which row is the viewer,
+    // so no snapshot can be built. Reporting success is the honest answer — the rows are
+    // upstream, and the thing that is missing is a choice the user has not made (ADR-0022),
+    // not a failure the sync can retry its way out of.
+    if (snapshot === null) return ok(undefined);
+
+    try {
+      write(snapshot, adopted, pushedEdits, pushedDeletes);
+      // Seated, so no longer pending — unless the user picked someone else while the sync
+      // was in flight, in which case that newer choice is the next sync's to send.
+      if (
+        pendingViewer !== null &&
+        preferences.getPendingViewerId() === (adopted.get(pendingViewer) ?? pendingViewer)
+      ) {
+        preferences.clearPendingViewerId();
+      }
+    } catch (cause) {
+      return err(toError(cause));
+    }
+
+    // The server drops an avatar when the viewer changes, so it is sent last, once the viewer
+    // it belongs to is the one upstream (ADR-0044). A failure leaves it pending for the next
+    // sync, and is reported like any other: the roster itself has already been applied.
+    const avatar = preferences.isViewerAvatarPending() ? preferences.getViewerAvatar() : null;
+    if (avatar !== null) {
+      const sent = await sink.setViewerAvatar(avatar);
+      // An older backend has no avatar endpoint: the roster is applied, the avatar stays
+      // pending, and a later sync sends it once the deploy has caught up.
+      if (!sent.ok && sent.error instanceof UnsupportedByUpstream) return ok(undefined);
+      if (!sent.ok) return sent;
+      // Not cleared if the user entered another address while the request was in flight.
+      if (sameAvatar(preferences.getViewerAvatar(), avatar)) preferences.clearViewerAvatarPending();
+    }
+    return ok(undefined);
   };
 
   /**
@@ -354,7 +612,14 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
 
     if (backup.viewerId === null) preferences.clearViewerId();
     else preferences.setViewerId(asPlayerId(backup.viewerId));
+    // The file carries no avatar, and the viewer it names is not necessarily the one the
+    // address belonged to (ADR-0044).
+    dropViewerAvatar();
     if (backup.season !== null) preferences.setSeason(backup.season);
+    // Every row on screen now came from a file, so the last sync no longer describes any of
+    // them. Cleared rather than left behind: the roster renders no staleness label at all
+    // instead of dating a restored ladder by a sync that did not produce it.
+    preferences.clearLastSyncedAt();
     // A restore moves the same id a sync moves, so it announces it the same way.
     notifyViewerChanged();
 
@@ -363,33 +628,44 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
 
   /**
    * Everything that can be wrong with a draft before it is written, as one nullable
-   * rejection. `exceptId` is the row being edited, so saving a player without renaming
-   * them is not a collision with themselves.
+   * rejection. `exceptId` is the row being edited, so saving a player without changing their
+   * `name + game code` key is not a collision with themselves (ADR-0042).
    */
   const rejectionFor = (draft: PlayerDraft, exceptId?: PlayerId): PlayerDraftRejected | null => {
     const errors = validatePlayerDraft(draft);
     if (!isPlayerDraftValid(errors)) return new PlayerDraftRejected(errors);
-    if (isNameTaken(db, draft.name, exceptId)) {
+    if (isIdentityTaken(db, draft.name, draft.gameCode, exceptId)) {
+      const code = gameCodeLabel(normaliseGameCode(draft.gameCode));
       return new PlayerDraftRejected({
-        name: `${normalisePlayerName(draft.name)} is already on the ladder.`,
+        name: `${normalisePlayerName(draft.name)}${code === '' ? '' : ` ${code}`} is already on the ladder.`,
       });
     }
     return null;
   };
 
   /**
-   * Adds a player by hand, offline (ADR-0020).
+   * Adds a player — or, when the draft's `name + game code` already names a row, rewrites
+   * that row instead (ADR-0042). The pair is the key a player is known by, so a second row
+   * under it would be the duplicate, not a new player; whether the draft was typed or read
+   * off a screenshot makes no difference to that.
+   *
+   * The whole draft is written, not merged field by field: the form showed every value
+   * before Save was pressed, so a stat the user left alone is one they confirmed.
    *
    * Validation runs here rather than only in the form, because this is the boundary the
-   * data actually crosses — a second entry point (a deep link, a future import, Phase 5's
-   * sync) must not be able to write a row the form would have refused. The form calls the
-   * same `validatePlayerDraft`, so the two cannot drift.
-   *
-   * The name check is a *query*, not a unique index, on purpose: uniqueness is a rule
-   * about what this device lets the user create, and a remote ladder that ships two
-   * players with one name is the server's business, not a reason to fail a migration.
+   * data actually crosses — a second entry point must not be able to write a row the form
+   * would have refused.
    */
   const createPlayer = (draft: PlayerDraft): Result<Player> => {
+    let existing: PlayerRow | undefined;
+    try {
+      existing = findPlayerByIdentity(db, draft.name, draft.gameCode);
+    } catch (cause) {
+      return err(toError(cause));
+    }
+    // Either origin is rewritten (ADR-0036); a synced match is pushed by the next sync.
+    if (existing !== undefined) return updatePlayer(asPlayerId(existing.id), draft);
+
     const rejection = rejectionFor(draft);
     if (rejection !== null) return err(rejection);
     try {
@@ -399,13 +675,16 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     }
   };
 
-  /** Edits a player this device added. A `REMOTE` row is refused — see `PlayerOrigin`. */
+  /**
+   * Edits any player on the ladder (ADR-0036). A synced row is stamped as edited and pushed
+   * by the next sync, which is what gives every device on the account the same say over it.
+   */
   const updatePlayer = (id: PlayerId, draft: PlayerDraft): Result<Player> => {
     const rejection = rejectionFor(draft, id);
     if (rejection !== null) return err(rejection);
     try {
-      const row = updateLocalPlayer(db, id, draft);
-      return row === null ? err(new Error(NOT_YOURS)) : ok(toPlayer(row));
+      const row = updatePlayerRow(db, id, draft);
+      return row === null ? err(new Error(NO_SUCH_PLAYER)) : ok(toPlayer(row));
     } catch (cause) {
       return err(toError(cause));
     }
@@ -454,6 +733,13 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
 
     refresh,
 
+    /**
+     * Push, then pull, as one operation (ADR-0035). `refresh` stays beside it and stays
+     * pull-only: a restore or a first run has nothing to push, and a caller that only wants
+     * the server's version of the ladder should not have to send one.
+     */
+    syncRoster,
+
     createPlayer,
 
     updatePlayer,
@@ -465,18 +751,14 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     importSnapshot,
 
     /**
-     * Which player an import would write to, if any — the same `name + game code` pair
-     * `importPlayer` matches on, asked *before* the write so the form can say what Save is
-     * about to do (ADR-0031).
+     * Which player `createPlayer` would rewrite, if any — the same `name + game code` pair
+     * it matches on, asked *before* the write so the form can say what Save is about to do
+     * (ADR-0031, ADR-0042).
      *
      * A one-off read like `playerCount`, not an observer. It is re-read whenever the name
      * or the code in the form changes, which is the only thing that can change the answer
      * from this screen — and a subscription re-keyed on every keystroke would cost more
      * than the query it is avoiding.
-     *
-     * `origin` comes back with the player because the two answers differ: a `LOCAL` match
-     * is a row Save will rewrite, and a `REMOTE` one is a row Save will refuse. A form told
-     * only "there is a match" would promise the update in both cases and be wrong in one.
      */
     findImportMatch: (name: string, gameCode: string): ImportMatch | null => {
       const row = findPlayerByIdentity(db, name, gameCode);
@@ -484,48 +766,24 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
     },
 
     /**
-     * Writes a player read off a screenshot: an **update** when the draft's name and game
-     * code together match a row already on the ladder, an insert when they match nothing
-     * (ADR-0031).
-     *
-     * Separate from `createPlayer` rather than folded into it, because the two answer
-     * different questions. "Add this player I am typing" should still collide with a name
-     * already on the ladder — that rejection is how a user finds out they are entering
-     * somebody twice. "Import this screenshot" has a picture of *which* player it is, and
-     * the pair is specific enough to say so: a second row would be the duplicate, not the
-     * thing that prevents one.
-     *
-     * The whole draft is written, not merged field by field. A screenshot shows the
-     * profile as it is now, so a stat it did not read is one the user has just confirmed
-     * in the form before pressing Save — and a merge would leave yesterday's HP beside
-     * today's ATK with nothing on screen saying which is which.
+     * Removes a player, closing the gap in the ranking behind them. A synced player is removed
+     * on every device of the account by the next sync (ADR-0039) — except the one who is you
+     * there, which is refused.
      */
-    importPlayer: (draft: PlayerDraft): Result<Player> => {
-      let existing: PlayerRow | undefined;
-      try {
-        existing = findPlayerByIdentity(db, draft.name, draft.gameCode);
-      } catch (cause) {
-        return err(toError(cause));
-      }
-      // A `REMOTE` match takes the update path deliberately, where `updatePlayer` refuses
-      // it by name (ADR-0020). Falling back to an insert would be worse than the refusal:
-      // it would add a second row for a player the ladder plainly already holds.
-      return existing === undefined
-        ? createPlayer(draft)
-        : updatePlayer(asPlayerId(existing.id), draft);
-    },
-
-    /** Removes a player this device added, closing the gap in the ranking behind them. */
     deletePlayer: (id: PlayerId): Result<void> => {
       try {
-        if (!deleteLocalPlayer(db, id)) return err(new Error(NOT_YOURS));
+        const row = playerQuery(db, id).all()[0];
+        if (row?.origin === 'REMOTE' && preferences.getViewerId() === id) {
+          return err(new Error(CANNOT_REMOVE_VIEWER));
+        }
+        if (!deletePlayerRow(db, id)) return err(new Error(NO_SUCH_PLAYER));
 
         // Removing the row the preference names leaves the preference behind, pointing at
         // nothing. The app degrades correctly — `/me` says "Pick another" — but the roster
         // loses its hero card with nothing on screen saying why, which is the silent-empty
         // failure ADR-0021 removed elsewhere.
         //
-        // Cleared here rather than in `deleteLocalPlayer`, because `core/db` does not know
+        // Cleared here rather than in `deletePlayerRow`, because `core/db` does not know
         // preferences exist (ARCHITECTURE.md §4) and this repository is the one place that
         // knows this id is also a subscription key.
         // `preferences.getViewerId()` rather than `viewerId()`: the question is whether the
@@ -533,6 +791,8 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
         // about keeping a query key valid, which is a different question.
         if (preferences.getViewerId() === id) {
           preferences.clearViewerId();
+          preferences.clearPendingViewerId();
+          dropViewerAvatar();
           // The same announcement every other viewer change makes. Without it the screens
           // holding the old id as their subscription key keep reading a row that is gone.
           notifyViewerChanged();
@@ -582,7 +842,13 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
      */
     setViewerId: (id: PlayerId): Result<void> => {
       if (playerQuery(db, id).all().length === 0) return err(new Error(NO_SUCH_PLAYER));
+      // Choosing somebody else ends the previous viewer's avatar; choosing the same one again
+      // keeps it (ADR-0044).
+      if (preferences.getViewerId() !== id) dropViewerAvatar();
       preferences.setViewerId(id);
+      // The account has one viewer, shared by every device on it. Remembered as pending so
+      // the next sync tells the server instead of taking the old one back (ADR-0037).
+      preferences.setPendingViewerId(id);
       notifyViewerChanged();
       return ok(undefined);
     },
@@ -595,8 +861,120 @@ export const createRosterRepository = ({ db, source, preferences }: RosterReposi
       };
     },
 
+    /**
+     * The Nine Chronicles avatar the viewer plays, or null (ADR-0044). A value that keeps its
+     * identity until it changes, so it can back `useSyncExternalStore`; the change is
+     * announced with the viewer's, through `subscribeViewerId`.
+     */
+    getViewerAvatar: (): ViewerAvatar | null => viewerAvatar(),
+
+    /**
+     * Records the avatar the viewer plays. Needs a viewer to belong to, and — like the viewer
+     * itself (ADR-0037) — is only *pending* until a sync has told the server.
+     */
+    setViewerAvatar: (avatar: ViewerAvatar): Result<void> => {
+      if (preferences.getViewerId() === null) return err(new Error(NO_VIEWER_YET));
+      preferences.setViewerAvatar(avatar);
+      preferences.setViewerAvatarPending();
+      notifyViewerChanged();
+      return ok(undefined);
+    },
+
+    /**
+     * Whether the setup gate has to stand in front of the roster (ADR-0035, decision 2).
+     *
+     * Two conditions, and both matter. **No gateway** means this build has no backend at all,
+     * so there is no account to create and the app is the hand-filled ladder ADR-0021
+     * describes — gating it would put a sign-up screen in front of a product that does not
+     * have accounts. **A stored key** means this device is already paired, and setup is over
+     * for good: nothing in the app clears the key, so the gate opens once per install.
+     *
+     * Read it through `useNeedsAccount` rather than calling it in a render, for the reason
+     * `getViewerId` says: it is a subscription, not a value.
+     */
+    needsAccount: (): boolean =>
+      gateway !== undefined && preferences.getApiKey() === null && !preferences.getSetupSkipped(),
+
+    /**
+     * Whether this device could still be paired: a backend exists and no key is stored. True
+     * after the user skipped setup (ADR-0038), which is what the "You" screen reads to offer
+     * connecting later.
+     */
+    canLinkAccount: (): boolean => gateway !== undefined && preferences.getApiKey() === null,
+
+    /**
+     * Keeps this ladder offline and lets the gate close without an account (ADR-0038). For a
+     * server that cannot be reached at first launch as much as for a user who never wants
+     * one; either way pairing stays available from the "You" screen.
+     */
+    skipAccountSetup: (): void => {
+      preferences.setSetupSkipped();
+      notifyAccountChanged();
+    },
+
+    /** `useSyncExternalStore`'s half of the pair. Returns the unsubscribe. */
+    subscribeAccount: (listener: () => void): (() => void) => {
+      accountListeners.add(listener);
+      return () => {
+        accountListeners.delete(listener);
+      };
+    },
+
+    /**
+     * Mints an account and pairs this device to it — the "left the recovery code empty"
+     * branch of the setup screen.
+     *
+     * The credentials are **returned**, not merely stored, and that is the one place in this
+     * app where a secret travels up into a component. It has to: the server keeps only
+     * hashes, so this response is the only time either secret exists outside the device, and
+     * the screen's whole job is to show the recovery code while it still can. Nothing reads
+     * it back afterwards — `needsAccount` answers with a boolean precisely so that the
+     * subscription every launch runs cannot carry a token.
+     *
+     * The key is stored before this returns, so a user who kills the app without reading the
+     * code keeps a working install. What they lose is the ability to ever add a second
+     * device, which no later call can give back.
+     */
+    createAccount: async (): Promise<Result<AccountCredentials, AccountError>> => {
+      if (gateway === undefined) return err(NO_BACKEND);
+      const created = await gateway.createAccount();
+      if (created.ok) adoptApiKey(created.value.apiKey);
+      return created;
+    },
+
+    /**
+     * Pairs this device to an account that already exists — the "typed a recovery code"
+     * branch.
+     *
+     * Returns nothing on success. The response carries an `accountId` and a fresh `apiKey`,
+     * and the screen has no use for either: the key is stored here, and the account is
+     * identified by the key from now on. A refusal is the only thing the caller acts on, and
+     * `AccountError.reason` is what tells "that code is wrong" from "you are offline".
+     */
+    linkAccount: async (recoveryCode: string): Promise<Result<void, AccountError>> => {
+      if (gateway === undefined) return err(NO_BACKEND);
+      const linked = await gateway.linkAccount(recoveryCode);
+      if (!linked.ok) return err(linked.error);
+      adoptApiKey(linked.value.apiKey);
+      return ok(undefined);
+    },
+
     /** Null before the first sync; the header renders no season label rather than a wrong one. */
     getSeason: (): number | null => preferences.getSeason(),
+
+    /**
+     * When rows from the server were last applied, as epoch milliseconds — the input to the
+     * roster's "updated N ago" (ROADMAP.md Phase 5's staleness policy).
+     *
+     * Null before the first sync, and null again after a restore from a file. Both mean the
+     * same thing to the screen: nothing here can honestly say how old this ladder is, so it
+     * says nothing.
+     *
+     * A plain read, like `getSeason`. It changes only when `write` runs, and `write`
+     * already announces itself through `subscribeViewerId` — so every screen reading this
+     * re-renders when it moves without a second subscription to keep in step.
+     */
+    getLastSyncedAt: (): number | null => preferences.getLastSyncedAt(),
 
     getShortUnit: (): ShortUnit => preferences.getShortUnit(),
     setShortUnit: (unit: ShortUnit): void => preferences.setShortUnit(unit),

@@ -4,7 +4,7 @@
  */
 
 import { isShortUnit, type ShortUnit } from '../common';
-import { isRosterSort, type PlayerId, type RosterSort } from '../model';
+import { isRosterSort, type PlayerId, type RosterSort, type ViewerAvatar } from '../model';
 import { DEFAULT_ROSTER_SORT, DEFAULT_SHORT_UNIT, type ArenaPreferences } from './types';
 
 export const createMemoryPreferences = (
@@ -13,12 +13,20 @@ export const createMemoryPreferences = (
     rosterSort: RosterSort;
     viewerId: PlayerId;
     season: number;
+    lastSyncedAt: number;
+    apiKey: string;
   }> = {},
 ): ArenaPreferences => {
   let shortUnit = isShortUnit(initial.shortUnit) ? initial.shortUnit : DEFAULT_SHORT_UNIT;
   let rosterSort = isRosterSort(initial.rosterSort) ? initial.rosterSort : DEFAULT_ROSTER_SORT;
   let viewerId: PlayerId | null = initial.viewerId ?? null;
+  let pendingViewerId: PlayerId | null = null;
+  let viewerAvatar: ViewerAvatar | null = null;
+  let viewerAvatarPending = false;
   let season: number | null = initial.season ?? null;
+  let lastSyncedAt: number | null = initial.lastSyncedAt ?? null;
+  let apiKey: string | null = initial.apiKey ?? null;
+  let setupSkipped = false;
 
   return {
     getShortUnit: () => shortUnit,
@@ -36,9 +44,48 @@ export const createMemoryPreferences = (
     clearViewerId: () => {
       viewerId = null;
     },
+    getPendingViewerId: () => pendingViewerId,
+    setPendingViewerId: (id) => {
+      pendingViewerId = id;
+    },
+    clearPendingViewerId: () => {
+      pendingViewerId = null;
+    },
+    getViewerAvatar: () => viewerAvatar,
+    setViewerAvatar: (avatar) => {
+      viewerAvatar = avatar;
+    },
+    clearViewerAvatar: () => {
+      viewerAvatar = null;
+    },
+    isViewerAvatarPending: () => viewerAvatarPending,
+    setViewerAvatarPending: () => {
+      viewerAvatarPending = true;
+    },
+    clearViewerAvatarPending: () => {
+      viewerAvatarPending = false;
+    },
     getSeason: () => season,
     setSeason: (next) => {
       season = next;
+    },
+    getLastSyncedAt: () => lastSyncedAt,
+    setLastSyncedAt: (at) => {
+      lastSyncedAt = at;
+    },
+    clearLastSyncedAt: () => {
+      lastSyncedAt = null;
+    },
+    getApiKey: () => apiKey,
+    setApiKey: (key) => {
+      apiKey = key;
+    },
+    clearApiKey: () => {
+      apiKey = null;
+    },
+    getSetupSkipped: () => setupSkipped,
+    setSetupSkipped: () => {
+      setupSkipped = true;
     },
   };
 };
