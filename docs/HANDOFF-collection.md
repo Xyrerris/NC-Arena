@@ -8,6 +8,9 @@ that branch deploys the backend** (Coolify), migrations included.
 
 This file is the map. The reasoning is in **ADR-0044** in DECISIONS.md; read it first.
 
+> **Later work:** the market sheet (what is on sale for a collection's pieces) is built, and buying is
+> next. See [HANDOFF-market.md](HANDOFF-market.md) for where it stopped and what to do next.
+
 ## The feature
 
 A section **parallel to the arena** that tracks the collection of the player marked as "me" and lists
