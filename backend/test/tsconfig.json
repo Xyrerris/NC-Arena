@@ -1,0 +1,8 @@
+{
+  // Stops the transformer's tsconfig lookup here. Without it, a test file is not covered by
+  // ../tsconfig.json (rootDir: src), so the search climbs to the app's root tsconfig, which
+  // extends `expo/tsconfig.base` — and the backend job installs nothing at the root.
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "rootDir": "..", "noEmit": true },
+  "include": ["./**/*.ts"]
+}
