@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import type { Collection, EquipmentCatalog } from '@/core/collection';
+import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/collection';
 import { statFormatter, timeSince } from '@/core/common';
 import type { Planet } from '@/core/model';
 import {
@@ -30,7 +30,7 @@ import {
 
 import {
   MAX_SHOWN_LISTINGS,
-  formatNcg,
+  cheapestLabel,
   marketPieces,
   toListingUi,
   type MarketPiece,
@@ -42,6 +42,8 @@ import { useMarketPieces, type PieceState } from './useMarketPieces';
 export interface MarketSheetProps {
   collection: Collection;
   catalog: EquipmentCatalog;
+  /** Costumes, materials and food. Left out, only equipment has a market to look in. */
+  others?: OtherItemCatalog;
   planet: Planet;
   onClose: () => void;
 }
@@ -62,8 +64,11 @@ const badge = (state: PieceState | undefined): string => {
   }
 };
 
-export function MarketSheet({ collection, catalog, planet, onClose }: MarketSheetProps) {
-  const offered = useMemo(() => marketPieces(collection, catalog), [collection, catalog]);
+export function MarketSheet({ collection, catalog, others, planet, onClose }: MarketSheetProps) {
+  const offered = useMemo(
+    () => marketPieces(collection, catalog, others),
+    [collection, catalog, others],
+  );
   const market = useMarketPieces(planet, offered.pieces);
   const [selectedKey, setSelectedKey] = useState<string | null>(offered.pieces[0]?.key ?? null);
   // The moment the sheet opened, for "read N ago". A sheet lives seconds, not minutes, so the
@@ -131,6 +136,11 @@ export function MarketSheet({ collection, catalog, planet, onClose }: MarketShee
                 <ArenaText variant="titleMedium" tone="primary" style={styles.pieceName}>
                   {selected.label}
                 </ArenaText>
+                {selected.count > 1 ? (
+                  <ArenaText variant="bodySmall" tone="accent" testID="market-needs">
+                    {words.marketNeeds(selected.count)}
+                  </ArenaText>
+                ) : null}
               </View>
             )}
 
@@ -233,11 +243,7 @@ function Listings({ state, now }: { state: Extract<PieceState, { kind: 'ready' }
   return (
     <View style={styles.list}>
       <ArenaText variant="bodyMedium" tone="primary" testID="market-summary">
-        {words.marketSummary(
-          statFormatter.exact(total),
-          total,
-          cheapest === undefined ? '' : formatNcg(cheapest.price),
-        )}
+        {words.marketSummary(statFormatter.exact(total), total, cheapestLabel(cheapest))}
       </ArenaText>
       <Freshness state={state} now={now} />
       {shown.map((listing) => {

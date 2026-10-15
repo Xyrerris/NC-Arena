@@ -26,7 +26,7 @@ import {
   radius,
   space,
 } from '@/core/design-system';
-import type { Collection, EquipmentCatalog } from '@/core/collection';
+import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/collection';
 import { useViewerAvatar } from '@/core/data';
 
 import { CollectionRowItem } from './CollectionRow';
@@ -46,6 +46,7 @@ import { useGameSheets } from './useGameSheets';
 
 /** No equipment is known: no piece has a market. Held once so the sheet's memo keeps its identity. */
 const NO_CATALOG: EquipmentCatalog = new Map();
+const NO_OTHERS: OtherItemCatalog = new Map();
 
 export interface CollectionScreenProps {
   /**
@@ -85,6 +86,7 @@ function SheetGate({ sectionTabs }: { sectionTabs?: ReactNode }) {
       <CollectionBody
         sheet={loaded.sheet}
         catalog={loaded.catalog}
+        others={loaded.others}
         sectionTabs={sectionTabs}
         sampleData={false}
       />
@@ -128,15 +130,17 @@ function SheetGate({ sectionTabs }: { sectionTabs?: ReactNode }) {
 function CollectionBody({
   sheet,
   catalog,
+  others,
   sectionTabs,
   sampleData,
 }: {
   sheet: readonly Collection[];
   catalog?: EquipmentCatalog;
+  others?: OtherItemCatalog;
   sectionTabs?: ReactNode;
   sampleData: boolean;
 }) {
-  const controller = useCollection(sheet, catalog);
+  const controller = useCollection(sheet, catalog, others);
   const router = useRouter();
   const openViewer = useCallback(() => router.push('/me'), [router]);
   // Which collection's market sheet is open, if any. Held here and not in the controller: it is
@@ -182,6 +186,7 @@ function CollectionBody({
               key={marketCollection.id}
               collection={marketCollection}
               catalog={catalog ?? NO_CATALOG}
+              others={others ?? NO_OTHERS}
               planet={controller.avatar.planet}
               onClose={closeMarket}
             />

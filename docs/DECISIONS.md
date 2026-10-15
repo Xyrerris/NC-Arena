@@ -2795,14 +2795,28 @@ person choose the piece. Buying comes after, and not from this step.
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.
 
-**Next step (not started): costumes and materials in the same list.** Do this **once the above works
-on a device and the numbers have been checked against the game** — not before. The 217 open slots that
-are not equipment are in `CostumeItemSheet` and `MaterialItemSheet` (served by Mimir the same way) and
-in the consumable sheet, with `_name` columns and no element or level (a material slot has a count
-instead, and its level is blank). The work: a catalog per sheet, a `kind` on the missing-piece entry
-(equipment / costume / material), the count of units needed rather than collections helped for
-materials, and the "N slots not in this list yet" note dropped. About 70 of the 424 items have no name
-in any sheet, so family and id remain the fallback there (see "Where item names are").
+**Built (2026-10-15): costumes and materials in the market sheet.** The owner ran the equipment sheet
+on a device and asked for this next ("point 3"). Probed against Heimdall before any code:
+
+- Costumes (`FullCostume`) answer at route 1, titles at 18, food at 0, equipment material at 11, hourglass
+  at 15 and AP stone at 16. `FoodMaterial` and `NormalMaterial` answered on no route tried, so they stay
+  `unknown` and are counted, not called "not sold" on one probe. `fungibleAssetValueProducts` was empty on
+  every call; nothing reads it.
+- A material or food listing is a **lot**: `quantity` and `unitPrice` come with `price` (the whole lot, what a
+  buyer pays). Equipment and costumes are single (`quantity` 1). So `MarketListing` gained both, required, and
+  lots are ordered and shown by **unit price**, with the lot's total in the detail line. The sheet shows
+  "needs N" for a counted piece.
+- The sheet's `skill` flag is FALSE for every non-equipment slot, and the `level` blank, so the existing
+  match (same id, level and skill state) needs no special case. Counts run from 1 to 100,000 (e.g. 20,
+  100, 1,000): the sheet does not try to price "N units" from several lots, because the cheapest way to
+  reach a count from lots is a packing problem and a greedy answer would be wrong in a way nothing shows.
+- The three extra sheets come in the **same** Mimir request as the equipment one (aliased), and the read is
+  all four or none. `CostumeItemSheet` has `_item_sub_type,…` rows that describe columns; they have no numeric
+  id and are skipped. A material's `_name` can be Korean; it is shown as it is.
+- Done in `core/collection/otherItems.ts` (a separate catalog, so "is this equipment" in `requirementUi` keeps
+  its meaning) and `marketRouteFor(requirement, catalog, others)`.
+- **Still open:** the items view still lists equipment only (a costume or material there is the
+  "N slots not in this list" count); a name for the ~70 ids in no sheet; pricing a count across lots.
 
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
 `core-common` only, with two probes in `scripts/check-boundaries.mjs`. `core/network` may now read it

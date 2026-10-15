@@ -12,6 +12,7 @@ import type {
   CollectionRow,
   EquipmentCatalog,
   MissingEquipmentList,
+  OtherItemCatalog,
   CollectionStatus,
   ItemGroup,
   Reconciliation,
@@ -120,6 +121,7 @@ export const requirementUi = (
 export const toRowUi = (
   row: CollectionRow,
   catalog: EquipmentCatalog = new Map(),
+  others: OtherItemCatalog = new Map(),
 ): CollectionRowUi => {
   const id = row.collection.id;
   const status = STATUS[row.status];
@@ -131,7 +133,7 @@ export const toRowUi = (
   }
   // An unlocked collection needs nothing bought. Without a catalog nothing says what is equipment,
   // so no piece has a market and the row stays as it was.
-  const offered = row.status === 'UNLOCKED' ? null : marketPieces(row.collection, catalog);
+  const offered = row.status === 'UNLOCKED' ? null : marketPieces(row.collection, catalog, others);
   const searchable = offered !== null && canSearchMarket(offered);
   return {
     key: `collection-${id}`,

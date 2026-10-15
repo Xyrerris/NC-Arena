@@ -328,9 +328,18 @@ describe('CollectionScreen', () => {
       '10110000,Long Sword,Weapon,1,Normal',
       '10310000,Plate Armor,Armor,1,Fire',
     ].join('\r\n');
+    // The costume sheet carries lib9c's column-describing rows, which are not items.
+    const ITEM_HEADER = 'id,_name,item_sub_type,grade,elemental_type';
+    const COSTUME_CSV = [ITEM_HEADER, '_item_sub_type,FullCostume|Title,,,'].join('\r\n');
+    const MATERIAL_CSV = [ITEM_HEADER, '600201,Mithril Dust,EquipmentMaterial,1,Normal'].join(
+      '\r\n',
+    );
     const GAME_SHEETS = {
       collectionCsv: SAMPLE_SHEET_CSV,
       equipmentCsv: EQUIPMENT_CSV,
+      costumeCsv: COSTUME_CSV,
+      materialCsv: MATERIAL_CSV,
+      consumableCsv: ITEM_HEADER,
       source: 'test',
     };
 
@@ -355,6 +364,8 @@ describe('CollectionScreen', () => {
       elementalType: 0,
       combatPoint: 1000,
       price: n,
+      quantity: 1,
+      unitPrice: n,
       hasSkill: true,
       sellerAvatarAddress: sellerAddress,
       registeredBlockIndex: 1,
@@ -435,6 +446,30 @@ describe('CollectionScreen', () => {
       await press('market-retry');
       expect(text('market-summary')).toBe('2 listings · from 3 NCG');
       expect(fake.scan).toHaveBeenCalledTimes(2);
+    });
+
+    it('searches a costume by its own route, and shows a lot by its unit price', async () => {
+      makeViewerWithAvatar();
+      // Collection 5 asks for one costume (the sample sheet marks it with a skill flag; the real
+      // sheet leaves it FALSE for costumes, and the listing here follows the sample).
+      const costume = (n: number, overrides: Partial<MarketListing> = {}) =>
+        listing(n, { itemId: 40100001, itemSubType: 1, combatPoint: 1534169646, ...overrides });
+      const fake = fakeMarket(() =>
+        scanned([costume(7), costume(4, { price: 8, quantity: 2, unitPrice: 4 })]),
+      );
+      market = fake.library;
+      const withCostume = {
+        ...GAME_SHEETS,
+        costumeCsv: [ITEM_HEADER, '40100001,Black Dress,FullCostume,2,Normal'].join('\r\n'),
+      };
+      await mountGated(jest.fn(() => Promise.resolve(ok(withCostume))));
+
+      await press('collection-market-5');
+
+      expect(fake.scan).toHaveBeenCalledWith('heimdall', 1, 40100001, expect.anything());
+      expect(text('market-summary')).toBe('2 listings · from 4 NCG each');
+      expect(screen.getByText('4 NCG each')).toBeTruthy();
+      expect(screen.getByText('7 NCG')).toBeTruthy();
     });
 
     it('says a collection of pieces the market does not sell is not sold, and offers no button', async () => {

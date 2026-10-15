@@ -6,6 +6,7 @@
 import {
   parseCollectionSheet,
   parseEquipmentCatalog,
+  parseOtherItems,
   SAMPLE_SHEET_CSV,
   type Collection,
 } from '@/core/collection';
@@ -13,6 +14,7 @@ import type { MarketListing } from '@/core/common';
 
 import {
   canSearchMarket,
+  cheapestLabel,
   formatNcg,
   marketPieces,
   shortSeller,
@@ -97,6 +99,66 @@ describe('marketPieces', () => {
   });
 });
 
+describe('marketPieces with costumes and materials', () => {
+  const others = parseOtherItems({
+    costumeCsv: [
+      'id,_name,item_sub_type,grade,elemental_type',
+      '40100001,Black Dress,FullCostume,1,Normal',
+    ].join('\r\n'),
+    materialCsv: [
+      'id,_name,item_sub_type,grade,elemental_type',
+      '600201,Mithril Dust,EquipmentMaterial,0,Normal',
+    ].join('\r\n'),
+    consumableCsv: 'id,_name,item_sub_type,grade,elemental_type',
+  });
+  const mixed: Collection = {
+    id: 97,
+    bonuses: [],
+    requirements: [
+      { itemId: 40100001, count: 1, level: 0, skillContains: true },
+      { itemId: 600201, count: 5, level: 0, skillContains: false },
+      { itemId: 999, count: 1, level: 0, skillContains: false },
+    ],
+  };
+
+  it('offers a costume and a counted material by name, and the skill flag means nothing for them', () => {
+    const { pieces, unlisted } = marketPieces(mixed, catalog, others);
+
+    expect(pieces.map((p) => [p.label, p.route, p.needsSkill, p.count])).toEqual([
+      ['Black Dress', { kind: 'route', itemSubType: 1 }, false, 1],
+      ['Mithril Dust', { kind: 'route', itemSubType: 11 }, false, 5],
+    ]);
+    // Item 999 is in no sheet at all: counted, not hidden.
+    expect(unlisted).toBe(1);
+  });
+
+  it('offers a button for a collection of a costume, which had none before', () => {
+    expect(canSearchMarket(marketPieces(collection(5), catalog))).toBe(false);
+    const dress = parseOtherItems({
+      costumeCsv: [
+        'id,_name,item_sub_type,grade,elemental_type',
+        '40100001,Black Dress,FullCostume,1,Normal',
+      ].join('\r\n'),
+      materialCsv: 'id,_name,item_sub_type,grade,elemental_type',
+      consumableCsv: 'id,_name,item_sub_type,grade,elemental_type',
+    });
+    expect(canSearchMarket(marketPieces(collection(5), catalog, dress))).toBe(true);
+  });
+
+  it('falls back to the id when the sheet has no name for it', () => {
+    const unnamed = parseOtherItems({
+      costumeCsv: [
+        'id,_name,item_sub_type,grade,elemental_type',
+        '40100001,,FullCostume,1,Normal',
+      ].join('\r\n'),
+      materialCsv: 'id,_name,item_sub_type,grade,elemental_type',
+      consumableCsv: 'id,_name,item_sub_type,grade,elemental_type',
+    });
+
+    expect(marketPieces(collection(5), catalog, unnamed).pieces[0]?.label).toBe('40100001');
+  });
+});
+
 describe('formatNcg', () => {
   it('writes whole prices bare and groups thousands the way the app does', () => {
     expect(formatNcg(1)).toBe('1');
@@ -138,6 +200,8 @@ describe('toListingUi', () => {
       elementalType: 0,
       combatPoint: 12450,
       price: 142.5,
+      quantity: 1,
+      unitPrice: 142.5,
       hasSkill: true,
       sellerAvatarAddress: 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63',
       registeredBlockIndex: 1,
@@ -149,5 +213,32 @@ describe('toListingUi', () => {
       detail: 'CP 12.450 · seller 0xebb8…AA63',
       a11y: '142,5 NCG, CP 12.450 · seller 0xebb8…AA63',
     });
+  });
+
+  it('says a lot by its unit price, with the lot and its total below, and no combat point of 0', () => {
+    const lot: MarketListing = {
+      productId: '00000000-0000-0000-0000-000000000002',
+      itemId: 600201,
+      itemSubType: 11,
+      level: 0,
+      grade: 0,
+      elementalType: 0,
+      combatPoint: 0,
+      price: 20,
+      quantity: 4,
+      unitPrice: 5,
+      hasSkill: false,
+      sellerAvatarAddress: 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63',
+      registeredBlockIndex: 1,
+    };
+
+    expect(toListingUi(lot)).toEqual({
+      key: '00000000-0000-0000-0000-000000000002',
+      price: '5 NCG each',
+      detail: '4 for 20 NCG · seller 0xebb8…AA63',
+      a11y: '5 NCG each, 4 for 20 NCG · seller 0xebb8…AA63',
+    });
+    expect(cheapestLabel(lot)).toBe('5 NCG each');
+    expect(cheapestLabel(undefined)).toBe('');
   });
 });

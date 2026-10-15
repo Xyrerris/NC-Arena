@@ -59,7 +59,8 @@ Where things are:
   the `productId` out. A purchase must do that.
 - **Thor has no market** in the planet registry; it answers `FAILED`.
 - Of the sheet's 1,381 requirement slots: **704** have a route, **152** are `not-sold`, **525** are
-  `unknown` (costumes, materials, consumables — the catalog only holds equipment).
+  `unknown` (costumes, materials, consumables — the catalog only holds equipment). _Before point 1
+  was built; costumes, titles, food and the materials above now have a route._
 
 ## NC-Market — reference only, **do not modify it**
 
@@ -90,7 +91,13 @@ of its own (the purchase feature, from 2026-10-02): read-only. Useful there:
 
 ## What is open, in the order I recommend
 
-### 1. Costumes and materials in the same list (the owner's "point 3") — do this before buying
+### 1. Costumes and materials in the same list (the owner's "point 3") — DONE 2026-10-15, not yet seen on a device
+
+Built on this branch: `core/collection/otherItems.ts`, route table for costume (1), title (18), food (0),
+equipment material (11), hourglass (15), AP stone (16); `MarketListing` carries `quantity` and `unitPrice`;
+lots are shown "5 NCG each · 4 for 20 NCG"; a counted piece says "needs N". Details and what is still open:
+ADR-0044, "Built (2026-10-15): costumes and materials". **The owner has not run it on the emulator yet.**
+The text below is the plan it followed, kept for the reasoning.
 
 Why first: it decides the shape of `MarketListing` and of the purchase target. Today a listing is
 equipment-shaped; a material is a **fungible** product with a quantity, and a collection asks for a
@@ -223,7 +230,8 @@ At `656943c`: 891 tests (all Jest projects), 609 (Node coverage run), 46 (backen
 
 ## Open questions for the owner
 
-- Costumes and materials first (my recommendation), or the purchase confirmation card (step A) first?
+- Costumes and materials are built (2026-10-15). Next: check them on a device, then the purchase
+  confirmation card (step A)?
 - Is a keystore **file** the right thing for the owner to import (does the owner have one, and where),
   or would a raw private key pasted once be expected? The passphrase proposal assumes a keystore.
 - Which node endpoints may the app use for the nonce and transactions: the planet registry's public ones

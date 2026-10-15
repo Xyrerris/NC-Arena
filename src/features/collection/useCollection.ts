@@ -23,6 +23,7 @@ import {
   sortRows,
   type Collection,
   type EquipmentCatalog,
+  type OtherItemCatalog,
   type RowFilter,
   type RowSort,
 } from '@/core/collection';
@@ -77,10 +78,12 @@ export interface CollectionController {
 }
 
 const NO_CATALOG: EquipmentCatalog = new Map();
+const NO_OTHERS: OtherItemCatalog = new Map();
 
 export const useCollection = (
   sheet: readonly Collection[],
   catalog: EquipmentCatalog = NO_CATALOG,
+  others: OtherItemCatalog = NO_OTHERS,
 ): CollectionController => {
   const { collections, useLiveData } = useArenaData();
   if (collections === undefined) {
@@ -175,7 +178,9 @@ export const useCollection = (
   // remain still need, so asking for ATK and HIT shows the pieces for those collections only.
   // The status filter is the collections view's alone; the items view is always about open ones.
   const rewarded = filterByRewardStats(reconciliation.rows, stats);
-  const rows = sortRows(filterRows(rewarded, filter), sort).map((row) => toRowUi(row, catalog));
+  const rows = sortRows(filterRows(rewarded, filter), sort).map((row) =>
+    toRowUi(row, catalog, others),
+  );
   // With a catalog the items view lists equipment by name, level, element and skill; without one
   // (the placeholder sheet) it falls back to bare ids, which is all the sheet itself can say.
   const equipment = catalog.size > 0 ? missingEquipment(rewarded, catalog) : null;

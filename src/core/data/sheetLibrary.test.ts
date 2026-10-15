@@ -7,7 +7,14 @@ import { err, ok, type SheetSource } from '../common';
 import { createSheetLibrary } from './sheetLibrary';
 
 describe('createSheetLibrary', () => {
-  const sheets = { collectionCsv: 'a', equipmentCsv: 'b', source: 'test' };
+  const sheets = {
+    collectionCsv: 'a',
+    equipmentCsv: 'b',
+    costumeCsv: 'c',
+    materialCsv: 'd',
+    consumableCsv: 'e',
+    source: 'test',
+  };
 
   it('makes one read for two loads, and keeps a success', async () => {
     const read = jest.fn(() => Promise.resolve(ok(sheets)));

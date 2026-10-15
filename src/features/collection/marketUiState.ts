@@ -13,6 +13,7 @@ import {
   type CollectionRequirement,
   type EquipmentCatalog,
   type MarketRoute,
+  type OtherItemCatalog,
 } from '@/core/collection';
 import { statFormatter, type MarketListing } from '@/core/common';
 
@@ -28,27 +29,36 @@ export interface MarketPiece {
   readonly requirement: CollectionRequirement;
   readonly route: Extract<MarketRoute, { kind: 'route' | 'not-sold' }>;
   readonly label: string;
+  /** Only equipment has a skill to carry: the sheet's flag means nothing for a costume or a material. */
   readonly needsSkill: boolean;
+  /** Units the collection asks for: more than 1 only for materials and food, which are sold in lots. */
+  readonly count: number;
 }
 
 export interface MarketPieces {
   /** The pieces to offer, those with a market first: the first one is what the sheet opens on. */
   readonly pieces: readonly MarketPiece[];
-  /** Requirements the sheet cannot search yet (costumes, materials): counted, not hidden. */
+  /** Requirements the sheet cannot search (an item in no sheet, or one with no market route): counted, not hidden. */
   readonly unlisted: number;
 }
 
 export const pieceKey = (requirement: CollectionRequirement): string =>
   `${requirement.itemId}|${requirement.level}|${requirement.skillContains}`;
 
-export const marketPieces = (collection: Collection, catalog: EquipmentCatalog): MarketPieces => {
+const NO_OTHERS: OtherItemCatalog = new Map();
+
+export const marketPieces = (
+  collection: Collection,
+  catalog: EquipmentCatalog,
+  others: OtherItemCatalog = NO_OTHERS,
+): MarketPieces => {
   const seen = new Set<string>();
   const sold: MarketPiece[] = [];
   const notSold: MarketPiece[] = [];
   let unlisted = 0;
 
   for (const requirement of collection.requirements) {
-    const route = marketRouteFor(requirement, catalog);
+    const route = marketRouteFor(requirement, catalog, others);
     if (route.kind === 'unknown') {
       unlisted += 1;
       continue;
@@ -58,15 +68,19 @@ export const marketPieces = (collection: Collection, catalog: EquipmentCatalog):
     seen.add(key);
 
     const info = catalog.get(requirement.itemId);
+    const other = others.get(requirement.itemId);
     const piece: MarketPiece = {
       key,
       requirement,
       route,
       label:
-        info === undefined
-          ? String(requirement.itemId)
-          : words.piece(info.name, requirement.level, info.element),
-      needsSkill: requirement.skillContains,
+        info !== undefined
+          ? words.piece(info.name, requirement.level, info.element)
+          : other !== undefined && other.name !== ''
+            ? other.name
+            : String(requirement.itemId),
+      needsSkill: info !== undefined && requirement.skillContains,
+      count: requirement.count,
     };
     (route.kind === 'route' ? sold : notSold).push(piece);
   }
@@ -106,9 +120,29 @@ export interface ListingUi {
   readonly a11y: string;
 }
 
+/**
+ * What a listing costs, as said: a single piece by its price, a lot by its unit price (lots of
+ * different sizes are compared by that, and the whole price is in the detail line).
+ */
+export const askingPrice = (listing: MarketListing): string =>
+  listing.quantity > 1
+    ? words.listingEach(formatNcg(listing.unitPrice))
+    : `${formatNcg(listing.price)} NCG`;
+
+/** The summary's "from …": the cheapest listing's asking price, per unit when it is a lot. */
+export const cheapestLabel = (cheapest: MarketListing | undefined): string =>
+  cheapest === undefined ? '' : askingPrice(cheapest);
+
 export const toListingUi = (listing: MarketListing): ListingUi => {
-  const price = `${formatNcg(listing.price)} NCG`;
-  const cp = words.listingCp(statFormatter.exact(listing.combatPoint));
-  const detail = `${cp} · ${words.listingSeller(shortSeller(listing.sellerAvatarAddress))}`;
+  const price = askingPrice(listing);
+  const parts: string[] = [];
+  if (listing.quantity > 1) {
+    parts.push(words.listingLot(statFormatter.exact(listing.quantity), formatNcg(listing.price)));
+  }
+  // Combat point is the equipment and costume's; a material has none and "CP 0" would be noise.
+  if (listing.combatPoint > 0)
+    parts.push(words.listingCp(statFormatter.exact(listing.combatPoint)));
+  parts.push(words.listingSeller(shortSeller(listing.sellerAvatarAddress)));
+  const detail = parts.join(' · ');
   return { key: listing.productId, price, detail, a11y: `${price}, ${detail}` };
 };

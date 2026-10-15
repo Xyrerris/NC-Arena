@@ -8,6 +8,7 @@ import type { MarketListing } from '../common';
 import type { CollectionRequirement } from './collectionSheet';
 import { parseEquipmentCatalog } from './equipmentCatalog';
 import { listingMatches, marketRouteFor, matchingListings } from './marketMatch';
+import { parseOtherItems } from './otherItems';
 
 const requirement = (
   itemId: number,
@@ -15,20 +16,25 @@ const requirement = (
   skillContains: boolean,
 ): CollectionRequirement => ({ itemId, count: 1, level, skillContains });
 
-const listing = (overrides: Partial<MarketListing> = {}): MarketListing => ({
-  productId: '00000000-0000-0000-0000-000000000001',
-  itemId: 10110000,
-  itemSubType: 6,
-  level: 4,
-  grade: 1,
-  elementalType: 0,
-  combatPoint: 1000,
-  price: 10,
-  hasSkill: true,
-  sellerAvatarAddress: 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63',
-  registeredBlockIndex: 1,
-  ...overrides,
-});
+const listing = (overrides: Partial<MarketListing> = {}): MarketListing => {
+  const made = {
+    productId: '00000000-0000-0000-0000-000000000001',
+    itemId: 10110000,
+    itemSubType: 6,
+    level: 4,
+    grade: 1,
+    elementalType: 0,
+    combatPoint: 1000,
+    price: 10,
+    quantity: 1,
+    hasSkill: true,
+    sellerAvatarAddress: 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63',
+    registeredBlockIndex: 1,
+    ...overrides,
+  };
+  // The unit price follows the price unless a test sets both, as the service's own rows do.
+  return { ...made, unitPrice: overrides.unitPrice ?? made.price / made.quantity };
+};
 
 describe('listingMatches', () => {
   const needs = requirement(10110000, 4, true);
@@ -81,6 +87,23 @@ describe('matchingListings', () => {
     expect(matchingListings(needs, all).map((l) => l.productId)).toEqual([id(3), id(2), id(9)]);
   });
 
+  it('compares lots by unit price: five at 2 each beats one at 3, whatever the lot costs', () => {
+    const material = requirement(600201, 0, false);
+    const all = [
+      listing({ productId: id(1), itemId: 600201, level: 0, hasSkill: false, price: 3 }),
+      listing({
+        productId: id(2),
+        itemId: 600201,
+        level: 0,
+        hasSkill: false,
+        price: 10,
+        quantity: 5,
+      }),
+    ];
+
+    expect(matchingListings(material, all).map((l) => l.productId)).toEqual([id(2), id(1)]);
+  });
+
   it('is empty when nothing is accepted, and leaves the scan untouched', () => {
     const all = [listing({ level: 9 })];
 
@@ -120,9 +143,44 @@ describe('marketRouteFor', () => {
     expect(route(10710000)).toEqual({ kind: 'not-sold' });
   });
 
-  it('does not know an item the catalog lacks, or a type it was not told about', () => {
-    // A costume or a material is not in the equipment catalog; a new sub type is not in ROUTES.
+  it('does not know an item no catalog has, or a type it was not told about', () => {
+    // A costume is not in the equipment catalog; a new sub type is not in ROUTES.
     expect(route(40100001)).toEqual({ kind: 'unknown' });
     expect(route(10810000)).toEqual({ kind: 'unknown' });
+  });
+
+  it('routes costumes, titles, food and materials through the other-items catalog', () => {
+    const others = parseOtherItems({
+      costumeCsv: [
+        'id,_name,item_sub_type,grade,elemental_type',
+        '40100001,Dress,FullCostume,1,Normal',
+        '49900011,Champion,Title,1,Normal',
+      ].join('\r\n'),
+      materialCsv: [
+        'id,_name,item_sub_type,grade,elemental_type',
+        '600201,Mithril Dust,EquipmentMaterial,1,Normal',
+        '400000,Hourglass,Hourglass,1,Normal',
+        '500000,AP Stone,ApStone,1,Normal',
+        '800201,Herb,FoodMaterial,1,Normal',
+      ].join('\r\n'),
+      consumableCsv: [
+        'id,_name,item_sub_type,grade,elemental_type',
+        '201000,Tea,Food,1,Normal',
+      ].join('\r\n'),
+    });
+    const routeOf = (itemId: number) =>
+      marketRouteFor(requirement(itemId, 0, false), catalog, others);
+
+    expect([40100001, 49900011, 600201, 400000, 500000, 201000].map(routeOf)).toEqual([
+      { kind: 'route', itemSubType: 1 },
+      { kind: 'route', itemSubType: 18 },
+      { kind: 'route', itemSubType: 11 },
+      { kind: 'route', itemSubType: 15 },
+      { kind: 'route', itemSubType: 16 },
+      { kind: 'route', itemSubType: 0 },
+    ]);
+    // Probed on no route: unknown, not "not sold". And an equipment id still wins its own route.
+    expect(routeOf(800201)).toEqual({ kind: 'unknown' });
+    expect(routeOf(10110000)).toEqual({ kind: 'route', itemSubType: 6 });
   });
 });

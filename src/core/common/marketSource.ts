@@ -32,8 +32,15 @@ export interface MarketListing {
   /** lib9c's `ElementalType`: 0 Normal, 1 Fire, 2 Water, 3 Land, 4 Wind. */
   readonly elementalType: number;
   readonly combatPoint: number;
-  /** In NCG. Equipment is sold singly, so this is also the unit price. */
+  /** In NCG, for the whole lot: what a buyer pays. For a single piece it is also the unit price. */
   readonly price: number;
+  /**
+   * Units in the lot. Equipment and costumes are sold singly (1); a material or a food is a
+   * *lot* of several, bought whole, and a collection asks for a count of them.
+   */
+  readonly quantity: number;
+  /** `price / quantity`, in NCG: what lots of different sizes are compared by. */
+  readonly unitPrice: number;
   /**
    * The piece carries at least one skill, ordinary or buff — the market service lists them
    * together — which is exactly what lib9c's `SkillContains` asks about.

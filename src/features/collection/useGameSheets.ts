@@ -13,8 +13,10 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   parseCollectionSheet,
   parseEquipmentCatalog,
+  parseOtherItems,
   type Collection,
   type EquipmentCatalog,
+  type OtherItemCatalog,
 } from '@/core/collection';
 import { useArenaData } from '@/core/data';
 import type { Planet } from '@/core/model';
@@ -26,6 +28,8 @@ export type GameSheetsState =
       readonly status: 'ready';
       readonly sheet: readonly Collection[];
       readonly catalog: EquipmentCatalog;
+      /** Costumes, materials and food: what the rest of a collection is called. */
+      readonly others: OtherItemCatalog;
     };
 
 export const useGameSheets = (planet: Planet): GameSheetsState & { retry: () => void } => {
@@ -53,6 +57,7 @@ export const useGameSheets = (planet: Planet): GameSheetsState & { retry: () => 
           status: 'ready',
           sheet: parseCollectionSheet(result.value.collectionCsv),
           catalog: parseEquipmentCatalog(result.value.equipmentCsv),
+          others: parseOtherItems(result.value),
         });
       } catch {
         setState({ status: 'failed', reason: 'MALFORMED' });

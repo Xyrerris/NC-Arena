@@ -6,8 +6,8 @@
  * `core/collection`'s, which `core/data` may not import, and a feature that may import both
  * does the parse where a malformed sheet can be reported to the user.
  *
- * **Both sheets or neither.** A collection list with no names is still a list, but a list of
- * names for the wrong collections is not, so a read that got only one of the two is a failure.
+ * **All the sheets or none.** A collection list with no names is still a list, but a list of
+ * names for the wrong collections is not, so a read that got only some of them is a failure.
  */
 
 import type { Planet } from '../model';
@@ -18,6 +18,10 @@ export interface GameSheets {
   readonly collectionCsv: string;
   /** The chain's `EquipmentItemSheet`: `_name`, `item_sub_type`, `elemental_type` per item id. */
   readonly equipmentCsv: string;
+  /** The chain's `CostumeItemSheet`, `MaterialItemSheet` and `ConsumableItemSheet`: what the rest of a collection is called. */
+  readonly costumeCsv: string;
+  readonly materialCsv: string;
+  readonly consumableCsv: string;
   /** What answered, for the screen's "from" line. */
   readonly source: string;
 }

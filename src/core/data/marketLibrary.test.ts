@@ -24,6 +24,8 @@ const listing = (n: number): MarketListing => ({
   elementalType: 0,
   combatPoint: 100,
   price: n,
+  quantity: 1,
+  unitPrice: n,
   hasSkill: false,
   sellerAvatarAddress: 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63',
   registeredBlockIndex: 1,

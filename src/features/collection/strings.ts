@@ -65,7 +65,10 @@ export const collectionStrings = {
   marketNothing: 'Nothing of this piece is on sale right now.',
   marketPieceNotSold: 'This piece is not sold on the market.',
   marketSummary: (count: string, total: number, from: string) =>
-    `${count} ${total === 1 ? 'listing' : 'listings'} · from ${from} NCG`,
+    `${count} ${total === 1 ? 'listing' : 'listings'} · from ${from}`,
+  marketNeeds: (count: number) => `needs ${count}`,
+  listingEach: (price: string) => `${price} NCG each`,
+  listingLot: (quantity: string, total: string) => `${quantity} for ${total} NCG`,
   marketFreshness: (scanned: string, since: string) =>
     `Asking prices, not what was paid · ${scanned} of this item read ${since}`,
   marketShowing: (shown: number, total: string) => `Showing the cheapest ${shown} of ${total}`,
@@ -74,8 +77,8 @@ export const collectionStrings = {
   marketRetry: 'TRY AGAIN',
   marketRetryA11y: 'Read the market again for this piece',
   marketUnlisted: (count: number) =>
-    `${count} ${count === 1 ? 'piece' : 'pieces'} of this collection (costumes or materials) ` +
-    'cannot be searched yet.',
+    `${count} ${count === 1 ? 'piece' : 'pieces'} of this collection ` +
+    'cannot be searched (not in the game data, or not on the market).',
   listingCp: (cp: string) => `CP ${cp}`,
   listingSeller: (seller: string) => `seller ${seller}`,
 
