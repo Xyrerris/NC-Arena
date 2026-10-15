@@ -35,6 +35,7 @@ import {
   FallbackAvatarSource,
   FallbackCollectionSource,
   GameSheetSource,
+  MarketServiceSource,
   MimirAvatarSource,
   MimirCollectionSource,
   NodeAvatarSource,
@@ -45,6 +46,7 @@ import {
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
 import { createCollectionRepository } from './collectionRepository';
+import { createMarketLibrary, type MarketLibrary } from './marketLibrary';
 import { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
 import { createRosterRepository } from './rosterRepository';
 
@@ -102,6 +104,15 @@ export const collectionRepository = createCollectionRepository({
  * opens and kept for the run. Not bundled: that waits on a licence decision (ADR-0044).
  */
 export const sheetLibrary: SheetLibrary = createSheetLibrary({ source: new GameSheetSource() });
+
+/**
+ * What is on sale of an item, read from Planetarium's market service and kept for a minute. Like
+ * the chain sources it is not behind the backend flag: it is a public service that knows nothing
+ * of the backend, so a build with no backend still has a market to read.
+ */
+export const marketLibrary: MarketLibrary = createMarketLibrary({
+  source: new MarketServiceSource(),
+});
 
 /** Who is at an avatar address, read from the same two public services. */
 export const avatarSource: AvatarSource = new FallbackAvatarSource([

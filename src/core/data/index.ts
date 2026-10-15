@@ -15,6 +15,13 @@ export {
   type CollectionRepositoryDeps,
   type StoredChainRead,
 } from './collectionRepository';
+export {
+  DEFAULT_MARKET_TTL_MS,
+  createMarketLibrary,
+  type MarketLibrary,
+  type MarketLibraryDeps,
+  type MarketScan,
+} from './marketLibrary';
 export { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
 export type { LiveData, UseLiveData } from './liveData';
 /**

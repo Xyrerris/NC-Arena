@@ -2760,9 +2760,14 @@ person choose the piece. Buying comes after, and not from this step.
   `not-sold`, 525 are `unknown` (costumes and materials, the next step after this one). Checked
   against the live market: collection 1's Long Sword +0 with a skill has 368 matching listings among
   4,646, from 1 NCG.
-- **Next steps, in order:** a short in-memory cache in `core/data` (a scan of a common item takes
-  ~8 s, so closing and reopening the sheet must not repeat it); the button and `MarketSheet`. The
-  listing already carries what a purchase needs to find it again
+- **Step 3 built: the cache** (`core/data/marketLibrary.ts`, `ArenaData.market`). A complete scan is
+  kept for 60 s with when it was read; a failure and a stopped scan are not kept, so a retry asks
+  again. Two askers of one item share one scan, and a late one is told how far it already is. Each
+  asker leaves with its own `AbortSignal`; the last one leaving stops the scan, so a sheet closed
+  halfway through eight seconds of pages stops reading them. In memory only, because a price kept
+  for the night is wrong. Live: two simultaneous asks for the same 1,358-listing item made one scan
+  (4.1 s) and a third ask answered from memory in 0 ms.
+- **Next steps, in order:** the button and `MarketSheet`. The listing already carries what a purchase needs to find it again
   (`productId`, sub type, item id, seller), because the service has no lookup by product. Signing
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.

@@ -13,6 +13,7 @@ import {
   arenaRepository,
   avatarSource,
   collectionRepository,
+  marketLibrary,
   sheetLibrary,
 } from '@/core/data/arenaRepository';
 import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
@@ -61,6 +62,7 @@ const ARENA_DATA: ArenaData = {
   avatarSource,
   collections: collectionRepository,
   sheets: sheetLibrary,
+  market: marketLibrary,
 };
 
 export default function RootLayout() {

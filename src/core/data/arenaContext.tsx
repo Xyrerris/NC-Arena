@@ -17,6 +17,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 import type { AvatarSource } from '../common';
 import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
+import type { MarketLibrary } from './marketLibrary';
 import type { RosterRepository } from './rosterRepository';
 import type { SheetLibrary } from './sheetLibrary';
 
@@ -41,6 +42,11 @@ export interface ArenaData {
    * collection screen reads it, and only when its route did not hand it a sheet directly.
    */
   sheets?: SheetLibrary;
+  /**
+   * What is on sale of an item, scanned and kept for a minute (ADR-0044, "Next: buying"). Optional
+   * like the rest: only the market sheet reads it, and a build that forgot to wire it fails there.
+   */
+  market?: MarketLibrary;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);
