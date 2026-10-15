@@ -20,6 +20,13 @@ export type {
   CollectionSource,
   UnlockedCollections,
 } from './collectionSource';
+export type {
+  MarketError,
+  MarketFailure,
+  MarketListing,
+  MarketSource,
+  ScanOptions,
+} from './marketSource';
 export type { GameSheets, SheetError, SheetFailure, SheetSource } from './sheetSource';
 export { err, isOk, ok, type Result } from './result';
 export type {

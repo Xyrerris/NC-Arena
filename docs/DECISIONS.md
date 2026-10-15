@@ -2724,6 +2724,40 @@ level (`+0`, `+4`…), an element and — "if it is easy" — how many collectio
   `HP,Percentage,2` is `HP +2%`. The earlier wording existed only because the unit had not been
   checked. A percentage still cannot be ranked against a flat amount, so sorting by bonus stays open.
 
+**Next: buying the missing pieces (2026-10-15). Step 1 built: the market source.** A button per
+collection opens a sheet listing what is on sale for its pieces; a multi-item collection lets the
+person choose the piece. Buying comes after, and not from this step.
+
+- **The source is Planetarium's market service, not Mimir and not a backend of ours.** The route is
+  `https://b.9capi.com/marketProvider{Odin,Heimdall}/Market/products/items/{itemSubType}?itemIds={id}`:
+  the **sub type is the path and the item id is a filter**. An earlier probe of this decision
+  (`api.9capi.com`, the id in the path) answered empty and was wrongly read as "9CAPI is down";
+  it was the wrong route. Mimir's `products` was measured and rejected: no filter by item id, more
+  than half of its pages of 100 failed with deserialization errors, and a full read of the market
+  took minutes. NC-Market (a sibling project, not modified) had already found the route and its
+  traps, and its README is the reference for them.
+- **A scan is of one item, complete, with a running count** (`MarketSource.scanItem`,
+  `MarketServiceSource`). Level and skill are not filters of the service, so they are decided on
+  what comes back; a skill means `skillModels` is not empty, which is lib9c's `SkillContains`.
+  Measured on Heimdall: 84 listings in 1 page (~1.6 s), 1,358 in 2 (~3 s), 4,646 in 5 (~8 s) for the
+  commonest weapon. The service gives no total, so progress is a count, never a fraction.
+- **Complete or failed, never partial.** A page that does not parse, a listing of _another_ item
+  (the service ignored the filter: `itemIds[]=1` answers 200 with the whole sub type), a scan that
+  ran out of pages, and a stopped scan are failures. Only 5xx and 429 are retried (three tries);
+  an unreachable service is `OFFLINE` at once and left to the person's retry.
+- **Order is `cp_desc`, with de-duplication by `productId`.** An order with many ties (`price`)
+  shuffles between requests, so pages overlap and listings are skipped (502 repeats of 4,228 with
+  `price`, 84 of 4,646 with `cp_desc`). Pages of 1,000; a pause of 250 ms between them.
+- **What the market does not have.** Aura (sub type 19) and Grimoire (20) answered nothing for any
+  item tried: the sheet will say "not sold on the market" for them rather than scan. Thor is not in
+  the registry, so it has no market source and answers `FAILED`.
+- **Next steps, in order:** match a listing to a collection's requirement (id, level, skill flag)
+  and map the catalog's sub type to the route number; a short in-memory cache in `core/data`; the
+  button and `MarketSheet`. The listing already carries what a purchase needs to find it again
+  (`productId`, sub type, item id, seller), because the service has no lookup by product. Signing
+  a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
+  phone app does it, hands off to something that does, or only lists, is decided separately.
+
 **Next step (not started): costumes and materials in the same list.** Do this **once the above works
 on a device and the numbers have been checked against the game** — not before. The 217 open slots that
 are not equipment are in `CostumeItemSheet` and `MaterialItemSheet` (served by Mimir the same way) and
