@@ -2751,9 +2751,18 @@ person choose the piece. Buying comes after, and not from this step.
 - **What the market does not have.** Aura (sub type 19) and Grimoire (20) answered nothing for any
   item tried: the sheet will say "not sold on the market" for them rather than scan. Thor is not in
   the registry, so it has no market source and answers `FAILED`.
-- **Next steps, in order:** match a listing to a collection's requirement (id, level, skill flag)
-  and map the catalog's sub type to the route number; a short in-memory cache in `core/data`; the
-  button and `MarketSheet`. The listing already carries what a purchase needs to find it again
+- **Step 2 built: matching and routing** (`core/collection/marketMatch.ts`). A listing satisfies a
+  requirement when the item id, the level and the skill state agree (lib9c's `Requirement.Validate`;
+  the element is part of the id), cheapest first with combat point and listing id as tie-breakers.
+  `marketRouteFor` maps the catalog's sub type to the route number (Weapon 6, Armor 7, Belt 8,
+  Necklace 9, Ring 10) and answers `not-sold` for Aura and Grimoire and `unknown` for what the
+  catalog lacks. Of the sheet's 1,381 requirement slots on 2026-10-15: 704 have a route, 152 are
+  `not-sold`, 525 are `unknown` (costumes and materials, the next step after this one). Checked
+  against the live market: collection 1's Long Sword +0 with a skill has 368 matching listings among
+  4,646, from 1 NCG.
+- **Next steps, in order:** a short in-memory cache in `core/data` (a scan of a common item takes
+  ~8 s, so closing and reopening the sheet must not repeat it); the button and `MarketSheet`. The
+  listing already carries what a purchase needs to find it again
   (`productId`, sub type, item id, seller), because the service has no lookup by product. Signing
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.
