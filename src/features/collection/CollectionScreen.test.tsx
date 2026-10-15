@@ -13,11 +13,19 @@ import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { SAMPLE_SHEET_CSV, parseCollectionSheet } from '@/core/collection';
-import { err, ok, type CollectionSource, type UnlockedCollections } from '@/core/common';
+import {
+  err,
+  ok,
+  type CollectionSource,
+  type MarketListing,
+  type ScanOptions,
+  type UnlockedCollections,
+} from '@/core/common';
 import {
   ArenaDataProvider,
   createCollectionRepository,
   createSheetLibrary,
+  type MarketLibrary,
   type RosterRepository,
   type SheetLibrary,
 } from '@/core/data';
@@ -75,6 +83,7 @@ describe('CollectionScreen', () => {
   let readUnlocked: jest.Mock;
 
   let sheets: SheetLibrary | undefined;
+  let market: MarketLibrary | undefined;
 
   const wrapper = () => {
     readUnlocked = jest.fn(() => Promise.resolve(answer));
@@ -87,7 +96,7 @@ describe('CollectionScreen', () => {
       return (
         <SafeAreaProvider initialMetrics={METRICS}>
           <ArenaDataProvider
-            value={{ repository, useLiveData: createStubLiveData(), collections, sheets }}
+            value={{ repository, useLiveData: createStubLiveData(), collections, sheets, market }}
           >
             {children}
           </ArenaDataProvider>
@@ -141,6 +150,14 @@ describe('CollectionScreen', () => {
 
     await press('collection-open-viewer');
     expect(mockPush).toHaveBeenCalledWith('/me');
+  });
+
+  it('offers no market button when the sheet comes without names to say what is equipment', async () => {
+    makeViewerWithAvatar();
+    await mount();
+
+    expect(listedIds()).toContain(2);
+    expect(screen.queryByTestId('collection-market-2')).toBeNull();
   });
 
   it('says when the sheet is placeholder data', async () => {
@@ -325,6 +342,113 @@ describe('CollectionScreen', () => {
 
     afterEach(() => {
       sheets = undefined;
+      market = undefined;
+    });
+
+    const sellerAddress = 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63';
+    const listing = (n: number, overrides: Partial<MarketListing> = {}): MarketListing => ({
+      productId: `00000000-0000-0000-0000-${String(n).padStart(12, '0')}`,
+      itemId: 10110000,
+      itemSubType: 6,
+      level: 0,
+      grade: 1,
+      elementalType: 0,
+      combatPoint: 1000,
+      price: n,
+      hasSkill: true,
+      sellerAvatarAddress: sellerAddress,
+      registeredBlockIndex: 1,
+      ...overrides,
+    });
+    const scanned = (listings: MarketListing[]) => ok({ listings, readAt: NOW });
+    /** A market that answers per item id, and says how far it got while it did. */
+    const fakeMarket = (
+      answer: (itemId: number) => ReturnType<typeof scanned> | ReturnType<typeof err>,
+    ) => {
+      const scan = jest.fn(
+        (_planet: string, _route: number, itemId: number, options?: ScanOptions) => {
+          options?.onProgress?.(3);
+          return Promise.resolve(answer(itemId));
+        },
+      );
+      return { library: { scan } as unknown as MarketLibrary, scan };
+    };
+    // Long Sword (10110000) +0 with a skill: two of these four are what collection 2 asks for.
+    const SWORDS = [
+      listing(5),
+      listing(3),
+      listing(1, { hasSkill: false }),
+      listing(2, { level: 2 }),
+    ];
+
+    it('opens the cheapest matching listings of a collection, and closes again', async () => {
+      makeViewerWithAvatar();
+      const fake = fakeMarket(() => scanned(SWORDS));
+      market = fake.library;
+      await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+
+      await press('collection-market-2');
+
+      expect(fake.scan).toHaveBeenCalledWith('heimdall', 6, 10110000, expect.anything());
+      expect(text('market-summary')).toBe('2 listings · from 3 NCG');
+      expect(
+        screen.getByTestId('market-listing-00000000-0000-0000-0000-000000000003'),
+      ).toBeTruthy();
+      expect(screen.getByText('3 NCG')).toBeTruthy();
+      expect(screen.getByText('5 NCG')).toBeTruthy();
+      // The cheaper piece without a skill, and the one at another level, are not this requirement.
+      expect(screen.queryByText('1 NCG')).toBeNull();
+      expect(screen.queryByText('2 NCG')).toBeNull();
+      expect(text('market-freshness')).toContain('Asking prices, not what was paid');
+
+      await press('market-close');
+      expect(screen.queryByTestId('market-sheet')).toBeNull();
+    });
+
+    it('lets a collection of several pieces choose which one to look for, with a count on each', async () => {
+      makeViewerWithAvatar();
+      // Collection 3 asks for the Long Sword and the Plate Armor; only the sword is on sale.
+      const fake = fakeMarket((itemId) => scanned(itemId === 10110000 ? SWORDS : []));
+      market = fake.library;
+      await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+
+      await press('collection-market-3');
+
+      expect(screen.getByText('Long Sword +0 · Normal · skill · 2')).toBeTruthy();
+      expect(screen.getByText('Plate Armor +0 · Fire · skill · 0')).toBeTruthy();
+      expect(text('market-summary')).toBe('2 listings · from 3 NCG');
+
+      await press('market-piece-1');
+      expect(text('market-empty')).toBe(words.marketNothing);
+    });
+
+    it('says the market could not be read, and reads it again when asked', async () => {
+      makeViewerWithAvatar();
+      const answers = [err({ reason: 'OFFLINE' as const, message: 'down' }), scanned(SWORDS)];
+      const fake = fakeMarket(() => answers.shift() ?? scanned([]));
+      market = fake.library;
+      await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+
+      await press('collection-market-2');
+      expect(text('market-error')).toBe(words.marketFailedOffline);
+
+      await press('market-retry');
+      expect(text('market-summary')).toBe('2 listings · from 3 NCG');
+      expect(fake.scan).toHaveBeenCalledTimes(2);
+    });
+
+    it('says a collection of pieces the market does not sell is not sold, and offers no button', async () => {
+      makeViewerWithAvatar();
+      market = fakeMarket(() => scanned([])).library;
+      const withGrimoire = {
+        ...GAME_SHEETS,
+        equipmentCsv: `${EQUIPMENT_CSV}\r\n10750000,Old Grimoire,Grimoire,1,Normal`,
+      };
+      await mountGated(jest.fn(() => Promise.resolve(ok(withGrimoire))));
+
+      // Collection 4 is the single Grimoire.
+      expect(text('collection-market-note-4')).toBe(words.marketNotSold);
+      expect(screen.queryByTestId('collection-market-4')).toBeNull();
     });
 
     it('loads the sheets, then lists the missing equipment by name, level, element and skill', async () => {

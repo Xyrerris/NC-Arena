@@ -2767,7 +2767,30 @@ person choose the piece. Buying comes after, and not from this step.
   halfway through eight seconds of pages stops reading them. In memory only, because a price kept
   for the night is wrong. Live: two simultaneous asks for the same 1,358-listing item made one scan
   (4.1 s) and a third ask answered from memory in 0 ms.
-- **Next steps, in order:** the button and `MarketSheet`. The listing already carries what a purchase needs to find it again
+- **Step 4 built: the button and the sheet** (`features/collection`: `MarketSheet`,
+  `useMarketPieces`, `marketUiState`). Every open collection that has at least one piece with a
+  market gets a `FIND ON MARKET` button; one whose pieces are all Aura or Grimoire says "Not sold on
+  the market" instead; an unlocked one, or one on a sheet without names, gets neither. The button
+  opens a bottom sheet: the collection's pieces as chips (when there are several) with how many
+  listings each has, then the chosen piece's cheapest offers — price in NCG, combat point, a short
+  seller — capped at 50 with the total said. The first piece is read at once and the others one
+  after another in the background, so a public service is never asked for six scans together;
+  choosing a piece that has not had its turn starts it now. Progress is a count ("1,000 listings
+  read"), never a bar; a failure has a retry; the sheet says the prices are what is **asked** and
+  how long ago they were read. Closing the sheet stops the scans nobody else waits for. Costumes
+  and materials in a collection are counted ("cannot be searched yet"), not hidden. No dimming
+  scrim, because the design system has no overlay colour and a raw one is not allowed outside it.
+  Nothing buys yet.
+- **A hole found while testing it: `.test.ts` files under `features/` never ran.** The node project's
+  `testMatch` listed `src/core` alone, against its own comment that the extension is the split, so
+  `collectionUiState.test.ts` (and the first tests of this sheet) matched no project. It had a stale
+  expectation, `Updated 10m ago` against the `10 min ago` that `timeSince` writes, which nobody saw
+  fail because nothing ran it. The project now matches `core`, `features` and `app`;
+  `scripts/check-test-projects.mjs` has a probe for each, and the probe was mutation-checked: with
+  the old pattern the `features` and `app` rows fail with "matched no project and never ran".
+- **Still open:** buying (see the signing note below); costumes and materials in the sheet, which
+  is the next-step note further down; a market for Thor, which the planet registry does not list.
+  The listing already carries what a purchase needs to find it again
   (`productId`, sub type, item id, seller), because the service has no lookup by product. Signing
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.

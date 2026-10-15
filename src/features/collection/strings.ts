@@ -51,6 +51,34 @@ export const collectionStrings = {
   unlistedNote: (slots: number) =>
     `${slots} costume and material ${slots === 1 ? 'slot is' : 'slots are'} not in this list yet.`,
 
+  marketButton: 'FIND ON MARKET',
+  marketButtonA11y: (id: number) => `Find the pieces of collection ${id} on the market`,
+  marketNotSold: 'Not sold on the market',
+
+  marketTitle: (id: number) => `Market · Collection ${id}`,
+  marketClose: 'CLOSE',
+  marketCloseA11y: 'Close the market list',
+  marketPiecesA11y: 'Choose which piece to look for',
+  marketReading: (scanned: string) =>
+    scanned === '0' ? 'Reading the market…' : `Reading the market… ${scanned} listings read`,
+  marketWaiting: 'Waiting for its turn…',
+  marketNothing: 'Nothing of this piece is on sale right now.',
+  marketPieceNotSold: 'This piece is not sold on the market.',
+  marketSummary: (count: string, total: number, from: string) =>
+    `${count} ${total === 1 ? 'listing' : 'listings'} · from ${from} NCG`,
+  marketFreshness: (scanned: string, since: string) =>
+    `Asking prices, not what was paid · ${scanned} of this item read ${since}`,
+  marketShowing: (shown: number, total: string) => `Showing the cheapest ${shown} of ${total}`,
+  marketFailedOffline: 'Could not reach the market. Check the connection and try again.',
+  marketFailedOther: 'The market could not be read right now.',
+  marketRetry: 'TRY AGAIN',
+  marketRetryA11y: 'Read the market again for this piece',
+  marketUnlisted: (count: number) =>
+    `${count} ${count === 1 ? 'piece' : 'pieces'} of this collection (costumes or materials) ` +
+    'cannot be searched yet.',
+  listingCp: (cp: string) => `CP ${cp}`,
+  listingSeller: (seller: string) => `seller ${seller}`,
+
   sheetLoading: 'Loading the collection list…',
   sheetFailedOffline: 'Could not reach the game data. Check the connection and try again.',
   sheetFailedOther: 'The game data could not be read right now.',

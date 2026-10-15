@@ -22,6 +22,7 @@ import { timeSince } from '@/core/common';
 import type { StoredChainRead } from '@/core/data';
 import type { Tone } from '@/core/design-system';
 
+import { canSearchMarket, marketPieces } from './marketUiState';
 import { collectionStrings as words } from './strings';
 
 export type CollectionView = 'COLLECTIONS' | 'ITEMS';
@@ -68,6 +69,10 @@ export interface CollectionRowUi {
   /** One line per piece the collection asks for, in the sheet's order. */
   readonly items: readonly RequirementUi[];
   readonly bonusText: string;
+  /** The button that opens the market sheet, or null when no piece of the collection has a market. */
+  readonly market: { readonly label: string; readonly a11y: string } | null;
+  /** Said instead of the button when every piece is one the market does not sell (Aura, Grimoire). */
+  readonly marketNote: string | null;
   /** What the row's button does, or null when there is nothing to do. */
   readonly action: { readonly tick: boolean; readonly label: string; readonly a11y: string } | null;
 }
@@ -124,9 +129,16 @@ export const toRowUi = (
   } else if (row.canDropTick) {
     action = { tick: false, label: words.dropTick, a11y: words.dropTickA11y(id) };
   }
+  // An unlocked collection needs nothing bought. Without a catalog nothing says what is equipment,
+  // so no piece has a market and the row stays as it was.
+  const offered = row.status === 'UNLOCKED' ? null : marketPieces(row.collection, catalog);
+  const searchable = offered !== null && canSearchMarket(offered);
   return {
     key: `collection-${id}`,
     collectionId: id,
+    market: searchable ? { label: words.marketButton, a11y: words.marketButtonA11y(id) } : null,
+    marketNote:
+      offered !== null && !searchable && offered.pieces.length > 0 ? words.marketNotSold : null,
     title: words.collectionTitle(id),
     statusLabel: status.label,
     statusTone: status.tone,

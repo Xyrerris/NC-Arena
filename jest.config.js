@@ -85,7 +85,11 @@ module.exports = {
       // backslashes into slashes *except* before a regex character, so a checkout under a
       // dot-directory (`.claude\worktrees\…`) became the glob `…\.claude/…`, which matches
       // nothing and every run ended in "No tests found". `node_modules` is ignored by default.
-      testMatch: ['**/src/core/**/*.test.ts'],
+      // `core/`, `features/` and `app/` alike: the extension is the split, not the folder. This
+      // used to say `core/` alone, so a `.test.ts` under `features/` matched no project and never
+      // ran — `collectionUiState.test.ts` carried a stale expectation for weeks without anyone
+      // seeing it fail. `scripts/check-test-projects.mjs` now proves a `.test.ts` in each is run.
+      testMatch: ['**/src/{core,features,app}/**/*.test.ts'],
       transform: {
         '^.+\\.tsx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
       },

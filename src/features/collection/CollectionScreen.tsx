@@ -12,7 +12,7 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useCallback, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -30,6 +30,7 @@ import type { Collection, EquipmentCatalog } from '@/core/collection';
 import { useViewerAvatar } from '@/core/data';
 
 import { CollectionRowItem } from './CollectionRow';
+import { MarketSheet } from './MarketSheet';
 import { SkillMark } from './SkillMark';
 import {
   FILTER_OPTIONS,
@@ -42,6 +43,9 @@ import {
 import { collectionStrings as words } from './strings';
 import { useCollection, type CollectionController } from './useCollection';
 import { useGameSheets } from './useGameSheets';
+
+/** No equipment is known: no piece has a market. Held once so the sheet's memo keeps its identity. */
+const NO_CATALOG: EquipmentCatalog = new Map();
 
 export interface CollectionScreenProps {
   /**
@@ -135,6 +139,12 @@ function CollectionBody({
   const controller = useCollection(sheet, catalog);
   const router = useRouter();
   const openViewer = useCallback(() => router.push('/me'), [router]);
+  // Which collection's market sheet is open, if any. Held here and not in the controller: it is
+  // a screen's own modal state, and the sheet reads the market by itself.
+  const [marketId, setMarketId] = useState<number | null>(null);
+  const closeMarket = useCallback(() => setMarketId(null), []);
+  const marketCollection =
+    marketId === null ? undefined : sheet.find((collection) => collection.id === marketId);
 
   return (
     <ScreenScaffold applyBottomInset={false}>
@@ -163,9 +173,18 @@ function CollectionBody({
         <>
           <CollectionHeader controller={controller} sampleData={sampleData} />
           {controller.view === 'COLLECTIONS' ? (
-            <CollectionList controller={controller} />
+            <CollectionList controller={controller} onMarket={setMarketId} />
           ) : (
             <ItemList controller={controller} />
+          )}
+          {marketCollection === undefined ? null : (
+            <MarketSheet
+              key={marketCollection.id}
+              collection={marketCollection}
+              catalog={catalog ?? NO_CATALOG}
+              planet={controller.avatar.planet}
+              onClose={closeMarket}
+            />
           )}
         </>
       )}
@@ -336,7 +355,13 @@ function RefreshLine({ refresh, onRetry }: { refresh: RefreshUi; onRetry: () => 
   );
 }
 
-function CollectionList({ controller }: { controller: CollectionController }) {
+function CollectionList({
+  controller,
+  onMarket,
+}: {
+  controller: CollectionController;
+  onMarket: (collectionId: number) => void;
+}) {
   return (
     <FlashList
       data={controller.rows}
@@ -345,7 +370,9 @@ function CollectionList({ controller }: { controller: CollectionController }) {
       refreshing={controller.refresh.kind === 'running'}
       onRefresh={controller.onRefresh}
       keyExtractor={(row) => row.key}
-      renderItem={({ item }) => <CollectionRowItem row={item} onAction={controller.onTick} />}
+      renderItem={({ item }) => (
+        <CollectionRowItem row={item} onAction={controller.onTick} onMarket={onMarket} />
+      )}
       ListEmptyComponent={
         <View style={styles.centred} testID="collection-empty">
           <ArenaText variant="titleMedium" tone="primary" align="center">

@@ -107,7 +107,7 @@ describe('toHeaderUi', () => {
 
     expect(header.progressLabel).toBe('2 of 6 unlocked');
     expect(header.progressA11y).toBe('2 of 6 collections unlocked');
-    expect(header.readLabel).toBe('Updated 10m ago · mimir');
+    expect(header.readLabel).toBe('Updated 10 min ago · mimir');
   });
 
   it('owns up to what the list does not know', () => {
