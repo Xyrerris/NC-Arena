@@ -18,6 +18,7 @@ import {
   type RosterSink,
   type RosterSnapshot,
   type RosterSource,
+  UnsupportedByUpstream,
 } from '../common';
 import type { PlayerId, ViewerAvatar } from '../model';
 import { rosterSnapshotDtoSchema, rosterSyncRequestSchema, rosterSyncResponseSchema } from './dto';
@@ -111,6 +112,11 @@ export class RemoteRosterSource implements RosterSource, RosterSink {
       body: JSON.stringify({ planet: avatar.planet, address: avatar.address }),
     });
     if (!response.ok) {
+      // A backend deployed before ADR-0044 has no such route. Said as itself, so the sync can
+      // leave the avatar pending instead of failing on a roster it has already applied.
+      if (response.error.code === 'UNSUPPORTED') {
+        return err(new UnsupportedByUpstream(this.failure(response.error.message).message));
+      }
       return err(this.failure(`${response.error.code} — ${response.error.message}`));
     }
     return ok(undefined);

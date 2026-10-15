@@ -16,6 +16,7 @@ import {
   type RosterPushResult,
   type RosterSnapshot,
   type RosterSource,
+  UnsupportedByUpstream,
 } from '../common';
 import { deletedPlayers, headToHead, players } from '../db';
 import {
@@ -780,6 +781,17 @@ describe('the viewer’s avatar', () => {
 
     await repo.syncRoster();
     expect(spy.avatars).toHaveLength(1);
+  });
+
+  it('stays pending, without failing the sync, when the backend has no avatar endpoint', async () => {
+    const { preferences, spy, repo } = setup(() => err(new UnsupportedByUpstream('HTTP 404')));
+    repo.setViewerAvatar(AVATAR);
+
+    expect((await repo.syncRoster()).ok).toBe(true);
+    expect(preferences.isViewerAvatarPending()).toBe(true);
+
+    await repo.syncRoster();
+    expect(spy.avatars).toHaveLength(2);
   });
 
   it('is sent after the viewer is seated, never before', async () => {

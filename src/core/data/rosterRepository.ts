@@ -20,6 +20,7 @@ import {
   type RosterSnapshot,
   type RosterSource,
   type ShortUnit,
+  UnsupportedByUpstream,
 } from '../common';
 import {
   SCHEMA_VERSION,
@@ -517,6 +518,9 @@ export const createRosterRepository = ({
     const avatar = preferences.isViewerAvatarPending() ? preferences.getViewerAvatar() : null;
     if (avatar !== null) {
       const sent = await sink.setViewerAvatar(avatar);
+      // An older backend has no avatar endpoint: the roster is applied, the avatar stays
+      // pending, and a later sync sends it once the deploy has caught up.
+      if (!sent.ok && sent.error instanceof UnsupportedByUpstream) return ok(undefined);
       if (!sent.ok) return sent;
       // Not cleared if the user entered another address while the request was in flight.
       if (sameAvatar(preferences.getViewerAvatar(), avatar)) preferences.clearViewerAvatarPending();

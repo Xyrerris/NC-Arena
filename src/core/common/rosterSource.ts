@@ -113,3 +113,15 @@ export interface RosterSink {
    */
   setViewerAvatar(avatar: ViewerAvatar): Promise<Result<void>>;
 }
+
+/**
+ * The upstream is reachable but has no endpoint for what was asked — a backend deployed before
+ * this build's feature. Not a failure of the sync: the caller keeps the work pending and tries
+ * again on a later sync, by which time the deploy may have caught up.
+ */
+export class UnsupportedByUpstream extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedByUpstream';
+  }
+}

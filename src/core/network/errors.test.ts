@@ -17,6 +17,14 @@ describe('parseApiError', () => {
     expect(error.code).toBe('MALFORMED_RESPONSE');
   });
 
+  it('reports UNSUPPORTED for the framework 404 of a route the server does not have', async () => {
+    const response = new Response(
+      JSON.stringify({ message: 'Route PUT:/v1/me/avatar not found', statusCode: 404 }),
+      { status: 404 },
+    );
+    expect((await parseApiError(response)).code).toBe('UNSUPPORTED');
+  });
+
   it('reports MALFORMED_RESPONSE for JSON that does not match the taxonomy', async () => {
     const response = new Response(JSON.stringify({ oops: true }), { status: 500 });
     const error = await parseApiError(response);

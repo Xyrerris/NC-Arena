@@ -11,6 +11,11 @@ export type NetworkErrorCode =
   /** The response body was not `{ error: { code, message } }` at all — not a contract failure. */
   | 'MALFORMED_RESPONSE'
   /**
+   * A 404 that is not the contract's own `NOT_FOUND` envelope: the server has no such route,
+   * which is a backend older than this build (the deploy lags the app), not a missing resource.
+   */
+  | 'UNSUPPORTED'
+  /**
    * `fetch` itself rejected — offline, DNS, TLS, a dropped connection — or the server did not
    * answer before `HttpClient`'s deadline.
    */
@@ -48,6 +53,10 @@ export const parseApiError = async (response: Response): Promise<NetworkError> =
 
   const parsed = apiErrorSchema.safeParse(body);
   if (!parsed.success) {
+    // Fastify answers an unregistered route with its own 404 body, not our envelope.
+    if (response.status === 404) {
+      return { code: 'UNSUPPORTED', message: 'HTTP 404: the server has no such endpoint' };
+    }
     return { code: 'MALFORMED_RESPONSE', message: `HTTP ${response.status}` };
   }
   return { code: parsed.data.error.code, message: parsed.data.error.message };
