@@ -169,7 +169,16 @@ Safety rules to keep from NC-Market and add:
 
 Suggested steps (each shippable, none spends):
 
-- **A.** The confirmation card, no key: pick a listing in the sheet → re-read it → show piece, price,
+- **A. (DONE 2026-10-15, not yet seen on a device.)** Tapping a listing in the sheet opens a card
+  (`PurchaseCard`, `usePurchaseCheck`, `purchaseCardState`): the offer re-read with a **fresh** scan
+  (`MarketLibrary.scan(…, { fresh: true })`), its price, the account's NCG from the node
+  (`BalanceSource` / `NodeBalanceSource`: top-level `goldBalance(address)`, **not** under `stateQuery`),
+  what the buy would leave or how much is short, and "Buying is not available yet". An unreadable balance
+  is shown as unknown, never zero; a listing that is gone is its own state. No button buys: nothing is
+  signed. The account comes from the viewer avatar's `agentAddress` (`AvatarSource`). Still to do for
+  the real thing: the price-moved check (a price change is a new `productId`, so today it reads as "gone"),
+  the mid-air `productId` race, and everything in B–D. Original description:
+  The confirmation card, no key: pick a listing in the sheet → re-read it → show piece, price,
   seller, balance, "this would buy". Nothing is signed. (Needs a way to read the balance: node GraphQL.)
 - **B.** Keystore import and decrypt test: store the encrypted file, ask for the passphrase, prove the
   address matches the avatar's agent, drop the key. No purchase.
