@@ -344,6 +344,28 @@ describe('CollectionScreen', () => {
       expect(text('collection-unlisted-note')).toBe(words.unlistedNote(3));
     });
 
+    it('marks the pieces that need a skill, with a legend, but only once names say they are equipment', async () => {
+      makeViewerWithAvatar();
+      await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+
+      expect(screen.getByTestId('collection-skill-legend')).toBeTruthy();
+      // Collection 3 asks for the Long Sword (equipment, skill) and 10310000 (a Plate Armor here,
+      // also equipment): one line each, both marked.
+      const lines = screen.getAllByLabelText(/needs a skill/);
+      expect(lines.length).toBeGreaterThan(0);
+      // The diamond is hidden from screen readers on purpose, so the query has to ask for it.
+      const marks = screen.getAllByTestId('skill-mark', { includeHiddenElements: true });
+      expect(marks.length).toBeGreaterThan(lines.length - 1);
+    });
+
+    it('draws no mark and no legend on a sheet handed in without names', async () => {
+      makeViewerWithAvatar();
+      await mount();
+
+      expect(screen.queryByTestId('collection-skill-legend')).toBeNull();
+      expect(screen.queryAllByTestId('skill-mark')).toEqual([]);
+    });
+
     it('says it could not load and tries again when asked, without a list in the meantime', async () => {
       makeViewerWithAvatar();
       const read = jest

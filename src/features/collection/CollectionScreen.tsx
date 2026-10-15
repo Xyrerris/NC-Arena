@@ -30,6 +30,7 @@ import type { Collection, EquipmentCatalog } from '@/core/collection';
 import { useViewerAvatar } from '@/core/data';
 
 import { CollectionRowItem } from './CollectionRow';
+import { SkillMark } from './SkillMark';
 import {
   FILTER_OPTIONS,
   SORT_OPTIONS,
@@ -250,6 +251,14 @@ function CollectionHeader({
               />
             ))}
           </View>
+          {controller.rows.some((row) => row.items.some((item) => item.needsSkill)) ? (
+            <View style={styles.legend} testID="collection-skill-legend">
+              <SkillMark shown />
+              <ArenaText variant="bodyCaption" tone="subtle" style={styles.legendText}>
+                {words.skillLegend}
+              </ArenaText>
+            </View>
+          ) : null}
         </>
       ) : null}
     </View>
@@ -423,6 +432,8 @@ const styles = StyleSheet.create({
   barDone: { backgroundColor: color.accent },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
   statFilter: { gap: space[6] },
+  legend: { flexDirection: 'row', alignItems: 'center', gap: space[6] },
+  legendText: { flex: 1 },
   failure: {
     flexDirection: 'row',
     // Wraps rather than shrinks: at 200 % font scale the sentence and the button cannot share a line.

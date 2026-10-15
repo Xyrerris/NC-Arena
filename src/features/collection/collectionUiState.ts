@@ -65,7 +65,8 @@ export interface CollectionRowUi {
   readonly statusLabel: string;
   readonly statusTone: Tone;
   readonly itemCountLabel: string;
-  readonly itemsText: string;
+  /** One line per piece the collection asks for, in the sheet's order. */
+  readonly items: readonly RequirementUi[];
   readonly bonusText: string;
   /** What the row's button does, or null when there is nothing to do. */
   readonly action: { readonly tick: boolean; readonly label: string; readonly a11y: string } | null;
@@ -80,6 +81,35 @@ export const requirementLabel = (
   return info === undefined
     ? String(requirement.itemId)
     : words.piece(info.name, requirement.level, info.element);
+};
+
+export interface RequirementUi {
+  readonly key: string;
+  readonly label: string;
+  /** Draws the skill mark. Only for a piece the catalog knows is equipment (see `requirementUi`). */
+  readonly needsSkill: boolean;
+  readonly a11y: string;
+}
+
+/**
+ * One line of a collection: what to find, and whether it must carry a skill. The mark is drawn
+ * for equipment only. The sheet's flag is FALSE or blank for a material and has no meaning for a
+ * costume, so with no catalog entry to say "this is equipment" the line stays unmarked rather than
+ * claim something the data does not say.
+ */
+export const requirementUi = (
+  requirement: CollectionRequirement,
+  index: number,
+  catalog: EquipmentCatalog,
+): RequirementUi => {
+  const label = requirementLabel(requirement, catalog);
+  const needsSkill = catalog.has(requirement.itemId) && requirement.skillContains;
+  return {
+    key: `${requirement.itemId}-${index}`,
+    label,
+    needsSkill,
+    a11y: needsSkill ? words.itemNeedsSkill(label) : label,
+  };
 };
 
 export const toRowUi = (
@@ -101,7 +131,7 @@ export const toRowUi = (
     statusLabel: status.label,
     statusTone: status.tone,
     itemCountLabel: words.itemCount(row.itemsNeeded),
-    itemsText: words.itemList(row.collection.requirements.map((r) => requirementLabel(r, catalog))),
+    items: row.collection.requirements.map((r, index) => requirementUi(r, index, catalog)),
     bonusText: bonusLabel(row.collection.bonuses),
     action,
   };

@@ -4,6 +4,7 @@
  */
 
 import {
+  type Collection,
   SAMPLE_SHEET_CSV,
   missingEquipment,
   missingItemGroups,
@@ -46,7 +47,11 @@ describe('toRowUi', () => {
       key: 'collection-3',
       title: 'Collection 3',
       itemCountLabel: '2 items',
-      itemsText: '10110000 · 10310000',
+      // No catalog: nothing says these are equipment, so no mark is claimed.
+      items: [
+        { key: '10110000-0', label: '10110000', needsSkill: false, a11y: '10110000' },
+        { key: '10310000-1', label: '10310000', needsSkill: false, a11y: '10310000' },
+      ],
     });
     expect(rows([])[1]?.itemCountLabel).toBe('1 item');
   });
@@ -141,9 +146,41 @@ describe('toEquipmentLines', () => {
   it('words the row of a collection with the names the catalog has, and ids for the rest', () => {
     const { rows } = reconcile(SHEET, null, new Set());
 
-    expect(toRowUi(rows[0]!, catalog).itemsText).toBe(
-      'Long Sword +0 · Normal · 10210000 · 10660000',
-    );
+    expect(toRowUi(rows[0]!, catalog).items.map((item) => item.label)).toEqual([
+      'Long Sword +0 · Normal',
+      '10210000',
+      '10660000',
+    ]);
+  });
+
+  it('marks a piece that needs a skill, and only when the catalog says it is equipment', () => {
+    const { rows } = reconcile(SHEET, null, new Set());
+
+    const items = toRowUi(rows[0]!, catalog).items;
+
+    // Long Sword is equipment and the sheet says SkillContains; the other two are not in the
+    // catalog, so their flag is not read as a requirement.
+    expect(items.map((item) => item.needsSkill)).toEqual([true, false, false]);
+    expect(items[0]?.a11y).toBe('Long Sword +0 · Normal, needs a skill');
+    expect(items[1]?.a11y).toBe('10210000');
+  });
+
+  it('leaves a piece that must have no skill unmarked', () => {
+    const noSkill: Collection = {
+      id: 9,
+      requirements: [{ itemId: 10110000, count: 1, level: 4, skillContains: false }],
+      bonuses: [],
+    };
+    const { rows } = reconcile([noSkill], null, new Set());
+
+    expect(toRowUi(rows[0]!, catalog).items).toEqual([
+      {
+        key: '10110000-0',
+        label: 'Long Sword +4 · Normal',
+        needsSkill: false,
+        a11y: 'Long Sword +4 · Normal',
+      },
+    ]);
   });
 });
 

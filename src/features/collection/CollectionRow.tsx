@@ -12,6 +12,7 @@ import { StyleSheet, View } from 'react-native';
 import { ArenaButton, ArenaText, color, layout, space } from '@/core/design-system';
 
 import type { CollectionRowUi } from './collectionUiState';
+import { SkillMark } from './SkillMark';
 
 export interface CollectionRowProps {
   row: CollectionRowUi;
@@ -41,9 +42,22 @@ function CollectionRowView({ row, onAction }: CollectionRowProps) {
       <ArenaText variant="bodyCaption" tone="subtle">
         {row.bonusText}
       </ArenaText>
-      <ArenaText variant="numericMicro" tone="subtle">
-        {row.itemsText}
-      </ArenaText>
+      <View style={styles.items}>
+        {row.items.map((item) => (
+          <View
+            key={item.key}
+            style={styles.item}
+            accessible
+            accessibilityLabel={item.a11y}
+            testID={`collection-requirement-${row.collectionId}-${item.key}`}
+          >
+            <SkillMark shown={item.needsSkill} />
+            <ArenaText variant="numericMicro" tone="subtle" style={styles.itemText}>
+              {item.label}
+            </ArenaText>
+          </View>
+        ))}
+      </View>
 
       {row.action === null ? null : (
         <ArenaButton
@@ -68,6 +82,11 @@ const styles = StyleSheet.create({
     borderBottomColor: color.decorative.divider,
     gap: space[6],
   },
+  items: { gap: space[2] },
+  item: { flexDirection: 'row', alignItems: 'center', gap: space[6] },
+  // Takes the rest of the line and wraps inside it, so a long name at 200 % font scale grows the
+  // row downward instead of pushing the mark off the edge.
+  itemText: { flex: 1 },
   titleLine: {
     flexDirection: 'row',
     flexWrap: 'wrap',

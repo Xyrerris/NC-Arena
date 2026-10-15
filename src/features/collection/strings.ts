@@ -42,7 +42,8 @@ export const collectionStrings = {
 
   collectionTitle: (id: number) => `Collection ${id}`,
   itemCount: (count: number) => `${count} ${count === 1 ? 'item' : 'items'}`,
-  itemList: (labels: readonly (number | string)[]) => labels.join(' · '),
+  itemNeedsSkill: (label: string) => `${label}, needs a skill`,
+  skillLegend: 'Marks a piece that needs a skill',
   piece: (name: string, level: number, element: string) => `${name} +${level} · ${element}`,
   withSkill: 'with skill',
   noSkill: 'no skill',
