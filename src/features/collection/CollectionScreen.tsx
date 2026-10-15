@@ -30,10 +30,10 @@ import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/coll
 import { useViewerAvatar } from '@/core/data';
 
 import { CollectionRowItem } from './CollectionRow';
+import { FilterPanel } from './FilterPanel';
 import { MarketSheet } from './MarketSheet';
 import { SkillMark } from './SkillMark';
 import {
-  FILTER_OPTIONS,
   SORT_OPTIONS,
   VIEW_TABS,
   type CollectionHeaderUi,
@@ -232,38 +232,10 @@ function CollectionHeader({
         testID="collection-views"
       />
 
-      {controller.statOptions.length === 0 ? null : (
-        <View style={styles.statFilter}>
-          <ArenaText variant="bodyCaption" tone="subtle">
-            {words.statsLabel}
-          </ArenaText>
-          <View style={styles.chips}>
-            {controller.statOptions.map((stat) => (
-              <SortChip
-                key={stat}
-                label={stat}
-                selected={controller.stats.has(stat)}
-                onPress={() => controller.onStat(stat)}
-                testID={`collection-stat-${stat}`}
-              />
-            ))}
-          </View>
-        </View>
-      )}
+      <FilterPanel controller={controller} />
 
       {controller.view === 'COLLECTIONS' ? (
         <>
-          <View style={styles.chips}>
-            {FILTER_OPTIONS.map((option) => (
-              <SortChip
-                key={option.filter}
-                label={option.label}
-                selected={controller.filter === option.filter}
-                onPress={() => controller.onFilter(option.filter)}
-                testID={`collection-filter-${option.filter}`}
-              />
-            ))}
-          </View>
           <View style={styles.chips}>
             {SORT_OPTIONS.map((option) => (
               <SortChip
@@ -370,7 +342,7 @@ function CollectionList({
   return (
     <FlashList
       data={controller.rows}
-      extraData={`${controller.filter}-${controller.sort}`}
+      extraData={`${controller.filter}-${controller.sort}-${controller.filtersChanged}`}
       // Pull-to-refresh reads the chain again, as it syncs the roster.
       refreshing={controller.refresh.kind === 'running'}
       onRefresh={controller.onRefresh}
@@ -463,7 +435,6 @@ const styles = StyleSheet.create({
   },
   barDone: { backgroundColor: color.accent },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
-  statFilter: { gap: space[6] },
   legend: { flexDirection: 'row', alignItems: 'center', gap: space[6] },
   legendText: { flex: 1 },
   failure: {

@@ -1,6 +1,7 @@
 export * from './collectionProgress';
 export * from './collectionSheet';
 export * from './equipmentCatalog';
+export * from './itemCategory';
 export * from './marketMatch';
 export * from './otherItems';
 export * from './reconciliation';

@@ -6,18 +6,20 @@
  * `core/collection`. This file only decides how they are worded.
  */
 
-import type {
-  CollectionBonus,
-  CollectionRequirement,
-  CollectionRow,
-  EquipmentCatalog,
-  MissingEquipmentList,
-  OtherItemCatalog,
-  CollectionStatus,
-  ItemGroup,
-  Reconciliation,
-  RowFilter,
-  RowSort,
+import {
+  ITEM_CATEGORIES,
+  type CollectionBonus,
+  type CollectionRequirement,
+  type CollectionRow,
+  type EquipmentCatalog,
+  type ItemCategory,
+  type MissingEquipmentList,
+  type OtherItemCatalog,
+  type CollectionStatus,
+  type ItemGroup,
+  type Reconciliation,
+  type RowFilter,
+  type RowSort,
 } from '@/core/collection';
 import { timeSince } from '@/core/common';
 import type { StoredChainRead } from '@/core/data';
@@ -44,6 +46,49 @@ export const SORT_OPTIONS: readonly { sort: RowSort; label: string }[] = [
   { sort: 'FEWEST_ITEMS', label: words.sortFewest },
   { sort: 'SHEET', label: words.sortSheet },
 ];
+
+export const CATEGORY_LABEL: Record<ItemCategory, string> = {
+  EQUIPMENT: words.categoryEquipment,
+  GRIMOIRE: words.categoryGrimoire,
+  COSTUME: words.categoryCostume,
+  TITLE: words.categoryTitle,
+  FOOD: words.categoryFood,
+  OTHER: words.categoryOther,
+};
+
+/** The categories chosen, in the filter's order; Equipment carries its chosen sub types. */
+export const categorySummary = (
+  categories: ReadonlySet<ItemCategory>,
+  equipmentTypes: ReadonlySet<string>,
+): string => {
+  if (categories.size === 0) return words.filtersNone;
+  return ITEM_CATEGORIES.filter((category) => categories.has(category))
+    .map((category) =>
+      category === 'EQUIPMENT' && equipmentTypes.size > 0
+        ? `${CATEGORY_LABEL[category]} (${[...equipmentTypes].join(', ')})`
+        : CATEGORY_LABEL[category],
+    )
+    .join(' · ');
+};
+
+export const statsSummary = (stats: ReadonlySet<string>): string =>
+  stats.size === 0 ? words.filtersNone : [...stats].join(' + ');
+
+/** One line for the folded filters: what is narrowing the list, so a closed panel is not silent. */
+export const filterSummary = (selection: {
+  filter: RowFilter;
+  categories: ReadonlySet<ItemCategory>;
+  equipmentTypes: ReadonlySet<string>;
+  stats: ReadonlySet<string>;
+}): string => {
+  const status = FILTER_OPTIONS.find((option) => option.filter === selection.filter)?.label;
+  const parts = [status ?? selection.filter];
+  if (selection.categories.size > 0) {
+    parts.push(categorySummary(selection.categories, selection.equipmentTypes));
+  }
+  if (selection.stats.size > 0) parts.push(statsSummary(selection.stats));
+  return parts.join(' · ');
+};
 
 const STATUS: Record<CollectionStatus, { label: string; tone: Tone }> = {
   UNLOCKED: { label: words.statusUnlocked, tone: 'accent' },

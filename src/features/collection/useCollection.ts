@@ -15,6 +15,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   filterByRewardStats,
+  equipmentTypeOptions,
+  filterByCategory,
   filterRows,
   missingEquipment,
   missingItemGroups,
@@ -23,6 +25,7 @@ import {
   sortRows,
   type Collection,
   type EquipmentCatalog,
+  type ItemCategory,
   type OtherItemCatalog,
   type RowFilter,
   type RowSort,
@@ -68,10 +71,21 @@ export interface CollectionController {
   statOptions: readonly string[];
   /** The reward stats selected. A collection must give all of them to stay in the list. */
   stats: ReadonlySet<string>;
+  /** What the collections must ask for (any of the selected). Empty means no filter. */
+  categories: ReadonlySet<ItemCategory>;
+  /** Equipment sub types, narrowing the `EQUIPMENT` category. Empty means any equipment. */
+  equipmentTypes: ReadonlySet<string>;
+  /** The sub types the catalog has, in the game's order. Empty without a catalog (no category filter). */
+  equipmentTypeOptions: readonly string[];
+  /** True when any filter is off its default, which is what the reset puts back. */
+  filtersChanged: boolean;
   refresh: RefreshUi;
   onView: (view: CollectionView) => void;
   onFilter: (filter: RowFilter) => void;
   onStat: (stat: string) => void;
+  onCategory: (category: ItemCategory) => void;
+  onEquipmentType: (type: string) => void;
+  onResetFilters: () => void;
   onSort: (sort: RowSort) => void;
   onTick: (collectionId: number, ticked: boolean) => void;
   onRefresh: () => void;
@@ -114,6 +128,31 @@ export const useCollection = (
   }, []);
   // The first read starts as soon as there is an avatar (below), so the screen opens already
   // saying it is reading rather than flashing "never checked".
+  const [categories, setCategories] = useState<ReadonlySet<ItemCategory>>(new Set());
+  const [equipmentTypes, setEquipmentTypes] = useState<ReadonlySet<string>>(new Set());
+  const typeOptions = useMemo(() => equipmentTypeOptions(catalog), [catalog]);
+  const onCategory = useCallback((category: ItemCategory) => {
+    setCategories((current) => {
+      const next = new Set(current);
+      if (!next.delete(category)) next.add(category);
+      return next;
+    });
+    // Leaving Equipment forgets its sub types: they would otherwise come back, unseen, with it.
+    if (category === 'EQUIPMENT') setEquipmentTypes(new Set());
+  }, []);
+  const onEquipmentType = useCallback((type: string) => {
+    setEquipmentTypes((current) => {
+      const next = new Set(current);
+      if (!next.delete(type)) next.add(type);
+      return next;
+    });
+  }, []);
+  const onResetFilters = useCallback(() => {
+    setFilter('OPEN');
+    setStats(new Set());
+    setCategories(new Set());
+    setEquipmentTypes(new Set());
+  }, []);
   const [refresh, setRefresh] = useState<RefreshUi>(
     avatar === null ? { kind: 'idle' } : { kind: 'running' },
   );
@@ -177,7 +216,12 @@ export const useCollection = (
   // The reward filter narrows both views: the items view lists what the collections that
   // remain still need, so asking for ATK and HIT shows the pieces for those collections only.
   // The status filter is the collections view's alone; the items view is always about open ones.
-  const rewarded = filterByRewardStats(reconciliation.rows, stats);
+  const rewarded = filterByCategory(
+    filterByRewardStats(reconciliation.rows, stats),
+    { categories, equipmentTypes },
+    catalog,
+    others,
+  );
   const rows = sortRows(filterRows(rewarded, filter), sort).map((row) =>
     toRowUi(row, catalog, others),
   );
@@ -197,10 +241,18 @@ export const useCollection = (
     sort,
     statOptions,
     stats,
+    categories,
+    equipmentTypes,
+    equipmentTypeOptions: typeOptions,
+    filtersChanged:
+      filter !== 'OPEN' || stats.size > 0 || categories.size > 0 || equipmentTypes.size > 0,
     refresh,
     onView: setView,
     onFilter: setFilter,
     onStat,
+    onCategory,
+    onEquipmentType,
+    onResetFilters,
     onSort: setSort,
     onTick,
     onRefresh,

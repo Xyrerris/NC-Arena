@@ -188,8 +188,14 @@ describe('CollectionScreen', () => {
     makeViewerWithAvatar();
     await mount();
 
+    // The filters start folded, with a line saying what narrows the list.
+    expect(screen.queryByTestId('collection-filter-UNLOCKED')).toBeNull();
+    expect(text('collection-filters-summary')).toBe('OPEN');
+
+    await press('collection-filters-toggle');
     await press('collection-filter-UNLOCKED');
     expect(listedIds()).toEqual([1]);
+    expect(text('collection-filters-summary')).toBe('UNLOCKED');
 
     await press('collection-filter-DISPUTED');
     expect(listedIds()).toEqual([]);
@@ -200,8 +206,11 @@ describe('CollectionScreen', () => {
     makeViewerWithAvatar();
     await mount();
 
+    await press('collection-filters-toggle');
+    await press('collection-section-stats');
     await press('collection-stat-ATK');
     expect(listedIds()).toEqual([2, 3]);
+    expect(text('collection-filters-summary')).toBe('OPEN · ATK');
 
     // 1 gives ATK and DEF but is unlocked, so the open list holds nothing with both.
     await press('collection-stat-DEF');
@@ -222,6 +231,8 @@ describe('CollectionScreen', () => {
       fireEvent.press(screen.getByText(words.viewItems));
     });
 
+    await press('collection-filters-toggle');
+    await press('collection-section-stats');
     await press('collection-stat-SPD');
 
     // Only collection 5 rewards SPD, so only its item is still to find.
@@ -446,6 +457,43 @@ describe('CollectionScreen', () => {
       await press('market-retry');
       expect(text('market-summary')).toBe('2 listings · from 3 NCG');
       expect(fake.scan).toHaveBeenCalledTimes(2);
+    });
+
+    it('filters by category, any of the selected, with the equipment types under Equipment', async () => {
+      makeViewerWithAvatar();
+      const sheetsWithAll = {
+        ...GAME_SHEETS,
+        equipmentCsv: `${EQUIPMENT_CSV}\r\n10750000,Old Grimoire,Grimoire,1,Normal`,
+        costumeCsv: [ITEM_HEADER, '40100001,Black Dress,FullCostume,2,Normal'].join('\r\n'),
+      };
+      await mountGated(jest.fn(() => Promise.resolve(ok(sheetsWithAll))));
+      await press('collection-filters-toggle');
+      await press('collection-section-category');
+
+      await press('collection-category-COSTUME');
+      expect([...listedIds()].sort()).toEqual([5, 6]);
+
+      // Another category widens the list rather than narrowing it.
+      await press('collection-category-GRIMOIRE');
+      expect([...listedIds()].sort()).toEqual([4, 5, 6]);
+      expect(text('collection-filters-summary')).toBe('OPEN · GRIMOIRE · COSTUME');
+
+      await press('collection-category-COSTUME');
+      await press('collection-category-GRIMOIRE');
+      expect(screen.queryByTestId('collection-equipment-types')).toBeNull();
+
+      // Equipment opens its types; Armor leaves the collection that asks for one (3).
+      await press('collection-category-EQUIPMENT');
+      expect([...listedIds()].sort()).toEqual([2, 3]);
+      await press('collection-equipment-Armor');
+      expect(listedIds()).toEqual([3]);
+      expect(text('collection-filters-summary')).toBe('OPEN · EQUIPMENT (Armor)');
+
+      // Reset puts everything back, and the line goes back to saying only the status.
+      await press('collection-filters-reset');
+      expect([...listedIds()].sort()).toEqual([2, 3, 4, 5, 6]);
+      expect(text('collection-filters-summary')).toBe('OPEN');
+      expect(screen.queryByTestId('collection-filters-reset')).toBeNull();
     });
 
     it('searches a costume by its own route, and shows a lot by its unit price', async () => {
