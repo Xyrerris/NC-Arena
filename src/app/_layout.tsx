@@ -12,6 +12,7 @@ import {
   arenaQueryClient,
   arenaRepository,
   avatarSource,
+  balanceSource,
   collectionRepository,
   marketLibrary,
   sheetLibrary,
@@ -63,6 +64,7 @@ const ARENA_DATA: ArenaData = {
   collections: collectionRepository,
   sheets: sheetLibrary,
   market: marketLibrary,
+  balance: balanceSource,
 };
 
 export default function RootLayout() {

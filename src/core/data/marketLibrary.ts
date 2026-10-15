@@ -37,13 +37,22 @@ export interface MarketScan {
   readonly readAt: number;
 }
 
+export interface LibraryScanOptions extends ScanOptions {
+  /**
+   * Skip what is kept and ask the market. A purchase re-reads the offer it is about to show
+   * (the service has no lookup by product), and a price kept for 59 seconds is not good enough
+   * for that. A scan already running is still joined: it started moments ago.
+   */
+  readonly fresh?: boolean;
+}
+
 export interface MarketLibrary {
   /** Every listing of the item, from the cache when it is fresh, from the market when it is not. */
   scan(
     planet: Planet,
     itemSubType: number,
     itemId: number,
-    options?: ScanOptions,
+    options?: LibraryScanOptions,
   ): Promise<Result<MarketScan, MarketError>>;
 }
 
@@ -124,7 +133,7 @@ export function createMarketLibrary({
   const attach = (
     key: string,
     entry: InFlight,
-    options: ScanOptions,
+    options: LibraryScanOptions,
   ): Promise<Result<MarketScan, MarketError>> =>
     new Promise((resolve) => {
       const { onProgress, signal } = options;
@@ -164,7 +173,7 @@ export function createMarketLibrary({
       if (options.signal?.aborted) return Promise.resolve(err(cancelled()));
 
       const key = `${planet}:${itemSubType}:${itemId}`;
-      const cached = fresh.get(key);
+      const cached = options.fresh === true ? undefined : fresh.get(key);
       if (cached !== undefined) {
         if (now() - cached.readAt < ttlMs) {
           options.onProgress?.(cached.listings.length);

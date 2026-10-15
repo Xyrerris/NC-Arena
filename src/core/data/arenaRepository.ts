@@ -30,7 +30,7 @@
 
 import { QueryClient } from '@tanstack/react-query';
 
-import type { AvatarSource, CollectionSource } from '../common';
+import type { AvatarSource, BalanceSource, CollectionSource } from '../common';
 import {
   FallbackAvatarSource,
   FallbackCollectionSource,
@@ -39,6 +39,7 @@ import {
   MimirAvatarSource,
   MimirCollectionSource,
   NodeAvatarSource,
+  NodeBalanceSource,
   NodeCollectionSource,
   RemoteAccountGateway,
   RemoteRosterSource,
@@ -119,6 +120,9 @@ export const avatarSource: AvatarSource = new FallbackAvatarSource([
   new MimirAvatarSource(),
   new NodeAvatarSource(),
 ]);
+
+/** NCG held by an account, from a public node (the purchase card's balance line). */
+export const balanceSource: BalanceSource = new NodeBalanceSource();
 
 /**
  * TanStack Query's one client, which §4 puts among the providers and §7 explains the job of:

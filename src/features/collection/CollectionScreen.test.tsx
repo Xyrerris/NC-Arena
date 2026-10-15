@@ -16,6 +16,8 @@ import { SAMPLE_SHEET_CSV, parseCollectionSheet } from '@/core/collection';
 import {
   err,
   ok,
+  type AvatarSource,
+  type BalanceSource,
   type CollectionSource,
   type MarketListing,
   type ScanOptions,
@@ -84,6 +86,8 @@ describe('CollectionScreen', () => {
 
   let sheets: SheetLibrary | undefined;
   let market: MarketLibrary | undefined;
+  let avatarSource: AvatarSource | undefined;
+  let balance: BalanceSource | undefined;
 
   const wrapper = () => {
     readUnlocked = jest.fn(() => Promise.resolve(answer));
@@ -96,7 +100,15 @@ describe('CollectionScreen', () => {
       return (
         <SafeAreaProvider initialMetrics={METRICS}>
           <ArenaDataProvider
-            value={{ repository, useLiveData: createStubLiveData(), collections, sheets, market }}
+            value={{
+              repository,
+              useLiveData: createStubLiveData(),
+              collections,
+              sheets,
+              market,
+              avatarSource,
+              balance,
+            }}
           >
             {children}
           </ArenaDataProvider>
@@ -494,6 +506,101 @@ describe('CollectionScreen', () => {
       expect([...listedIds()].sort()).toEqual([2, 3, 4, 5, 6]);
       expect(text('collection-filters-summary')).toBe('OPEN');
       expect(screen.queryByTestId('collection-filters-reset')).toBeNull();
+    });
+
+    describe('the purchase card', () => {
+      const AGENT = '0aa07AbEb5791302C14F9B1F633af96A4c05C7cB';
+      const identity = { name: 'Xyrerris', level: 400, agentAddress: AGENT };
+      const withAccount = (held: number | 'offline') => {
+        avatarSource = {
+          name: 'test',
+          readAvatar: jest.fn(() => Promise.resolve(ok(identity))),
+        };
+        balance = {
+          name: 'test',
+          readNcg: jest.fn(() =>
+            Promise.resolve(
+              held === 'offline' ? err({ reason: 'OFFLINE' as const, message: 'down' }) : ok(held),
+            ),
+          ),
+        };
+      };
+      afterEach(() => {
+        avatarSource = undefined;
+        balance = undefined;
+      });
+      const FIRST = 'market-listing-00000000-0000-0000-0000-000000000003';
+
+      it('re-reads the listing, shows the price, the balance and what would be left, and buys nothing', async () => {
+        makeViewerWithAvatar();
+        withAccount(10);
+        const fake = fakeMarket(() => scanned(SWORDS));
+        market = fake.library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await press('collection-market-2');
+
+        await press(FIRST);
+        await act(async () => {});
+
+        // The first scan filled the list; the card asks again, fresh.
+        expect(fake.scan).toHaveBeenLastCalledWith(
+          'heimdall',
+          6,
+          10110000,
+          expect.objectContaining({ fresh: true }),
+        );
+        expect(text('purchase-price')).toBe('3 NCG');
+        expect(text('purchase-balance')).toBe('You hold 10 NCG');
+        expect(text('purchase-after')).toBe('Would leave 7 NCG');
+        expect(text('purchase-not-built')).toBe(words.purchaseNotBuilt);
+
+        await press('purchase-back');
+        expect(screen.queryByTestId('purchase-card')).toBeNull();
+        expect(screen.getByTestId(FIRST)).toBeTruthy();
+      });
+
+      it('says how much is missing when the balance is not enough', async () => {
+        makeViewerWithAvatar();
+        withAccount(1);
+        market = fakeMarket(() => scanned(SWORDS)).library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await press('collection-market-2');
+        await press(FIRST);
+        await act(async () => {});
+        expect(text('purchase-after')).toBe('2 NCG short of the price');
+      });
+
+      it('says the balance is unknown, never zero, when the chain cannot be reached', async () => {
+        makeViewerWithAvatar();
+        withAccount('offline');
+        market = fakeMarket(() => scanned(SWORDS)).library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await press('collection-market-2');
+        await press(FIRST);
+        await act(async () => {});
+
+        expect(text('purchase-balance')).toBe(words.purchaseBalanceOffline);
+        expect(screen.queryByTestId('purchase-after')).toBeNull();
+        expect(text('purchase-price')).toBe('3 NCG');
+      });
+
+      it('says the offer is gone when the fresh read no longer has it', async () => {
+        makeViewerWithAvatar();
+        withAccount(10);
+        let reads = 0;
+        market = fakeMarket(() => {
+          reads += 1;
+          return scanned(reads === 1 ? SWORDS : []);
+        }).library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await press('collection-market-2');
+
+        await press(FIRST);
+        await act(async () => {});
+
+        expect(text('purchase-gone')).toBe(words.purchaseGone);
+        expect(screen.queryByTestId('purchase-price')).toBeNull();
+      });
     });
 
     it('searches a costume by its own route, and shows a lot by its unit price', async () => {

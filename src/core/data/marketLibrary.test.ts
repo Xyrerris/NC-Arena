@@ -105,6 +105,24 @@ describe('createMarketLibrary', () => {
     expect(refreshed.ok && refreshed.value.readAt).toBe(1_060_000);
   });
 
+  it('reads the market again when asked for a fresh scan, however young the kept one is', async () => {
+    const { library, scans } = build();
+    const first = library.scan('heimdall', 6, 10110000);
+    scans[0]?.finish(ok([listing(1)]));
+    await first;
+
+    clock += 1_000;
+    const again = library.scan('heimdall', 6, 10110000, { fresh: true });
+    expect(scans).toHaveLength(2);
+    scans[1]?.finish(ok([listing(2)]));
+
+    expect(await again).toEqual({ ok: true, value: { listings: [listing(2)], readAt: 1_001_000 } });
+    // And the fresh read is what is kept now.
+    expect(await library.scan('heimdall', 6, 10110000)).toMatchObject({
+      value: { listings: [listing(2)] },
+    });
+  });
+
   it('keeps one cache entry per planet, route and item', () => {
     const { library, scans } = build();
 

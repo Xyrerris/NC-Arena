@@ -14,7 +14,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
-import type { AvatarSource } from '../common';
+import type { AvatarSource, BalanceSource } from '../common';
 import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
 import type { MarketLibrary } from './marketLibrary';
@@ -47,6 +47,11 @@ export interface ArenaData {
    * like the rest: only the market sheet reads it, and a build that forgot to wire it fails there.
    */
   market?: MarketLibrary;
+  /**
+   * How much NCG an account holds, for the purchase card (ADR-0044, step A). Optional like the
+   * rest; without it the card says the balance could not be read instead of guessing one.
+   */
+  balance?: BalanceSource;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);

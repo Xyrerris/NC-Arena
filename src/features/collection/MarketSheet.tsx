@@ -16,7 +16,7 @@ import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/collection';
-import { statFormatter, timeSince } from '@/core/common';
+import { statFormatter, timeSince, type MarketListing } from '@/core/common';
 import type { Planet } from '@/core/model';
 import {
   ArenaButton,
@@ -35,6 +35,7 @@ import {
   toListingUi,
   type MarketPiece,
 } from './marketUiState';
+import { PurchaseCard } from './PurchaseCard';
 import { SkillMark } from './SkillMark';
 import { collectionStrings as words } from './strings';
 import { useMarketPieces, type PieceState } from './useMarketPieces';
@@ -78,6 +79,10 @@ export function MarketSheet({ collection, catalog, others, planet, onClose }: Ma
   const selected = offered.pieces.find((piece) => piece.key === selectedKey) ?? null;
   const state = selected === null ? undefined : market.states[selected.key];
 
+  // The listing whose purchase card is open, if any. Held here: the card replaces the list in the
+  // same sheet, and choosing another piece or going back closes it.
+  const [reviewing, setReviewing] = useState<MarketListing | null>(null);
+
   const choose = (piece: MarketPiece): void => {
     setSelectedKey(piece.key);
     market.select(piece.key);
@@ -112,49 +117,62 @@ export function MarketSheet({ collection, catalog, others, planet, onClose }: Ma
           </View>
 
           <ScrollView contentContainerStyle={styles.body}>
-            {offered.pieces.length > 1 ? (
-              <View
-                style={styles.chips}
-                accessibilityLabel={words.marketPiecesA11y}
-                testID="market-pieces"
-              >
-                {offered.pieces.map((piece, index) => (
-                  <SortChip
-                    key={piece.key}
-                    label={`${piece.needsSkill ? `${piece.label} · skill` : piece.label}${badge(market.states[piece.key])}`}
-                    selected={piece.key === selectedKey}
-                    onPress={() => choose(piece)}
-                    testID={`market-piece-${index}`}
-                  />
-                ))}
-              </View>
-            ) : null}
-
-            {selected === null ? null : (
-              <View style={styles.pieceHeader}>
-                <SkillMark shown={selected.needsSkill} />
-                <ArenaText variant="titleMedium" tone="primary" style={styles.pieceName}>
-                  {selected.label}
-                </ArenaText>
-                {selected.count > 1 ? (
-                  <ArenaText variant="bodySmall" tone="accent" testID="market-needs">
-                    {words.marketNeeds(selected.count)}
-                  </ArenaText>
+            {reviewing !== null && selected !== null ? (
+              <PurchaseCard
+                key={reviewing.productId}
+                planet={planet}
+                piece={selected}
+                listing={reviewing}
+                onBack={() => setReviewing(null)}
+              />
+            ) : (
+              <>
+                {offered.pieces.length > 1 ? (
+                  <View
+                    style={styles.chips}
+                    accessibilityLabel={words.marketPiecesA11y}
+                    testID="market-pieces"
+                  >
+                    {offered.pieces.map((piece, index) => (
+                      <SortChip
+                        key={piece.key}
+                        label={`${piece.needsSkill ? `${piece.label} · skill` : piece.label}${badge(market.states[piece.key])}`}
+                        selected={piece.key === selectedKey}
+                        onPress={() => choose(piece)}
+                        testID={`market-piece-${index}`}
+                      />
+                    ))}
+                  </View>
                 ) : null}
-              </View>
-            )}
 
-            <PieceBody
-              piece={selected}
-              state={state}
-              now={now}
-              onRetry={() => selected !== null && market.retry(selected.key)}
-            />
+                {selected === null ? null : (
+                  <View style={styles.pieceHeader}>
+                    <SkillMark shown={selected.needsSkill} />
+                    <ArenaText variant="titleMedium" tone="primary" style={styles.pieceName}>
+                      {selected.label}
+                    </ArenaText>
+                    {selected.count > 1 ? (
+                      <ArenaText variant="bodySmall" tone="accent" testID="market-needs">
+                        {words.marketNeeds(selected.count)}
+                      </ArenaText>
+                    ) : null}
+                  </View>
+                )}
 
-            {offered.unlisted === 0 ? null : (
-              <ArenaText variant="bodyCaption" tone="subtle" testID="market-unlisted">
-                {words.marketUnlisted(offered.unlisted)}
-              </ArenaText>
+                <PieceBody
+                  piece={selected}
+                  state={state}
+                  now={now}
+                  onRetry={() => selected !== null && market.retry(selected.key)}
+                  onReview={setReviewing}
+                />
+
+                {offered.unlisted === 0 ? null : (
+                  <ArenaText variant="bodyCaption" tone="subtle" testID="market-unlisted">
+                    {words.marketUnlisted(offered.unlisted)}
+                  </ArenaText>
+                )}
+              </>
             )}
           </ScrollView>
         </View>
@@ -168,11 +186,13 @@ function PieceBody({
   state,
   now,
   onRetry,
+  onReview,
 }: {
   piece: MarketPiece | null;
   now: number;
   state: PieceState | undefined;
   onRetry: () => void;
+  onReview: (listing: MarketListing) => void;
 }) {
   if (piece === null || state === undefined) return null;
 
@@ -221,11 +241,19 @@ function PieceBody({
         </View>
       );
     case 'ready':
-      return <Listings state={state} now={now} />;
+      return <Listings state={state} now={now} onReview={onReview} />;
   }
 }
 
-function Listings({ state, now }: { state: Extract<PieceState, { kind: 'ready' }>; now: number }) {
+function Listings({
+  state,
+  now,
+  onReview,
+}: {
+  state: Extract<PieceState, { kind: 'ready' }>;
+  now: number;
+  onReview: (listing: MarketListing) => void;
+}) {
   const total = state.listings.length;
   if (total === 0) {
     return (
@@ -249,11 +277,12 @@ function Listings({ state, now }: { state: Extract<PieceState, { kind: 'ready' }
       {shown.map((listing) => {
         const ui = toListingUi(listing);
         return (
-          <View
+          <Pressable
             key={ui.key}
             style={styles.listing}
-            accessible
-            accessibilityLabel={ui.a11y}
+            accessibilityRole="button"
+            accessibilityLabel={words.purchaseReviewA11y(ui.a11y)}
+            onPress={() => onReview(listing)}
             testID={`market-listing-${ui.key}`}
           >
             <ArenaText variant="titleMedium" tone="primary">
@@ -262,7 +291,7 @@ function Listings({ state, now }: { state: Extract<PieceState, { kind: 'ready' }
             <ArenaText variant="bodyCaption" tone="subtle">
               {ui.detail}
             </ArenaText>
-          </View>
+          </Pressable>
         );
       })}
       {total > shown.length ? (

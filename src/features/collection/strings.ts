@@ -98,6 +98,26 @@ export const collectionStrings = {
   marketUnlisted: (count: number) =>
     `${count} ${count === 1 ? 'piece' : 'pieces'} of this collection ` +
     'cannot be searched (not in the game data, or not on the market).',
+  purchaseTitle: 'Before buying',
+  purchaseBack: 'BACK',
+  purchaseBackA11y: 'Back to the listings',
+  purchaseReviewA11y: (summary: string) => `${summary}. Review this purchase`,
+  purchaseChecking: 'Checking that the offer is still on sale…',
+  purchaseGone: 'This listing is no longer on sale: it was sold or withdrawn.',
+  purchaseFailedOffline: 'Could not reach the market to check the offer. Check the connection.',
+  purchaseFailedOther: 'The market could not be read to check the offer.',
+  purchaseWouldBuy: (what: string, total: string) => `This would buy ${what} for ${total} NCG.`,
+  purchaseCount: (inLot: number, needed: number) =>
+    inLot === needed
+      ? `The lot holds exactly the ${needed} the collection asks for.`
+      : `The lot holds ${inLot}; the collection asks for ${needed}.`,
+  purchaseBalance: (ncg: string) => `You hold ${ncg} NCG`,
+  purchaseBalanceNoAvatar: 'Your balance is unknown: no avatar is set.',
+  purchaseBalanceOffline: 'Your balance is unknown: the chain could not be reached.',
+  purchaseBalanceFailed: 'Your balance could not be read.',
+  purchaseLeft: (ncg: string) => `Would leave ${ncg} NCG`,
+  purchaseShort: (ncg: string) => `${ncg} NCG short of the price`,
+  purchaseNotBuilt: 'Buying is not available yet. Nothing was signed or sent.',
   listingCp: (cp: string) => `CP ${cp}`,
   listingSeller: (seller: string) => `seller ${seller}`,
 

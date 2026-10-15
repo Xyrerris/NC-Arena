@@ -14,6 +14,7 @@ export type {
   LinkedAccount,
 } from './accountGateway';
 export type { AvatarError, AvatarIdentity, AvatarSource } from './avatarSource';
+export type { BalanceError, BalanceSource } from './balanceSource';
 export type {
   CollectionError,
   CollectionFailure,
