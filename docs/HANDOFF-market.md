@@ -233,9 +233,15 @@ Suggested steps (each shippable, none spends):
   → record updated; a `live` request returns `live-unavailable` before writing or signing anything). Storage:
   `ArenaData.purchases` over the MMKV preferences (`pref.purchaseLimit`, `pref.purchaseLog`). The only UI is the
   **limit field in the wallet block on `/me`** (none set = nothing can be bought) and a line saying the mode is a
-  dry run. **Not done, and the order I would take:**
-  1. A "buy" action on the purchase card that asks for the passphrase, opens the keystore
-     (`openKeystore`), and calls `runPurchase` in dry-run — the card still ends at "Buying is not available yet".
+  dry run. **Then (2026-10-16, later): the card has the button.** On a ready offer, `PurchaseTry` shows a passphrase
+  field and **TRY BUYING (DRY RUN)**; `usePurchaseAttempt` opens the keystore (`openKeystore`), reads the avatar's
+  account, and calls `runPurchase` with `resolveMode(null)` (a dry run) and `ArenaData.transactions` (a node source
+  that cannot send). The key is cleared in a `finally`; the passphrase is emptied from the field on press and
+  never stored. The card says what happened: a refusal with its reason (no limit, over the limit, another account,
+  gone, price moved...), a failure with the stage, or "Checked and signed, nothing sent" with the id the transaction
+  would have; the record is written either way (`dry-run` or `failed`). The action id is derived (a hash), not
+  drawn from a secure random source, because Hermes may have none. **Not done, and the order I would take:**
+  1. (done, above.)
   2. A way to see and clear the purchase record (a crash leaves a live `prepared` entry that blocks that offer).
   3. The send itself: a `StageSource` port apart from `TransactionSource`, `stageTransaction`, then polling
      `transactionResult` (SUCCESS/FAILURE/INVALID with a grace period, as NC-Market does), `LIVE_SENDING_BUILT = true`,

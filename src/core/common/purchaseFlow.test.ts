@@ -15,7 +15,7 @@ import {
   type BencodexValue,
 } from './bencodex';
 import type { MarketListing } from './marketSource';
-import { runPurchase, type PurchaseRequest } from './purchaseFlow';
+import { deriveActionId, deriveRecordId, runPurchase, type PurchaseRequest } from './purchaseFlow';
 import { parsePurchaseLog, purchaseLogOver, type PurchaseRecord } from './purchaseLog';
 import { err, ok, type Result } from './result';
 import { addressOfPublicKey } from './transaction';
@@ -150,6 +150,25 @@ const setup = (options: { stored?: string | null; unsignedFails?: boolean } = {}
 
   return { events, request, records: () => parsePurchaseLog(kept).records, raw: () => kept };
 };
+
+describe('deriveActionId and deriveRecordId', () => {
+  it('make 16 bytes that depend on the offer, the moment and the number drawn', () => {
+    const base = deriveActionId('p1', 1_700_000_000_000, 0.5);
+
+    expect(base).toHaveLength(16);
+    expect(Array.from(deriveActionId('p1', 1_700_000_000_000, 0.5))).toEqual(Array.from(base));
+    expect(Array.from(deriveActionId('p2', 1_700_000_000_000, 0.5))).not.toEqual(Array.from(base));
+    expect(Array.from(deriveActionId('p1', 1_700_000_000_001, 0.5))).not.toEqual(Array.from(base));
+    expect(Array.from(deriveActionId('p1', 1_700_000_000_000, 0.6))).not.toEqual(Array.from(base));
+  });
+
+  it('write a record id that differs between two attempts in the same millisecond', () => {
+    expect(deriveRecordId(1_700_000_000_000, 0.25)).not.toBe(
+      deriveRecordId(1_700_000_000_000, 0.75),
+    );
+    expect(deriveRecordId(1_700_000_000_000, 0.25)).toBe(deriveRecordId(1_700_000_000_000, 0.25));
+  });
+});
 
 describe('runPurchase', () => {
   it('writes the record first, then asks the node, then marks it as signed and not sent', async () => {

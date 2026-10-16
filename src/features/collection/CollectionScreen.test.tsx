@@ -8,7 +8,15 @@
  * also a 200 % font-scale render.
  */
 
-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react-native';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -21,21 +29,29 @@ import {
   type CollectionSource,
   type MarketListing,
   type ScanOptions,
+  type TransactionSource,
   type UnlockedCollections,
 } from '@/core/common';
+import { parsePurchaseLog } from '@/core/common/purchaseLog';
 import {
   ArenaDataProvider,
   createCollectionRepository,
   createSheetLibrary,
+  type KeystoreStore,
   type MarketLibrary,
+  type PurchaseStore,
   type RosterRepository,
   type SheetLibrary,
 } from '@/core/data';
 import type { PlayerDraft } from '@/core/model';
 import {
+  TEST_AGENT_ADDRESS,
+  createFakeTransactionSource,
   createStubLiveData,
   createTestDatabase,
   createTestRepository,
+  writeTestKeystore,
+  type FakeTransactionNode,
   type TestDatabase,
 } from '@/core/testing';
 
@@ -88,6 +104,29 @@ describe('CollectionScreen', () => {
   let market: MarketLibrary | undefined;
   let avatarSource: AvatarSource | undefined;
   let balance: BalanceSource | undefined;
+  let keystoreText: string | null;
+  let purchaseLimit: number | null;
+  let purchaseLog: string | null;
+  let transactions: TransactionSource | undefined;
+  const keystore: KeystoreStore = {
+    get: () => keystoreText,
+    set: (json) => {
+      keystoreText = json;
+    },
+    clear: () => {
+      keystoreText = null;
+    },
+  };
+  const purchases: PurchaseStore = {
+    getLimit: () => purchaseLimit,
+    setLimit: (ncg) => {
+      purchaseLimit = ncg;
+    },
+    getLog: () => purchaseLog,
+    setLog: (json) => {
+      purchaseLog = json;
+    },
+  };
 
   const wrapper = () => {
     readUnlocked = jest.fn(() => Promise.resolve(answer));
@@ -108,6 +147,9 @@ describe('CollectionScreen', () => {
               market,
               avatarSource,
               balance,
+              keystore,
+              purchases,
+              transactions,
             }}
           >
             {children}
@@ -146,6 +188,10 @@ describe('CollectionScreen', () => {
     handle = createTestDatabase();
     repository = createTestRepository(handle.db).repository;
     answer = ok(unlocked([1]));
+    keystoreText = null;
+    purchaseLimit = null;
+    purchaseLog = null;
+    transactions = undefined;
     mockPush.mockClear();
   });
 
@@ -560,6 +606,132 @@ describe('CollectionScreen', () => {
         await press('purchase-back');
         expect(screen.queryByTestId('purchase-card')).toBeNull();
         expect(screen.getByTestId(FIRST)).toBeTruthy();
+      });
+
+      describe('trying to buy (a dry run)', () => {
+        const PASSPHRASE = 'hunter2';
+        let node: FakeTransactionNode;
+
+        const open = async (
+          options: { keystore?: boolean; limit?: number | null; agent?: string } = {},
+        ): Promise<void> => {
+          const { keystore: hasKeystore = true, limit = 100, agent = TEST_AGENT_ADDRESS } = options;
+          makeViewerWithAvatar();
+          withAccount(10);
+          avatarSource = {
+            name: 'test',
+            readAvatar: jest.fn(() =>
+              Promise.resolve(ok({ name: 'Xyrerris', level: 400, agentAddress: `0x${agent}` })),
+            ),
+          };
+          node = createFakeTransactionSource();
+          transactions = node;
+          keystoreText = hasKeystore ? writeTestKeystore(PASSPHRASE) : null;
+          purchaseLimit = limit;
+          market = fakeMarket(() => scanned(SWORDS)).library;
+          await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+          await press('collection-market-2');
+          await press(FIRST);
+          await act(async () => {});
+        };
+        const tryWith = async (passphrase: string): Promise<void> => {
+          await act(async () => {
+            fireEvent.changeText(screen.getByTestId('purchase-passphrase'), passphrase);
+          });
+          await press('purchase-try-button');
+        };
+        const records = () => parsePurchaseLog(purchaseLog).records;
+
+        it('offers a passphrase and the button, and says nothing is ever sent from here', async () => {
+          await open();
+
+          expect(screen.getByTestId('purchase-passphrase').props.secureTextEntry).toBe(true);
+          expect(screen.getByTestId('purchase-try-button')).toBeTruthy();
+          expect(text('purchase-dry-note')).toContain('nothing is sent');
+          expect(text('purchase-not-built')).toBe(words.purchaseNotBuilt);
+        });
+
+        it('says to import a keystore first when there is none, and offers no button', async () => {
+          await open({ keystore: false });
+
+          expect(text('purchase-no-keystore')).toContain('Import your keystore');
+          expect(screen.queryByTestId('purchase-try-button')).toBeNull();
+        });
+
+        it('opens the keystore, checks the offer, signs, records it and sends nothing', async () => {
+          await open();
+
+          await tryWith(PASSPHRASE);
+          await waitFor(() => expect(screen.getByTestId('purchase-attempt-done')).toBeTruthy());
+
+          expect(String(text('purchase-attempt-done'))).toMatch(
+            /^Checked and signed, nothing sent\. The transaction would have the id 0x[0-9a-f]{6}…[0-9a-f]{4}\.$/,
+          );
+          expect(node.calls).toEqual([
+            'goldCurrency',
+            'nextNonce',
+            'unsignedTransaction',
+            'attachSignature',
+          ]);
+          expect(records()).toHaveLength(1);
+          expect(records()[0]).toMatchObject({
+            productId: '00000000-0000-0000-0000-000000000003',
+            planet: 'heimdall',
+            price: 3,
+            mode: 'dry-run',
+            status: 'dry-run',
+            note: 'signed, not sent',
+          });
+          // The passphrase is not left in the field.
+          expect(screen.getByTestId('purchase-passphrase').props.value).toBe('');
+        });
+
+        it('says a wrong passphrase is wrong, asks the node nothing and writes nothing', async () => {
+          await open();
+
+          await tryWith('nope');
+          await waitFor(() => expect(screen.getByTestId('purchase-attempt-wrong')).toBeTruthy());
+
+          expect(text('purchase-attempt-wrong')).toBe(
+            'Wrong passphrase, or the keystore was changed.',
+          );
+          expect(node.calls).toEqual([]);
+          expect(purchaseLog).toBeNull();
+        });
+
+        it('refuses without a limit, with the reason, before the node is asked or anything written', async () => {
+          await open({ limit: null });
+
+          await tryWith(PASSPHRASE);
+          await waitFor(() => expect(screen.getByTestId('purchase-attempt-done')).toBeTruthy());
+
+          expect(String(text('purchase-attempt-done'))).toContain('Set a limit per purchase');
+          expect(node.calls).toEqual([]);
+          expect(purchaseLog).toBeNull();
+        });
+
+        it('refuses a price above the limit', async () => {
+          await open({ limit: 2 });
+
+          await tryWith(PASSPHRASE);
+          await waitFor(() => expect(screen.getByTestId('purchase-attempt-done')).toBeTruthy());
+
+          expect(String(text('purchase-attempt-done'))).toContain('more than your limit of 2 NCG');
+          expect(node.calls).toEqual([]);
+        });
+
+        it('opens a keystore of another account and then refuses it, saying so', async () => {
+          await open({ agent: '1'.repeat(40) });
+
+          await tryWith(PASSPHRASE);
+          await waitFor(() => expect(screen.getByTestId('purchase-attempt-done')).toBeTruthy());
+
+          expect(String(text('purchase-attempt-done'))).toContain(
+            'This keystore is not the account of your avatar.',
+          );
+          expect(node.calls).toEqual([]);
+          expect(purchaseLog).toBeNull();
+        });
       });
 
       it('says how much is missing when the balance is not enough', async () => {

@@ -20,6 +20,8 @@
  * Storing the key is not this file's: it is handed `privateKey` and uses it for the one signature.
  */
 
+import { sha256 } from '@noble/hashes/sha2.js';
+
 import type { Planet } from '../model';
 import type { MarketListing } from './marketSource';
 import { dryRunPurchase, type DryRun, type DryRunError } from './purchaseDryRun';
@@ -57,6 +59,20 @@ export type PurchaseOutcome =
   | { readonly kind: 'dry-run'; readonly run: DryRun; readonly recordId: string }
   | { readonly kind: 'live-unavailable' }
   | { readonly kind: 'failed'; readonly error: DryRunError; readonly recordId: string };
+
+const encoder = new TextEncoder();
+
+/**
+ * 16 bytes for the action's own id. The id only has to be unique to the attempt (the nonce, not
+ * this, is what stops a replay), and a phone's JS engine may have no secure random source to ask, so
+ * it is derived: a hash of the offer, the moment and a number the caller draws. Not a secret.
+ */
+export const deriveActionId = (productId: string, at: number, entropy: number): Uint8Array =>
+  sha256(encoder.encode(`action|${productId}|${at}|${entropy}`)).slice(0, 16);
+
+/** An id for a record, unique enough to tell one attempt from another in a log of a few hundred. */
+export const deriveRecordId = (at: number, entropy: number): string =>
+  `${at.toString(36)}-${Math.floor(entropy * 36 ** 6).toString(36)}`;
 
 export async function runPurchase(request: PurchaseRequest): Promise<PurchaseOutcome> {
   if (request.mode === 'live') return { kind: 'live-unavailable' };

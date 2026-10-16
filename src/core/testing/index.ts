@@ -156,4 +156,14 @@ export const serveRosterJson = (body: string): WireSource => {
   };
 };
 
+export {
+  TEST_AGENT_ADDRESS,
+  TEST_GENESIS,
+  TEST_PRIVATE_KEY,
+  createDownTransactionSource,
+  createFakeTransactionSource,
+  writeTestKeystore,
+  type FakeTransactionNode,
+} from './purchaseFixtures';
+
 export type { ArenaPreferences };

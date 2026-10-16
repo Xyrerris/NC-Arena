@@ -14,7 +14,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
-import type { AvatarSource, BalanceSource } from '../common';
+import type { AvatarSource, BalanceSource, TransactionSource } from '../common';
 import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
 import type { MarketLibrary } from './marketLibrary';
@@ -62,6 +62,11 @@ export interface ArenaData {
    * only the wallet block and the purchase flow read it.
    */
   purchases?: PurchaseStore;
+  /**
+   * Asks a node about a transaction: nonce, currency, the unsigned form, the signed form. It has no
+   * method that sends (ADR-0044, step C), so what holds it cannot spend. Optional like the rest.
+   */
+  transactions?: TransactionSource;
 }
 
 /**

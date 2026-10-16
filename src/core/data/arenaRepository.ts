@@ -30,7 +30,7 @@
 
 import { QueryClient } from '@tanstack/react-query';
 
-import type { AvatarSource, BalanceSource, CollectionSource } from '../common';
+import type { AvatarSource, BalanceSource, CollectionSource, TransactionSource } from '../common';
 import {
   FallbackAvatarSource,
   FallbackCollectionSource,
@@ -41,6 +41,7 @@ import {
   NodeAvatarSource,
   NodeBalanceSource,
   NodeCollectionSource,
+  NodeTransactionSource,
   RemoteAccountGateway,
   RemoteRosterSource,
 } from '../network';
@@ -128,6 +129,9 @@ export const keystoreStore: KeystoreStore = {
   set: (json) => mmkvPreferences.setKeystore(json),
   clear: () => mmkvPreferences.clearKeystore(),
 };
+
+/** Nonce, currency and the unsigned and signed forms of a transaction, from a public node. It cannot send. */
+export const transactionSource: TransactionSource = new NodeTransactionSource();
 
 /** The per-purchase limit and the record of purchases, over the device's preferences. */
 export const purchaseStore: PurchaseStore = {

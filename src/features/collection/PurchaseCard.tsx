@@ -14,6 +14,7 @@ import { ArenaButton, ArenaText, space } from '@/core/design-system';
 
 import { shortSeller, type MarketPiece } from './marketUiState';
 import { toPurchaseCardUi } from './purchaseCardState';
+import { PurchaseTry } from './PurchaseTry';
 import { collectionStrings as words } from './strings';
 import { usePurchaseCheck } from './usePurchaseCheck';
 
@@ -88,6 +89,10 @@ export function PurchaseCard({ planet, piece, listing, onBack }: PurchaseCardPro
           )}
         </View>
       )}
+
+      {check.kind === 'ready' ? (
+        <PurchaseTry planet={planet} shown={listing} check={check} />
+      ) : null}
 
       <ArenaText variant="bodyCaption" tone="subtle" testID="purchase-not-built">
         {words.purchaseNotBuilt}

@@ -117,7 +117,7 @@ export const collectionStrings = {
   purchaseBalanceFailed: 'Your balance could not be read.',
   purchaseLeft: (ncg: string) => `Would leave ${ncg} NCG`,
   purchaseShort: (ncg: string) => `${ncg} NCG short of the price`,
-  purchaseNotBuilt: 'Buying is not available yet. Nothing was signed or sent.',
+  purchaseNotBuilt: 'Buying for real is not available yet. Nothing is ever sent from here.',
   listingCp: (cp: string) => `CP ${cp}`,
   listingSeller: (seller: string) => `seller ${seller}`,
 
