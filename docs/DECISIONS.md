@@ -2795,6 +2795,17 @@ person choose the piece. Buying comes after, and not from this step.
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.
 
+**Built (2026-10-16): the send, step D of buying — switched off.** A signed purchase can now be staged
+(`TransactionSender`, `runPurchase`'s live branch) and watched to its end (`awaitPurchase`); the card has a
+confirmation that names the price, and the wallet block a switch with its own confirmation. The decisions that
+matter: the sender is a **separate port** from the one that cannot send; the record is written **before** the
+key is touched and moves `sent` → `confirmed`/`failed`; **doubt never frees an offer** (no answer to the send, an id
+the node stops knowing, a wait that times out all stay `sent`, because freeing one on a guess is how a piece is
+bought twice); a refusal by the node, or a failure the chain reports, does. Everything is verified with fakes; the
+real `stageTransaction` was never called. **`LIVE_SENDING_BUILT` stays `false`** — the one switch to real
+sending is the owner's, by hand (the assistant's attempt to flip it was refused by the permission layer, and was not
+retried). See HANDOFF-market.md, step D.
+
 **Built (2026-10-16): a purchase up to the signature, step C of buying.** `dryRunPurchase` builds the
 `buy_product3` action, has a public node assemble the transaction, verifies it field by field before signing,
 signs, and stops. It was run against Heimdall with a throwaway key; the node's unsigned transaction passed every

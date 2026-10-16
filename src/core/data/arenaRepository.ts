@@ -30,7 +30,13 @@
 
 import { QueryClient } from '@tanstack/react-query';
 
-import type { AvatarSource, BalanceSource, CollectionSource, TransactionSource } from '../common';
+import type {
+  AvatarSource,
+  BalanceSource,
+  CollectionSource,
+  TransactionSender,
+  TransactionSource,
+} from '../common';
 import {
   FallbackAvatarSource,
   FallbackCollectionSource,
@@ -41,6 +47,7 @@ import {
   NodeAvatarSource,
   NodeBalanceSource,
   NodeCollectionSource,
+  NodeTransactionSender,
   NodeTransactionSource,
   RemoteAccountGateway,
   RemoteRosterSource,
@@ -140,7 +147,15 @@ export const purchaseStore: PurchaseStore = {
     ncg === null ? mmkvPreferences.clearPurchaseLimit() : mmkvPreferences.setPurchaseLimit(ncg),
   getLog: () => mmkvPreferences.getPurchaseLog(),
   setLog: (json) => mmkvPreferences.setPurchaseLog(json),
+  getMode: () => mmkvPreferences.getPurchaseMode(),
+  setMode: (mode) => mmkvPreferences.setPurchaseMode(mode),
 };
+
+/**
+ * The one thing that can stage a transaction. Built here and handed down, but only a purchase that
+ * resolved to `live` (which needs `LIVE_SENDING_BUILT` and the person's own setting) ever uses it.
+ */
+export const transactionSender: TransactionSender = new NodeTransactionSender();
 
 /** NCG held by an account, from a public node (the purchase card's balance line). */
 export const balanceSource: BalanceSource = new NodeBalanceSource();

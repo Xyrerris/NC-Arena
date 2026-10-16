@@ -30,6 +30,12 @@ export type {
 } from './marketSource';
 export type { GameSheets, SheetError, SheetFailure, SheetSource } from './sheetSource';
 export type {
+  StageError,
+  TransactionResult,
+  TransactionSender,
+  TransactionStatus,
+} from './transactionSender';
+export type {
   GoldCurrency,
   TransactionSource,
   TransactionSourceError,

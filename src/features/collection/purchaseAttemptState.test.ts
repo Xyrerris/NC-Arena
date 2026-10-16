@@ -6,6 +6,9 @@
 import type { PurchaseOutcome } from '@/core/common/purchaseFlow';
 
 import {
+  BUY_LABEL,
+  CONFIRM_LABEL,
+  CONFIRM_WARNING,
   DRY_RUN_NOTE,
   UNAVAILABLE_NOTE,
   WORKING_NOTE,
@@ -43,7 +46,11 @@ describe('describeAttempt', () => {
       { kind: 'refused', refusal: { code: 'NO_LIMIT', message: 'Set a limit first.' } },
       'Set a limit first.',
     ],
-    ['a live request', { kind: 'live-unavailable' }, 'Buying for real is not available yet.'],
+    [
+      'a live request',
+      { kind: 'live-unavailable' },
+      'Buying for real is not available in this build.',
+    ],
     [
       'a failure, with where it stopped',
       { kind: 'failed', recordId: 'r', error: { stage: 'unsigned', message: 'node said no' } },
@@ -73,6 +80,69 @@ describe('describeAttempt', () => {
     expect(ui.tone).toBe('accent');
     expect(ui.text).toBe(
       'Checked and signed, nothing sent. The transaction would have the id 0x3f1a2b…2f10.',
+    );
+  });
+
+  it('says a node that refused the send did not buy anything, and a send that is in flight is waiting', () => {
+    expect(
+      describeAttempt({
+        kind: 'done',
+        outcome: { kind: 'not-accepted', message: 'nonce too old', recordId: 'r' },
+      }),
+    ).toEqual({
+      tone: 'negative',
+      text: 'The node did not accept it, so nothing was bought: nonce too old',
+    });
+    expect(
+      describeAttempt({
+        kind: 'done',
+        outcome: { kind: 'sent', recordId: 'r', transactionId: TX, uncertain: false },
+      }).text,
+    ).toBe('Sent (0x3f1a2b…2f10). Waiting for the chain…');
+  });
+
+  it('says a send with no clear answer may have gone through, never that it failed', () => {
+    const ui = describeAttempt({ kind: 'waiting', transactionId: TX, uncertain: true });
+
+    expect(ui.text).toContain('may have gone through');
+    expect(ui.text).not.toContain('failed');
+    expect(describeAttempt({ kind: 'waiting', transactionId: TX, uncertain: false }).text).toBe(
+      'Sent (0x3f1a2b…2f10). Waiting for the chain…',
+    );
+  });
+
+  it('says how a purchase ended: bought, refused by the chain, or not known — and warns on the last', () => {
+    const bought = describeAttempt({
+      kind: 'settled',
+      transactionId: TX,
+      outcome: { kind: 'confirmed', blockIndex: 5 },
+    });
+    const refused = describeAttempt({
+      kind: 'settled',
+      transactionId: TX,
+      outcome: { kind: 'failed', reason: 'the piece was already sold or withdrawn.' },
+    });
+    const unknown = describeAttempt({
+      kind: 'settled',
+      transactionId: TX,
+      outcome: { kind: 'unknown', message: 'still waiting for the chain; check again later.' },
+    });
+
+    expect(bought).toMatchObject({ tone: 'accent' });
+    expect(bought.text).toContain('Bought');
+    expect(refused.text).toBe(
+      'The chain refused it, so nothing was bought: the piece was already sold or withdrawn.',
+    );
+    expect(unknown.tone).toBe('negative');
+    expect(unknown.text).toContain('Do not buy this piece again');
+    expect(unknown.text).toContain('0x3f1a2b…2f10');
+  });
+
+  it('puts the price in the buttons that spend, and says it cannot be undone', () => {
+    expect(BUY_LABEL('142,5')).toBe('BUY FOR REAL (142,5 NCG)');
+    expect(CONFIRM_LABEL('142,5')).toBe('CONFIRM AND PAY 142,5 NCG');
+    expect(CONFIRM_WARNING('Long Sword +0', '142,5')).toBe(
+      'You are about to pay 142,5 NCG for Long Sword +0. The payment cannot be undone once it is sent.',
     );
   });
 

@@ -29,6 +29,7 @@ export const createMemoryPreferences = (
   let keystore: string | null = null;
   let purchaseLimit: number | null = null;
   let purchaseLog: string | null = null;
+  let purchaseMode: string | null = null;
   let setupSkipped = false;
 
   return {
@@ -99,6 +100,10 @@ export const createMemoryPreferences = (
     },
     clearPurchaseLimit: () => {
       purchaseLimit = null;
+    },
+    getPurchaseMode: () => purchaseMode,
+    setPurchaseMode: (mode) => {
+      purchaseMode = mode;
     },
     getPurchaseLog: () => purchaseLog,
     setPurchaseLog: (json) => {

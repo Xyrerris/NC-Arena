@@ -23,9 +23,10 @@
  * - **The money.** A balance that is not known is not "enough".
  * - **Not from oneself.** The chain refuses it after a signature and a fee; here it costs nothing.
  *
- * And the **mode**: the default, and the only one that exists today, is `dry-run`. `live` is a name
- * for what step D's last part will add; until sending is built, a stored `live` still resolves to
- * `dry-run` (`LIVE_SENDING_BUILT`), so asking for live cannot send.
+ * And the **mode**: the default is `dry-run`, which signs and sends nothing. `live` sends, and is
+ * reached only by the literal word `live` having been stored by the person (`resolveMode`); anything
+ * else — nothing stored, a typo, an old value — is a dry run. `LIVE_SENDING_BUILT` is the switch
+ * that keeps `live` unreachable in a build that has no sending.
  */
 
 import type { MarketListing } from './marketSource';
@@ -41,7 +42,12 @@ export type PurchaseMode = 'dry-run' | 'live';
 
 export const DEFAULT_PURCHASE_MODE: PurchaseMode = 'dry-run';
 
-/** Flips to true in the change that adds the send. Until then nothing can resolve to `live`. */
+/**
+ * The switch between a build that can never send and one that can. Sending now exists
+ * (`TransactionSender`, `runPurchase`'s live branch, `awaitPurchase`), but this stays `false` until
+ * the owner turns it on, deliberately and by hand: while it is `false`, no stored setting can make
+ * `resolveMode` answer `live`, so nothing in the app can reach `stageTransaction`.
+ */
 export const LIVE_SENDING_BUILT = false;
 
 /** Only the literal `live` asks for live, and only once sending exists. Anything else is a dry run. */

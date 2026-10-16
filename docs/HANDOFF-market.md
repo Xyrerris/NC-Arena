@@ -242,6 +242,26 @@ Suggested steps (each shippable, none spends):
   would have; the record is written either way (`dry-run` or `failed`). The action id is derived (a hash), not
   drawn from a secure random source, because Hermes may have none. **Not done, and the order I would take:**
   1. (done, above.)
+     **The send is built (2026-10-16, last) and switched OFF.** `core/common/transactionSender.ts` is a port of its
+     own (apart from the one that cannot send), implemented by `NodeTransactionSender`
+     (`mutation { stageTransaction(payload) }`, `transactionResult`); `runPurchase` stages a signed live purchase and
+     `awaitPurchase` watches the id. The record moves `prepared` → `sent` → `confirmed`/`failed`. **Doubt keeps the offer
+     blocked:** a send that gets no clear answer is `sent` (not `failed`); a node that stops knowing the id, or a wait
+     that times out, is _unknown_ and stays `sent` — only a refusal by the node (`REFUSED`) or a failure the chain
+     reports frees the offer. The card has a live mode (`BUY FOR REAL (price)` → a confirmation with the price, "cannot
+     be undone" and the passphrase → `CONFIRM AND PAY (price)`), and the wallet block has a **Real purchases** switch
+     with its own confirmation. **Everything is tested with fakes; the real `stageTransaction` has never been called by
+     this code.** The switch that makes it reachable is `LIVE_SENDING_BUILT` in `core/common/purchasePolicy.ts`, and it
+     is **`false`**: while it is, `resolveMode` answers `dry-run` for anything, the wallet block says real purchases are
+     switched off in this build, and nothing can reach `stage`. I tried to set it to `true` and the permission layer
+     refused that edit, so I left it; it is one line and the owner's to turn on. **To go live:** set it to `true`, run
+     `npm run verify`, build, turn on **Real purchases** in the wallet block, set a low limit, and buy one cheap piece.
+     What the first real send will also settle, and nothing before it can: that the chain accepts this signature
+     (DER, low-S) and this action layout; that the account has Mead for the fee; the real shape of a `FAILURE` for an
+     offer sold meanwhile. **Known gaps:** no screen lists the purchase record, so a `sent` record that stays unknown (it
+     blocks that offer) cannot be cleared from the app yet — the person must check the inventory and the balance and a
+     clear action is the next piece; polling lives in the card's hook, so closing the card stops watching (the record
+     keeps `sent` and the wait is not resumed).
   2. A way to see and clear the purchase record (a crash leaves a live `prepared` entry that blocks that offer).
   3. The send itself: a `StageSource` port apart from `TransactionSource`, `stageTransaction`, then polling
      `transactionResult` (SUCCESS/FAILURE/INVALID with a grace period, as NC-Market does), `LIVE_SENDING_BUILT = true`,

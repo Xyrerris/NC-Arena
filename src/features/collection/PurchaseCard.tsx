@@ -91,7 +91,7 @@ export function PurchaseCard({ planet, piece, listing, onBack }: PurchaseCardPro
       )}
 
       {check.kind === 'ready' ? (
-        <PurchaseTry planet={planet} shown={listing} check={check} />
+        <PurchaseTry planet={planet} shown={listing} label={piece.label} check={check} />
       ) : null}
 
       <ArenaText variant="bodyCaption" tone="subtle" testID="purchase-not-built">

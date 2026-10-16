@@ -88,6 +88,7 @@ describe('KeystoreSection', () => {
   let store: KeystoreStore;
   let avatarSource: AvatarSource | undefined;
   let limit: number | null;
+  let mode: string | null;
   let withPurchases: boolean;
   const purchases: PurchaseStore = {
     getLimit: () => limit,
@@ -96,6 +97,10 @@ describe('KeystoreSection', () => {
     },
     getLog: () => null,
     setLog: () => {},
+    getMode: () => mode,
+    setMode: (next) => {
+      mode = next;
+    },
   };
 
   const agent = (agentAddress: string): AvatarSource => ({
@@ -138,6 +143,7 @@ describe('KeystoreSection', () => {
     };
     avatarSource = undefined;
     limit = null;
+    mode = null;
     withPurchases = true;
   });
 
@@ -314,6 +320,53 @@ describe('KeystoreSection', () => {
 
       expect(limit).toBeNull();
       expect(text('purchase-limit-line')).toBe('No limit set: nothing can be bought.');
+    });
+
+    it('cannot be switched to real purchases in a build that cannot send, and says so', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('purchase-mode')).toContain('switched off in this build');
+      expect(screen.queryByTestId('purchase-mode-on')).toBeNull();
+      expect(mode).toBeNull();
+    });
+
+    it('a stored "live" in a build that cannot send changes nothing: it is still a dry run', async () => {
+      mode = 'live';
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('purchase-mode')).toContain('switched off in this build');
+    });
+
+    describe('in a build that can send', () => {
+      it('starts off, and turning real purchases on asks first, with a warning', async () => {
+        await render(<KeystoreSection liveBuilt />, { wrapper: wrapper() });
+        expect(text('purchase-mode')).toBe(
+          'Real purchases: OFF. A purchase is a dry run and nothing is sent.',
+        );
+
+        await press('purchase-mode-on');
+
+        expect(screen.getByTestId('purchase-mode-confirm')).toBeTruthy();
+        expect(mode).toBeNull();
+
+        await press('purchase-mode-cancel');
+        expect(mode).toBeNull();
+        expect(screen.queryByTestId('purchase-mode-confirm')).toBeNull();
+      });
+
+      it('turns them on only after the confirmation, and off again at once', async () => {
+        await render(<KeystoreSection liveBuilt />, { wrapper: wrapper() });
+
+        await press('purchase-mode-on');
+        await press('purchase-mode-yes');
+
+        expect(mode).toBe('live');
+        expect(text('purchase-mode')).toContain('Real purchases: ON');
+
+        await press('purchase-mode-off');
+        expect(mode).toBe('dry-run');
+        expect(text('purchase-mode')).toContain('Real purchases: OFF');
+      });
     });
 
     it('is not shown where the app supplies no purchase store', async () => {

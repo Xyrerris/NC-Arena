@@ -1,12 +1,14 @@
 /**
- * What the purchase card says when the person tries to buy (ADR-0044, step D): the button's wording
- * and every outcome of a dry run, as plain values.
+ * What the purchase card says when the person tries to buy (ADR-0044, step D): the buttons' wording
+ * and every outcome, as plain values.
  *
- * It says one thing on every state, because it is the one thing that is true of all of them: this is
- * a dry run. The offer is checked and a transaction is signed here, and **nothing is sent**.
+ * A dry run says one thing on every state: the offer is checked and a transaction is signed here, and
+ * **nothing is sent**. A real purchase says the opposite just as plainly — what it will cost, that it
+ * cannot be undone — and, when the answer is doubtful, says so rather than guessing: a purchase whose
+ * fate is not known is never described as failed, because the person might then buy the piece again.
  */
 
-import type { PurchaseOutcome } from '@/core/common/purchaseFlow';
+import type { AwaitOutcome, PurchaseOutcome } from '@/core/common/purchaseFlow';
 
 export const TRY_LABEL = 'TRY BUYING (DRY RUN)';
 export const PASSPHRASE_LABEL = 'Keystore passphrase';
@@ -18,12 +20,30 @@ export const WRONG_NOTE = 'Wrong passphrase, or the keystore was changed.';
 export const UNAVAILABLE_NOTE =
   'This build cannot try a purchase: the node or the account is missing.';
 
+export const BUY_LABEL = (price: string): string => `BUY FOR REAL (${price} NCG)`;
+export const CONFIRM_LABEL = (price: string): string => `CONFIRM AND PAY ${price} NCG`;
+export const CANCEL_LABEL = 'CANCEL';
+export const CONFIRM_WARNING = (what: string, price: string): string =>
+  `You are about to pay ${price} NCG for ${what}. The payment cannot be undone once it is sent.`;
+export const LIVE_NOTE = 'Real purchase: this spends NCG from the account of your keystore.';
+
 export type AttemptState =
   | { readonly kind: 'idle' }
   | { readonly kind: 'working' }
   | { readonly kind: 'wrong' }
   | { readonly kind: 'problem'; readonly message: string }
-  | { readonly kind: 'done'; readonly outcome: PurchaseOutcome };
+  | { readonly kind: 'done'; readonly outcome: PurchaseOutcome }
+  /** Sent (or possibly sent), and being watched until the chain decides. */
+  | {
+      readonly kind: 'waiting';
+      readonly transactionId: string;
+      readonly uncertain: boolean;
+    }
+  | {
+      readonly kind: 'settled';
+      readonly transactionId: string;
+      readonly outcome: AwaitOutcome;
+    };
 
 export interface AttemptUi {
   readonly tone: 'subtle' | 'accent' | 'negative';
@@ -39,11 +59,21 @@ const describeOutcome = (outcome: PurchaseOutcome): AttemptUi => {
     case 'refused':
       return { tone: 'negative', text: outcome.refusal.message };
     case 'live-unavailable':
-      return { tone: 'negative', text: 'Buying for real is not available yet.' };
+      return { tone: 'negative', text: 'Buying for real is not available in this build.' };
     case 'failed':
       return {
         tone: 'negative',
         text: `Stopped at "${outcome.error.stage}": ${outcome.error.message}`,
+      };
+    case 'not-accepted':
+      return {
+        tone: 'negative',
+        text: `The node did not accept it, so nothing was bought: ${outcome.message}`,
+      };
+    case 'sent':
+      return {
+        tone: 'subtle',
+        text: `Sent (${shortTransactionId(outcome.transactionId)}). Waiting for the chain…`,
       };
     case 'dry-run':
       return {
@@ -51,6 +81,29 @@ const describeOutcome = (outcome: PurchaseOutcome): AttemptUi => {
         text:
           'Checked and signed, nothing sent. The transaction would have the id ' +
           `${shortTransactionId(outcome.run.transactionId)}.`,
+      };
+  }
+};
+
+const describeSettled = (transactionId: string, outcome: AwaitOutcome): AttemptUi => {
+  const id = shortTransactionId(transactionId);
+  switch (outcome.kind) {
+    case 'confirmed':
+      return {
+        tone: 'accent',
+        text: `Bought. The chain executed it (transaction ${id}). The piece is in your avatar's inventory.`,
+      };
+    case 'failed':
+      return {
+        tone: 'negative',
+        text: `The chain refused it, so nothing was bought: ${outcome.reason}`,
+      };
+    case 'unknown':
+      return {
+        tone: 'negative',
+        text:
+          `${outcome.message} Do not buy this piece again until you have looked at your ` +
+          `inventory and your balance (transaction ${id}).`,
       };
   }
 };
@@ -67,5 +120,14 @@ export function describeAttempt(state: AttemptState): AttemptUi {
       return { tone: 'negative', text: state.message };
     case 'done':
       return describeOutcome(state.outcome);
+    case 'waiting':
+      return {
+        tone: 'subtle',
+        text: state.uncertain
+          ? `The send got no clear answer, so it may have gone through. Waiting for the chain (${shortTransactionId(state.transactionId)})…`
+          : `Sent (${shortTransactionId(state.transactionId)}). Waiting for the chain…`,
+      };
+    case 'settled':
+      return describeSettled(state.transactionId, state.outcome);
   }
 }

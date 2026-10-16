@@ -74,6 +74,7 @@ export { MimirAvatarSource } from './mimirAvatarSource';
 export { NodeAvatarSource } from './nodeAvatarSource';
 export { NodeBalanceSource } from './nodeBalanceSource';
 export { GENESIS_HASHES, NodeTransactionSource } from './nodeTransactionSource';
+export { NodeTransactionSender } from './nodeTransactionSender';
 export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';
 export { NODE_ENDPOINTS, NodeCollectionSource } from './nodeCollectionSource';
 export { RemoteAccountGateway } from './remoteAccountGateway';

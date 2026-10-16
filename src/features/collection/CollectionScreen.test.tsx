@@ -107,6 +107,7 @@ describe('CollectionScreen', () => {
   let keystoreText: string | null;
   let purchaseLimit: number | null;
   let purchaseLog: string | null;
+  let purchaseMode: string | null;
   let transactions: TransactionSource | undefined;
   const keystore: KeystoreStore = {
     get: () => keystoreText,
@@ -125,6 +126,10 @@ describe('CollectionScreen', () => {
     getLog: () => purchaseLog,
     setLog: (json) => {
       purchaseLog = json;
+    },
+    getMode: () => purchaseMode,
+    setMode: (next) => {
+      purchaseMode = next;
     },
   };
 
@@ -191,6 +196,7 @@ describe('CollectionScreen', () => {
     keystoreText = null;
     purchaseLimit = null;
     purchaseLog = null;
+    purchaseMode = null;
     transactions = undefined;
     mockPush.mockClear();
   });

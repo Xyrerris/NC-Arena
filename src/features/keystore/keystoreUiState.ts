@@ -29,7 +29,16 @@ export const CLAIMED_DIFFERS_NOTE =
   'The file names another address than the key inside it. The key is what counts.';
 
 export const MODE_NOTE =
-  'Mode: dry run. A purchase is checked and signed here, and nothing is sent: sending is not built yet.';
+  'Real purchases are switched off in this build: every purchase is a dry run, checked and signed here, and nothing is sent.';
+export const MODE_ON_LINE = 'Real purchases: ON. A purchase spends NCG from your account.';
+export const MODE_OFF_LINE = 'Real purchases: OFF. A purchase is a dry run and nothing is sent.';
+export const MODE_TURN_ON = 'TURN ON REAL PURCHASES';
+export const MODE_TURN_OFF = 'TURN OFF REAL PURCHASES';
+export const MODE_CONFIRM_ON = 'YES, TURN THEM ON';
+export const MODE_CANCEL = 'CANCEL';
+export const MODE_WARNING =
+  'With real purchases on, confirming a purchase pays NCG from your account and cannot be undone. ' +
+  'Set a low limit first, and try a cheap piece.';
 
 export const LIMIT_LABEL = 'Limit per purchase (NCG)';
 export const LIMIT_HINT =

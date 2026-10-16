@@ -47,6 +47,16 @@ describe('createMemoryPreferences', () => {
     expect(prefs.getPurchaseLimit()).toBeNull();
   });
 
+  it('has no purchase mode until one is chosen, and keeps the one that is', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getPurchaseMode()).toBeNull();
+
+    prefs.setPurchaseMode('live');
+    expect(prefs.getPurchaseMode()).toBe('live');
+    prefs.setPurchaseMode('dry-run');
+    expect(prefs.getPurchaseMode()).toBe('dry-run');
+  });
+
   it('clears the key back to absent, not to an empty string', () => {
     const prefs = createMemoryPreferences({ apiKey: 'paired' });
     prefs.clearApiKey();

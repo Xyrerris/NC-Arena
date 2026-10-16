@@ -28,7 +28,14 @@ import {
   LIMIT_LABEL,
   LIMIT_REMOVE,
   LIMIT_SAVE,
+  MODE_CANCEL,
+  MODE_CONFIRM_ON,
   MODE_NOTE,
+  MODE_OFF_LINE,
+  MODE_ON_LINE,
+  MODE_TURN_OFF,
+  MODE_TURN_ON,
+  MODE_WARNING,
   limitLine,
   PASSPHRASE_HINT,
   PASSPHRASE_LABEL,
@@ -46,9 +53,15 @@ import {
 import { useKeystore } from './useKeystore';
 import { usePurchaseLimit } from './usePurchaseLimit';
 
-export function KeystoreSection() {
+export interface KeystoreSectionProps {
+  /** Whether this build can send. Defaults to the build's own switch; a test passes it. */
+  liveBuilt?: boolean;
+}
+
+export function KeystoreSection({ liveBuilt }: KeystoreSectionProps = {}) {
   const keystore = useKeystore();
-  const purchase = usePurchaseLimit();
+  const purchase = usePurchaseLimit(liveBuilt);
+  const [confirmingMode, setConfirmingMode] = useState(false);
   const [limitText, setLimitText] = useState('');
   const [text, setText] = useState('');
   const [passphrase, setPassphrase] = useState('');
@@ -217,9 +230,56 @@ export function KeystoreSection() {
               testID="purchase-limit-remove"
             />
           )}
-          <ArenaText variant="bodyCaption" tone="subtle" testID="purchase-mode">
-            {MODE_NOTE}
-          </ArenaText>
+          {!purchase.liveBuilt ? (
+            <ArenaText variant="bodyCaption" tone="subtle" testID="purchase-mode">
+              {MODE_NOTE}
+            </ArenaText>
+          ) : (
+            <View style={styles.limit} testID="purchase-mode-block">
+              <ArenaText
+                variant="bodyMedium"
+                tone={purchase.mode === 'live' ? 'negative' : 'body'}
+                testID="purchase-mode"
+              >
+                {purchase.mode === 'live' ? MODE_ON_LINE : MODE_OFF_LINE}
+              </ArenaText>
+              {purchase.mode === 'live' ? (
+                <ArenaButton
+                  label={MODE_TURN_OFF}
+                  variant="secondary"
+                  onPress={() => purchase.onMode('dry-run')}
+                  testID="purchase-mode-off"
+                />
+              ) : confirmingMode ? (
+                <View style={styles.limit} testID="purchase-mode-confirm">
+                  <ArenaText variant="bodySmall" tone="negative">
+                    {MODE_WARNING}
+                  </ArenaText>
+                  <ArenaButton
+                    label={MODE_CONFIRM_ON}
+                    onPress={() => {
+                      setConfirmingMode(false);
+                      purchase.onMode('live');
+                    }}
+                    testID="purchase-mode-yes"
+                  />
+                  <ArenaButton
+                    label={MODE_CANCEL}
+                    variant="secondary"
+                    onPress={() => setConfirmingMode(false)}
+                    testID="purchase-mode-cancel"
+                  />
+                </View>
+              ) : (
+                <ArenaButton
+                  label={MODE_TURN_ON}
+                  variant="secondary"
+                  onPress={() => setConfirmingMode(true)}
+                  testID="purchase-mode-on"
+                />
+              )}
+            </View>
+          )}
         </View>
       )}
     </View>

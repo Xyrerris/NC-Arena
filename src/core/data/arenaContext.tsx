@@ -14,7 +14,7 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
-import type { AvatarSource, BalanceSource, TransactionSource } from '../common';
+import type { AvatarSource, BalanceSource, TransactionSender, TransactionSource } from '../common';
 import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
 import type { MarketLibrary } from './marketLibrary';
@@ -67,6 +67,11 @@ export interface ArenaData {
    * method that sends (ADR-0044, step C), so what holds it cannot spend. Optional like the rest.
    */
   transactions?: TransactionSource;
+  /**
+   * The one thing that can send a transaction (ADR-0044, step D). Optional, and only handed to a
+   * purchase that resolved to `live`: a dry run is never given it.
+   */
+  sender?: TransactionSender;
 }
 
 /**
@@ -78,6 +83,9 @@ export interface PurchaseStore {
   setLimit(ncg: number | null): void;
   getLog(): string | null;
   setLog(json: string): void;
+  /** `live` when the person has turned real purchases on, or null. Anything else is a dry run. */
+  getMode(): string | null;
+  setMode(mode: 'dry-run' | 'live'): void;
 }
 
 /**

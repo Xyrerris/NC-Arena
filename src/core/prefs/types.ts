@@ -129,6 +129,12 @@ export interface ArenaPreferences {
    */
   getPurchaseLog(): string | null;
   setPurchaseLog(json: string): void;
+  /**
+   * `live` when the person has turned real purchases on, or null. **Anything but the word `live` is a
+   * dry run** (`resolveMode`), so a missing, mistyped or old value can only ever mean "do not send".
+   */
+  getPurchaseMode(): string | null;
+  setPurchaseMode(mode: 'dry-run' | 'live'): void;
 
   /**
    * The user chose to keep this ladder on this device only, and to skip the setup gate
@@ -155,5 +161,6 @@ export const PREF_KEYS = {
   keystore: 'pref.keystore',
   purchaseLimit: 'pref.purchaseLimit',
   purchaseLog: 'pref.purchaseLog',
+  purchaseMode: 'pref.purchaseMode',
   setupSkipped: 'pref.setupSkipped',
 } as const;

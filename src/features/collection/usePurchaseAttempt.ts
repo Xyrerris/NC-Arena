@@ -17,9 +17,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import type { MarketListing } from '@/core/common';
 import { openKeystore, parseKeystore } from '@/core/common/keystore';
-import { deriveActionId, deriveRecordId, runPurchase } from '@/core/common/purchaseFlow';
+import {
+  awaitPurchase,
+  deriveActionId,
+  deriveRecordId,
+  runPurchase,
+} from '@/core/common/purchaseFlow';
 import { purchaseLogOver } from '@/core/common/purchaseLog';
-import { resolveMode } from '@/core/common/purchasePolicy';
+import { resolveMode, type PurchaseMode } from '@/core/common/purchasePolicy';
 import { useArenaData, useViewerAvatar } from '@/core/data';
 import type { Planet } from '@/core/model';
 
@@ -28,6 +33,8 @@ import type { PurchaseCheck } from './purchaseCardState';
 
 export interface PurchaseAttempt {
   readonly state: AttemptState;
+  /** `dry-run` unless the person turned real purchases on (and this build can send). */
+  readonly mode: PurchaseMode;
   /** Whether a keystore is on the device to open. */
   readonly hasKeystore: boolean;
   readonly onTry: (passphrase: string) => void;
@@ -38,7 +45,8 @@ export const usePurchaseAttempt = (
   shown: MarketListing,
   check: PurchaseCheck,
 ): PurchaseAttempt => {
-  const { keystore, avatarSource, transactions, purchases } = useArenaData();
+  const { keystore, avatarSource, transactions, purchases, sender } = useArenaData();
+  const mode = resolveMode(purchases?.getMode() ?? null);
   const avatar = useViewerAvatar();
   const [state, setState] = useState<AttemptState>({ kind: 'idle' });
 
@@ -93,12 +101,15 @@ export const usePurchaseAttempt = (
             if (identity.ok && identity.value !== null) avatarAgent = identity.value.agentAddress;
           }
           const at = Date.now();
+          const log = purchaseLogOver({ get: purchases.getLog, set: purchases.setLog });
           const outcome = await runPurchase({
             planet,
-            mode: resolveMode(null),
+            mode,
             source: transactions,
+            // Only a purchase that resolved to live is handed the thing that can send.
+            sender: mode === 'live' ? sender : undefined,
             privateKey: opened.value.privateKey,
-            log: purchaseLogOver({ get: purchases.getLog, set: purchases.setLog }),
+            log,
             actionId: deriveActionId(fresh.productId, at, Math.random()),
             now: () => at,
             newId: () => deriveRecordId(at, Math.random()),
@@ -110,14 +121,49 @@ export const usePurchaseAttempt = (
             avatarAgent,
             buyerAvatar: avatar.address,
           });
-          if (mounted.current) setState({ kind: 'done', outcome });
+          if (outcome.kind !== 'sent' || sender === undefined) {
+            if (mounted.current) setState({ kind: 'done', outcome });
+            return;
+          }
+
+          // Sent, or possibly sent: watch the id until the chain decides. The key is already done.
+          if (mounted.current) {
+            setState({
+              kind: 'waiting',
+              transactionId: outcome.transactionId,
+              uncertain: outcome.uncertain,
+            });
+          }
+          const settled = await awaitPurchase({
+            planet,
+            sender,
+            log,
+            recordId: outcome.recordId,
+            transactionId: outcome.transactionId,
+            sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          });
+          if (mounted.current) {
+            setState({ kind: 'settled', transactionId: outcome.transactionId, outcome: settled });
+          }
         } finally {
           opened.value.privateKey.fill(0);
         }
       })();
     },
-    [check, working, keystore, transactions, purchases, avatar, avatarSource, planet, shown],
+    [
+      check,
+      working,
+      keystore,
+      transactions,
+      purchases,
+      sender,
+      mode,
+      avatar,
+      avatarSource,
+      planet,
+      shown,
+    ],
   );
 
-  return { state, hasKeystore: keystore?.get() != null, onTry };
+  return { state, mode, hasKeystore: keystore?.get() != null, onTry };
 };
