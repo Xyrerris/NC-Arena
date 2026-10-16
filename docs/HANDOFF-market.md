@@ -202,8 +202,27 @@ Suggested steps (each shippable, none spends):
     follows (`Web3KeyStore`); a real keystore of the owner's is the first thing to try.
     Original description: Keystore import and decrypt test: store the encrypted file, ask for the passphrase, prove the
     address matches the avatar's agent, drop the key. No purchase.
-- **C.** `dry-run` end to end against the real node with a **throwaway key**: nonce, unsigned
-  transaction, the verification, signature, `signTransaction` — and **not** `stageTransaction`.
+- **C. (DONE 2026-10-16.)** `dryRunPurchase` (`core/common/purchaseDryRun.ts`) builds `buy_product3`
+  (`transaction.ts`, over a new Bencodex codec `bencodex.ts`), asks the node for the nonce and the unsigned
+  transaction (`NodeTransactionSource`, the `TransactionSource` port — **which has no method that sends**),
+  checks it field by field, signs (ECDSA/SHA-256/DER/low-S, noble), verifies the signature against the key,
+  has the node attach it (`signTransaction`), checks the signed bytes are the unsigned ones plus `S`, and stops
+  with the id the transaction would have. **Run live on Heimdall with a freshly generated key holding nothing**
+  (a throwaway test, deleted): nonce 0, a 527-byte unsigned transaction that passed every check including the
+  planet's genesis hash, a 604-byte signed one, and the signature verified by **Node's own `crypto`**, an
+  implementation independent of the one that made it. `stageTransaction` was never called and does not exist
+  in the code that ran. What this does **not** prove, because the node has no validate call and the only test
+  is a send: that the chain _accepts_ this signature and this action layout. The action's layout follows
+  NC-Market's `PurchaseAction.cs`, which checks it against lib9c's own `BuyProduct`; this repo checks it
+  against that description. Still open for D:
+  - `MarketListing` lacks `sellerAgentAddress`, `tradableId` and `legacy`, which the action needs; the
+    market service sends them. `PurchaseOffer` is the type that will be built from a re-read listing.
+  - Equipment only (the five `ItemSubType` names). Costumes and fungible items (materials) are not verified.
+  - Randomness: `secp256k1.utils.randomSecretKey()` needs `crypto.getRandomValues`, which Hermes does not
+    provide without a polyfill; the action id needs it too. Not needed to _sign_ with an imported key.
+  - The price-moved check, the per-purchase cap, the record before the send, `dry-run` as the default mode.
+    Original description: `dry-run` end to end against the real node with a **throwaway key**: nonce, unsigned
+    transaction, the verification, signature, `signTransaction` — and **not** `stageTransaction`.
 - **D.** The first real purchase, by the owner, on a cheap piece, with the cap low.
 
 Alternatives I considered and did not pick: hand the purchase to the NC-Market Telegram bot (no key on

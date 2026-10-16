@@ -2795,6 +2795,15 @@ person choose the piece. Buying comes after, and not from this step.
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.
 
+**Built (2026-10-16): a purchase up to the signature, step C of buying.** `dryRunPurchase` builds the
+`buy_product3` action, has a public node assemble the transaction, verifies it field by field before signing,
+signs, and stops. It was run against Heimdall with a throwaway key; the node's unsigned transaction passed every
+check and Node's own crypto verified the signature. The port it uses (`TransactionSource`) has **no method that
+sends**, so a dry run cannot send by mistake. Not proven: that the chain accepts the signature and the action
+layout (the node has no validate call; only a send tests that), which is why step D is the owner's, with a few
+NCG. New code: `core/common/{bencodex,transaction,transactionSource,purchaseDryRun}.ts`,
+`core/network/nodeTransactionSource.ts`. See HANDOFF-market.md, step C.
+
 **Built (2026-10-16): the keystore, step B of buying.** The owner can paste a Nine Chronicles keystore on
 `/me`, test its passphrase and see whether the key inside is the account of the avatar they play. Nothing
 signs or sends. The module is `core/common/keystore.ts` (Web3 Secret Storage v3 over `@noble/*`, verified against

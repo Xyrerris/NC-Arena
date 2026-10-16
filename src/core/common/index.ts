@@ -29,6 +29,12 @@ export type {
   ScanOptions,
 } from './marketSource';
 export type { GameSheets, SheetError, SheetFailure, SheetSource } from './sheetSource';
+export type {
+  GoldCurrency,
+  TransactionSource,
+  TransactionSourceError,
+  UnsignedRequest,
+} from './transactionSource';
 export { err, isOk, ok, type Result } from './result';
 export type {
   RosterPush,
