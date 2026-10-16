@@ -91,8 +91,12 @@ module.exports = {
       // seeing it fail. `scripts/check-test-projects.mjs` now proves a `.test.ts` in each is run.
       testMatch: ['**/src/{core,features,app}/**/*.test.ts'],
       transform: {
-        '^.+\\.tsx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
+        // `.js` too, for `@noble/*` below: it is ES-module-only, and Jest runs CommonJS.
+        '^.+\\.[jt]sx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
       },
+      // `node_modules` is not transformed by default; the keystore's crypto (`@noble/ciphers`,
+      // `@noble/curves`, `@noble/hashes`) ships only as ES modules, so it is the one exception.
+      transformIgnorePatterns: ['/node_modules/(?!@noble/)'],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
       },
@@ -117,7 +121,7 @@ module.exports = {
       // The list is copied rather than extended because Jest replaces the preset's array
       // instead of merging it: drop an entry here and that package stops being transformed.
       transformIgnorePatterns: [
-        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list))',
+        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list|@noble))',
         '/node_modules/react-native-reanimated/plugin/',
         '/node_modules/@react-native/babel-preset/',
       ],

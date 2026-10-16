@@ -1,0 +1,196 @@
+/**
+ * The block on `/me` where the person imports their Nine Chronicles keystore and checks that a
+ * passphrase opens it (ADR-0044, "Next: buying", step B). Nothing here buys.
+ *
+ * It is always offered, avatar or not: an opened keystore is a proof even when there is no avatar
+ * to compare it with, and the result says when that comparison could not be made.
+ */
+
+import { useState } from 'react';
+import { StyleSheet, View } from 'react-native';
+
+import {
+  ArenaButton,
+  ArenaText,
+  FormField,
+  color,
+  layout,
+  radius,
+  space,
+} from '@/core/design-system';
+
+import {
+  CLAIMED_DIFFERS_NOTE,
+  IMPORT_BUTTON,
+  IMPORT_HINT,
+  IMPORT_LABEL,
+  PASSPHRASE_HINT,
+  PASSPHRASE_LABEL,
+  PROVING_NOTE,
+  REMOVE_BUTTON,
+  REMOVE_NOTE,
+  SAVED_NOTE,
+  SECTION_HINT,
+  SECTION_TITLE,
+  TEST_BUTTON,
+  WRONG_NOTE,
+  describeOpened,
+  storedLine,
+} from './keystoreUiState';
+import { useKeystore } from './useKeystore';
+
+export function KeystoreSection() {
+  const keystore = useKeystore();
+  const [text, setText] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [justSaved, setJustSaved] = useState(false);
+
+  const save = (): void => {
+    if (keystore.onImport(text)) {
+      // The pasted text is on the device now, and no longer needs to sit in a text box.
+      setText('');
+      setJustSaved(true);
+    }
+  };
+  const test = (): void => {
+    const typed = passphrase;
+    // Gone from the field the moment it is used: a passphrase is not left on screen.
+    setPassphrase('');
+    setJustSaved(false);
+    keystore.onProve(typed);
+  };
+  const remove = (): void => {
+    setPassphrase('');
+    setJustSaved(false);
+    keystore.onRemove();
+  };
+
+  const { proof } = keystore;
+  return (
+    <View style={styles.block} testID="keystore">
+      <ArenaText variant="labelNano" tone="accent" style={styles.eyebrow}>
+        {SECTION_TITLE}
+      </ArenaText>
+      <ArenaText variant="bodyCaption" tone="subtle">
+        {SECTION_HINT}
+      </ArenaText>
+
+      {keystore.stored === null ? (
+        <>
+          <FormField
+            label={IMPORT_LABEL}
+            value={text}
+            onChangeText={setText}
+            error={keystore.importError}
+            hint={IMPORT_HINT}
+            multiline
+            testID="keystore-text"
+          />
+          <ArenaButton
+            label={IMPORT_BUTTON}
+            variant="secondary"
+            onPress={save}
+            testID="keystore-save"
+          />
+          {keystore.removed ? (
+            <ArenaText variant="bodyCaption" tone="subtle" testID="keystore-removed">
+              {REMOVE_NOTE}
+            </ArenaText>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <ArenaText variant="bodyMedium" testID="keystore-stored">
+            {storedLine(keystore.stored.claimedAddress)}
+          </ArenaText>
+          {justSaved ? (
+            <ArenaText variant="bodyCaption" tone="accent" testID="keystore-saved">
+              {SAVED_NOTE}
+            </ArenaText>
+          ) : null}
+
+          <FormField
+            label={PASSPHRASE_LABEL}
+            value={passphrase}
+            onChangeText={setPassphrase}
+            hint={PASSPHRASE_HINT}
+            secret
+            testID="keystore-passphrase"
+          />
+          <ArenaButton
+            label={TEST_BUTTON}
+            variant="secondary"
+            busy={proof.kind === 'proving'}
+            onPress={test}
+            testID="keystore-test"
+          />
+
+          {proof.kind === 'proving' ? (
+            <ArenaText
+              variant="bodyCaption"
+              tone="subtle"
+              accessibilityLiveRegion="polite"
+              testID="keystore-proving"
+            >
+              {PROVING_NOTE}
+            </ArenaText>
+          ) : null}
+          {proof.kind === 'wrong' ? (
+            <ArenaText
+              variant="bodyCaption"
+              tone="negative"
+              accessibilityLiveRegion="polite"
+              testID="keystore-wrong"
+            >
+              {WRONG_NOTE}
+            </ArenaText>
+          ) : null}
+          {proof.kind === 'failed' ? (
+            <ArenaText variant="bodyCaption" tone="negative" testID="keystore-failed">
+              {proof.message}
+            </ArenaText>
+          ) : null}
+          {proof.kind === 'opened' ? (
+            <View style={styles.result}>
+              <ArenaText
+                variant="bodySmall"
+                tone={proof.comparison.kind === 'differs' ? 'negative' : 'accent'}
+                accessibilityLiveRegion="polite"
+                testID="keystore-opened"
+              >
+                {describeOpened(proof.address, proof.comparison)}
+              </ArenaText>
+              {proof.claimedDiffers ? (
+                <ArenaText variant="bodyCaption" tone="subtle" testID="keystore-claimed">
+                  {CLAIMED_DIFFERS_NOTE}
+                </ArenaText>
+              ) : null}
+            </View>
+          ) : null}
+
+          <ArenaButton
+            label={REMOVE_BUTTON}
+            variant="secondary"
+            onPress={remove}
+            testID="keystore-remove"
+          />
+        </>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  block: {
+    marginHorizontal: layout.screenGutter,
+    marginTop: space[16],
+    padding: space[16],
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: color.decorative.divider,
+    backgroundColor: color.decorative.fill,
+    gap: space[8],
+  },
+  eyebrow: { textTransform: 'uppercase' },
+  result: { gap: space[4] },
+});

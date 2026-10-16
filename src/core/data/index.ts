@@ -7,7 +7,12 @@
  * wrong.
  */
 
-export { ArenaDataProvider, useArenaData, type ArenaData } from './arenaContext';
+export {
+  ArenaDataProvider,
+  useArenaData,
+  type ArenaData,
+  type KeystoreStore,
+} from './arenaContext';
 export type { BackupFile } from './backupFile';
 export {
   createCollectionRepository,

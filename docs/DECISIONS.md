@@ -2795,6 +2795,13 @@ person choose the piece. Buying comes after, and not from this step.
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.
 
+**Built (2026-10-16): the keystore, step B of buying.** The owner can paste a Nine Chronicles keystore on
+`/me`, test its passphrase and see whether the key inside is the account of the avatar they play. Nothing
+signs or sends. The module is `core/common/keystore.ts` (Web3 Secret Storage v3 over `@noble/*`, verified against
+the spec's own vectors), the storage is the MMKV preferences, the screen is `features/keystore`. The passphrase
+is never stored and the key is cleared as soon as its address is read. Open: `allowBackup` is on, a file picker
+and secure storage are the upgrades, and the KDF has not been timed on a device. See HANDOFF-market.md, step B.
+
 **Built (2026-10-15): costumes and materials in the market sheet.** The owner ran the equipment sheet
 on a device and asked for this next ("point 3"). Probed against Heimdall before any code:
 

@@ -52,6 +52,22 @@ export interface ArenaData {
    * rest; without it the card says the balance could not be read instead of guessing one.
    */
   balance?: BalanceSource;
+  /**
+   * The keystore the person imported, kept on the device (ADR-0044, step B). Optional like the
+   * rest: only the keystore section reads it.
+   */
+  keystore?: KeystoreStore;
+}
+
+/**
+ * Where the imported keystore text lives. A keystore is already encrypted with a passphrase this
+ * app never keeps, so this is a locked file on disk and not a secret: no key is stored, and no
+ * passphrase either.
+ */
+export interface KeystoreStore {
+  get(): string | null;
+  set(json: string): void;
+  clear(): void;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);

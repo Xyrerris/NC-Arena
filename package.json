@@ -26,6 +26,9 @@
   },
   "dependencies": {
     "@infinitered/react-native-mlkit-text-recognition": "^5.0.1",
+    "@noble/ciphers": "2.4.0",
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0",
     "@shopify/flash-list": "2.3.2",
     "@tanstack/react-query": "^5.101.4",
     "drizzle-orm": "^0.45.2",

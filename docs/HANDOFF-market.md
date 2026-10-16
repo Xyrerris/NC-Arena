@@ -180,8 +180,28 @@ Suggested steps (each shippable, none spends):
   the mid-air `productId` race, and everything in B–D. Original description:
   The confirmation card, no key: pick a listing in the sheet → re-read it → show piece, price,
   seller, balance, "this would buy". Nothing is signed. (Needs a way to read the balance: node GraphQL.)
-- **B.** Keystore import and decrypt test: store the encrypted file, ask for the passphrase, prove the
-  address matches the avatar's agent, drop the key. No purchase.
+- **B. (DONE 2026-10-16, not yet seen on a device.)** On `/me`, a "Wallet keystore" block
+  (`features/keystore`): paste the keystore JSON, it is stored as text under the MMKV key `pref.keystore`
+  (`ArenaData.keystore`); type the passphrase, **test** it; the answer is whether it opens, the address of the key
+  inside (`core/common/keystore.ts`: PBKDF2 or scrypt, AES-128-CTR, Keccak-256 MAC, secp256k1 → address) and
+  whether that is the **agent address of the viewer's avatar** (`AvatarSource`). The key is cleared the moment
+  the address is read; the passphrase is an argument and the field is emptied on use. **Checked against the
+  Web3 Secret Storage spec's own vectors** (both the PBKDF2 and the scrypt one decrypt to the known key and
+  address). Decisions and gaps, all worth the owner's eye:
+  - **Paste, not a file picker, and MMKV, not `expo-secure-store`.** Both would add a native module (a dev-client
+    rebuild); the new packages are pure JS (`@noble/ciphers`, `curves`, `hashes`, exact 2.4.0, ESM-only, so
+    `jest.config.js` now transforms `@noble` in both projects). A file picker and secure storage are the
+    upgrade if pasting a long JSON is too clumsy on a phone.
+  - **`android:allowBackup="true"`** is set in the merged manifest, so the stored keystore (passphrase-locked)
+    could ride along in a Google backup. A weak passphrase plus a copied file is an offline brute force.
+    Not changed here; `allowBackup=false` or excluding the MMKV file is the fix, and a decision for the owner.
+  - **Not measured on Hermes.** PBKDF2 at Libplanet's default (10,240 rounds) is a fraction of a second on Node;
+    on a phone nobody has timed it. scrypt over 64 MiB (the spec default is 256 MiB) is refused as
+    `UNSUPPORTED`, not attempted.
+  - **Libplanet's own file was not available to check.** The format is the public spec's, which Libplanet
+    follows (`Web3KeyStore`); a real keystore of the owner's is the first thing to try.
+    Original description: Keystore import and decrypt test: store the encrypted file, ask for the passphrase, prove the
+    address matches the avatar's agent, drop the key. No purchase.
 - **C.** `dry-run` end to end against the real node with a **throwaway key**: nonce, unsigned
   transaction, the verification, signature, `signTransaction` — and **not** `stageTransaction`.
 - **D.** The first real purchase, by the owner, on a cheap piece, with the cap low.

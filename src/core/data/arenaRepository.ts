@@ -46,6 +46,7 @@ import {
 } from '../network';
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
+import type { KeystoreStore } from './arenaContext';
 import { createCollectionRepository } from './collectionRepository';
 import { createMarketLibrary, type MarketLibrary } from './marketLibrary';
 import { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
@@ -120,6 +121,13 @@ export const avatarSource: AvatarSource = new FallbackAvatarSource([
   new MimirAvatarSource(),
   new NodeAvatarSource(),
 ]);
+
+/** The imported keystore (a passphrase-locked file), over the device's preferences. */
+export const keystoreStore: KeystoreStore = {
+  get: () => mmkvPreferences.getKeystore(),
+  set: (json) => mmkvPreferences.setKeystore(json),
+  clear: () => mmkvPreferences.clearKeystore(),
+};
 
 /** NCG held by an account, from a public node (the purchase card's balance line). */
 export const balanceSource: BalanceSource = new NodeBalanceSource();

@@ -14,6 +14,7 @@ import {
   avatarSource,
   balanceSource,
   collectionRepository,
+  keystoreStore,
   marketLibrary,
   sheetLibrary,
 } from '@/core/data/arenaRepository';
@@ -65,6 +66,7 @@ const ARENA_DATA: ArenaData = {
   sheets: sheetLibrary,
   market: marketLibrary,
   balance: balanceSource,
+  keystore: keystoreStore,
 };
 
 export default function RootLayout() {

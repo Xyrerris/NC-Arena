@@ -26,6 +26,7 @@ export const createMemoryPreferences = (
   let season: number | null = initial.season ?? null;
   let lastSyncedAt: number | null = initial.lastSyncedAt ?? null;
   let apiKey: string | null = initial.apiKey ?? null;
+  let keystore: string | null = null;
   let setupSkipped = false;
 
   return {
@@ -82,6 +83,13 @@ export const createMemoryPreferences = (
     },
     clearApiKey: () => {
       apiKey = null;
+    },
+    getKeystore: () => keystore,
+    setKeystore: (json) => {
+      keystore = json;
+    },
+    clearKeystore: () => {
+      keystore = null;
     },
     getSetupSkipped: () => setupSkipped,
     setSetupSkipped: () => {

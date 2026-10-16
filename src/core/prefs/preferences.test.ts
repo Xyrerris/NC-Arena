@@ -22,6 +22,17 @@ describe('createMemoryPreferences', () => {
     expect(prefs.getApiKey()).toBe('paired');
   });
 
+  it('keeps an imported keystore as the text it came in, and forgets it back to absent', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getKeystore()).toBeNull();
+
+    prefs.setKeystore('{"version":3}');
+    expect(prefs.getKeystore()).toBe('{"version":3}');
+
+    prefs.clearKeystore();
+    expect(prefs.getKeystore()).toBeNull();
+  });
+
   it('clears the key back to absent, not to an empty string', () => {
     const prefs = createMemoryPreferences({ apiKey: 'paired' });
     prefs.clearApiKey();
