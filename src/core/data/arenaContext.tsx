@@ -57,6 +57,22 @@ export interface ArenaData {
    * rest: only the keystore section reads it.
    */
   keystore?: KeystoreStore;
+  /**
+   * The per-purchase limit and the record of purchases (ADR-0044, step D). Optional like the rest:
+   * only the wallet block and the purchase flow read it.
+   */
+  purchases?: PurchaseStore;
+}
+
+/**
+ * Where the purchase limit and the purchase record live. The limit is a number the person chose
+ * (none means nothing can be bought); the record is JSON text, validated by `core/common/purchaseLog`.
+ */
+export interface PurchaseStore {
+  getLimit(): number | null;
+  setLimit(ncg: number | null): void;
+  getLog(): string | null;
+  setLog(json: string): void;
 }
 
 /**

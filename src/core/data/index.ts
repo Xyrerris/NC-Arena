@@ -12,6 +12,7 @@ export {
   useArenaData,
   type ArenaData,
   type KeystoreStore,
+  type PurchaseStore,
 } from './arenaContext';
 export type { BackupFile } from './backupFile';
 export {

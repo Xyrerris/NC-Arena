@@ -106,6 +106,22 @@ export const mmkvPreferences: ArenaPreferences = {
     storage.remove(PREF_KEYS.keystore);
   },
 
+  // Validated on the way out: a limit written by code that no longer exists, or a non-positive
+  // one, reads as "none" — and none means no purchase, the cautious reading.
+  getPurchaseLimit: () => {
+    const stored = storage.getNumber(PREF_KEYS.purchaseLimit);
+    return stored === undefined || !Number.isFinite(stored) || stored <= 0 ? null : stored;
+  },
+  setPurchaseLimit: (ncg) => storage.set(PREF_KEYS.purchaseLimit, ncg),
+  clearPurchaseLimit: () => {
+    storage.remove(PREF_KEYS.purchaseLimit);
+  },
+  getPurchaseLog: () => {
+    const stored = storage.getString(PREF_KEYS.purchaseLog);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setPurchaseLog: (json) => storage.set(PREF_KEYS.purchaseLog, json),
+
   getSetupSkipped: () => storage.getBoolean(PREF_KEYS.setupSkipped) === true,
   setSetupSkipped: () => storage.set(PREF_KEYS.setupSkipped, true),
 };

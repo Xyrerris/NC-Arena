@@ -24,6 +24,12 @@ import {
   IMPORT_BUTTON,
   IMPORT_HINT,
   IMPORT_LABEL,
+  LIMIT_HINT,
+  LIMIT_LABEL,
+  LIMIT_REMOVE,
+  LIMIT_SAVE,
+  MODE_NOTE,
+  limitLine,
   PASSPHRASE_HINT,
   PASSPHRASE_LABEL,
   PROVING_NOTE,
@@ -38,9 +44,12 @@ import {
   storedLine,
 } from './keystoreUiState';
 import { useKeystore } from './useKeystore';
+import { usePurchaseLimit } from './usePurchaseLimit';
 
 export function KeystoreSection() {
   const keystore = useKeystore();
+  const purchase = usePurchaseLimit();
+  const [limitText, setLimitText] = useState('');
   const [text, setText] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [justSaved, setJustSaved] = useState(false);
@@ -176,6 +185,43 @@ export function KeystoreSection() {
           />
         </>
       )}
+
+      {purchase === null ? null : (
+        <View style={styles.limit} testID="purchase-limit">
+          <ArenaText variant="bodyMedium" testID="purchase-limit-line">
+            {limitLine(purchase.limit)}
+          </ArenaText>
+          <FormField
+            label={LIMIT_LABEL}
+            value={limitText}
+            onChangeText={setLimitText}
+            error={purchase.error}
+            hint={LIMIT_HINT}
+            keyboardType="decimal-pad"
+            numeric
+            testID="purchase-limit-input"
+          />
+          <ArenaButton
+            label={LIMIT_SAVE}
+            variant="secondary"
+            onPress={() => {
+              if (purchase.onSave(limitText)) setLimitText('');
+            }}
+            testID="purchase-limit-save"
+          />
+          {purchase.limit === null ? null : (
+            <ArenaButton
+              label={LIMIT_REMOVE}
+              variant="secondary"
+              onPress={purchase.onRemove}
+              testID="purchase-limit-remove"
+            />
+          )}
+          <ArenaText variant="bodyCaption" tone="subtle" testID="purchase-mode">
+            {MODE_NOTE}
+          </ArenaText>
+        </View>
+      )}
     </View>
   );
 }
@@ -193,4 +239,5 @@ const styles = StyleSheet.create({
   },
   eyebrow: { textTransform: 'uppercase' },
   result: { gap: space[4] },
+  limit: { gap: space[8], marginTop: space[8] },
 });

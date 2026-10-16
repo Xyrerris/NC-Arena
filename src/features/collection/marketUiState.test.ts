@@ -204,6 +204,9 @@ describe('toListingUi', () => {
       unitPrice: 142.5,
       hasSkill: true,
       sellerAvatarAddress: 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63',
+      sellerAgentAddress: '0aa07AbEb5791302C14F9B1F633af96A4c05C7cB',
+      tradableId: '00000000-0000-0000-0000-0000000000aa',
+      legacy: false,
       registeredBlockIndex: 1,
     };
 
@@ -229,6 +232,9 @@ describe('toListingUi', () => {
       unitPrice: 5,
       hasSkill: false,
       sellerAvatarAddress: 'ebb88102b3C561168aF72f71fdB9eA1469FDAA63',
+      sellerAgentAddress: '0aa07AbEb5791302C14F9B1F633af96A4c05C7cB',
+      tradableId: '00000000-0000-0000-0000-0000000000aa',
+      legacy: false,
       registeredBlockIndex: 1,
     };
 

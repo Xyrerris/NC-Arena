@@ -391,6 +391,9 @@ describe('CollectionScreen', () => {
       unitPrice: n,
       hasSkill: true,
       sellerAvatarAddress: sellerAddress,
+      sellerAgentAddress: sellerAddress,
+      tradableId: '00000000-0000-0000-0000-0000000000aa',
+      legacy: false,
       registeredBlockIndex: 1,
       ...overrides,
     });

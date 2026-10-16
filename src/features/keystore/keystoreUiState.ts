@@ -28,6 +28,35 @@ export const WRONG_NOTE = 'Wrong passphrase, or the keystore was changed.';
 export const CLAIMED_DIFFERS_NOTE =
   'The file names another address than the key inside it. The key is what counts.';
 
+export const MODE_NOTE =
+  'Mode: dry run. A purchase is checked and signed here, and nothing is sent: sending is not built yet.';
+
+export const LIMIT_LABEL = 'Limit per purchase (NCG)';
+export const LIMIT_HINT =
+  'Nothing that costs more is bought. With no limit, nothing can be bought.';
+export const LIMIT_SAVE = 'SAVE LIMIT';
+export const LIMIT_REMOVE = 'REMOVE LIMIT';
+export const LIMIT_ERROR = 'Enter an amount above 0, with at most two decimals.';
+
+/** The most a limit may be, so a slip of the finger is not "a million". */
+export const MAX_LIMIT_NCG = 100_000;
+
+/**
+ * The typed limit as a number, or null when it is not an amount above zero with at most two decimals.
+ * Either `,` or `.` is the decimal mark: the app writes commas (ADR-0025) and a keyboard may not.
+ */
+export const parseLimit = (text: string): number | null => {
+  const clean = text.trim();
+  if (!/^\d+(?:[.,]\d{1,2})?$/.test(clean)) return null;
+  const value = Number(clean.replace(',', '.'));
+  return value > 0 && value <= MAX_LIMIT_NCG ? value : null;
+};
+
+export const limitLine = (limit: number | null): string =>
+  limit === null
+    ? 'No limit set: nothing can be bought.'
+    : `Limit: ${String(limit).replace('.', ',')} NCG per purchase`;
+
 /** `0x1a2b…c3d4`: enough to tell accounts apart on a phone. */
 export const shortAgent = (address: string): string => {
   const bare = address.replace(/^0x/i, '').toLowerCase();

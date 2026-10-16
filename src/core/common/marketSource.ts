@@ -47,6 +47,12 @@ export interface MarketListing {
    */
   readonly hasSkill: boolean;
   readonly sellerAvatarAddress: string;
+  /** The seller's account. A purchase names it, and refuses to buy from the buyer's own. */
+  readonly sellerAgentAddress: string;
+  /** The item's own id (a GUID). Part of what the purchase action names. */
+  readonly tradableId: string;
+  /** lib9c's `legacy` flag of the product: part of what the purchase action names. */
+  readonly legacy: boolean;
   readonly registeredBlockIndex: number;
 }
 

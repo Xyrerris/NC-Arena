@@ -27,6 +27,8 @@ export const createMemoryPreferences = (
   let lastSyncedAt: number | null = initial.lastSyncedAt ?? null;
   let apiKey: string | null = initial.apiKey ?? null;
   let keystore: string | null = null;
+  let purchaseLimit: number | null = null;
+  let purchaseLog: string | null = null;
   let setupSkipped = false;
 
   return {
@@ -90,6 +92,17 @@ export const createMemoryPreferences = (
     },
     clearKeystore: () => {
       keystore = null;
+    },
+    getPurchaseLimit: () => purchaseLimit,
+    setPurchaseLimit: (ncg) => {
+      purchaseLimit = ncg;
+    },
+    clearPurchaseLimit: () => {
+      purchaseLimit = null;
+    },
+    getPurchaseLog: () => purchaseLog,
+    setPurchaseLog: (json) => {
+      purchaseLog = json;
     },
     getSetupSkipped: () => setupSkipped,
     setSetupSkipped: () => {

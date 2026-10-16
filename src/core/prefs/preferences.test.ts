@@ -33,6 +33,20 @@ describe('createMemoryPreferences', () => {
     expect(prefs.getKeystore()).toBeNull();
   });
 
+  it('keeps a purchase limit and the purchase record, and forgets the limit back to none', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getPurchaseLimit()).toBeNull();
+    expect(prefs.getPurchaseLog()).toBeNull();
+
+    prefs.setPurchaseLimit(250.5);
+    prefs.setPurchaseLog('[]');
+    expect(prefs.getPurchaseLimit()).toBe(250.5);
+    expect(prefs.getPurchaseLog()).toBe('[]');
+
+    prefs.clearPurchaseLimit();
+    expect(prefs.getPurchaseLimit()).toBeNull();
+  });
+
   it('clears the key back to absent, not to an empty string', () => {
     const prefs = createMemoryPreferences({ apiKey: 'paired' });
     prefs.clearApiKey();

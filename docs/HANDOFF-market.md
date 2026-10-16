@@ -223,7 +223,25 @@ Suggested steps (each shippable, none spends):
   - The price-moved check, the per-purchase cap, the record before the send, `dry-run` as the default mode.
     Original description: `dry-run` end to end against the real node with a **throwaway key**: nonce, unsigned
     transaction, the verification, signature, `signTransaction` — and **not** `stageTransaction`.
-- **D.** The first real purchase, by the owner, on a cheap piece, with the cap low.
+- **D, prepared (2026-10-16). Nothing sends, and nothing in the app calls it yet.** Built, all pure and
+  tested: `MarketListing` now carries `sellerAgentAddress`, `tradableId`, `legacy` (the action names them);
+  `core/common/purchasePolicy.ts` (`checkPurchase`: gone, **price moved**, not equipment, **already
+  bought/in flight**, self, **wrong account**, **no limit = no purchase**, over the limit, balance unknown, balance
+  short; `resolveMode`: **`dry-run` by default, and `live` resolves to `dry-run` while `LIVE_SENDING_BUILT` is
+  false**); `purchaseLog.ts` (the record, `prepared` → `dry-run`/`sent`/`confirmed`/`failed`, validated JSON, an
+  unreadable log is _not_ an empty one); `purchaseFlow.ts` (`runPurchase`: rules → **record written first** → dry run
+  → record updated; a `live` request returns `live-unavailable` before writing or signing anything). Storage:
+  `ArenaData.purchases` over the MMKV preferences (`pref.purchaseLimit`, `pref.purchaseLog`). The only UI is the
+  **limit field in the wallet block on `/me`** (none set = nothing can be bought) and a line saying the mode is a
+  dry run. **Not done, and the order I would take:**
+  1. A "buy" action on the purchase card that asks for the passphrase, opens the keystore
+     (`openKeystore`), and calls `runPurchase` in dry-run — the card still ends at "Buying is not available yet".
+  2. A way to see and clear the purchase record (a crash leaves a live `prepared` entry that blocks that offer).
+  3. The send itself: a `StageSource` port apart from `TransactionSource`, `stageTransaction`, then polling
+     `transactionResult` (SUCCESS/FAILURE/INVALID with a grace period, as NC-Market does), `LIVE_SENDING_BUILT = true`,
+     and a stored mode setting. **The first real send is the owner's, on a cheap piece, with the limit low.**
+  4. The account needs Mead for gas besides NCG; the app can read NCG only.
+     Original description: The first real purchase, by the owner, on a cheap piece, with the cap low.
 
 Alternatives I considered and did not pick: hand the purchase to the NC-Market Telegram bot (no key on
 the phone, but it ties the app to a bot the owner runs); a wallet-signing protocol (none with a known

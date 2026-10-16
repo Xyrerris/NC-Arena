@@ -117,6 +117,20 @@ export interface ArenaPreferences {
   clearKeystore(): void;
 
   /**
+   * The most, in NCG, one purchase may cost (ADR-0044, step D), or null for none. **None means no
+   * purchase**: the cautious default, so a limit is something the person chooses.
+   */
+  getPurchaseLimit(): number | null;
+  setPurchaseLimit(ncg: number): void;
+  clearPurchaseLimit(): void;
+  /**
+   * The record of purchases as JSON text (`core/common/purchaseLog`), or null. Kept as text and
+   * validated by whoever reads it: a record that cannot be read is refused over, not replaced.
+   */
+  getPurchaseLog(): string | null;
+  setPurchaseLog(json: string): void;
+
+  /**
    * The user chose to keep this ladder on this device only, and to skip the setup gate
    * (ADR-0038). It does not stop them pairing later from the "You" screen; it only stops the
    * gate standing in front of the roster on every launch.
@@ -139,5 +153,7 @@ export const PREF_KEYS = {
   lastSyncedAt: 'pref.lastSyncedAt',
   apiKey: 'pref.apiKey',
   keystore: 'pref.keystore',
+  purchaseLimit: 'pref.purchaseLimit',
+  purchaseLog: 'pref.purchaseLog',
   setupSkipped: 'pref.setupSkipped',
 } as const;

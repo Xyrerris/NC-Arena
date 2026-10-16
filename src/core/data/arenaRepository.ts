@@ -46,7 +46,7 @@ import {
 } from '../network';
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
-import type { KeystoreStore } from './arenaContext';
+import type { KeystoreStore, PurchaseStore } from './arenaContext';
 import { createCollectionRepository } from './collectionRepository';
 import { createMarketLibrary, type MarketLibrary } from './marketLibrary';
 import { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
@@ -127,6 +127,15 @@ export const keystoreStore: KeystoreStore = {
   get: () => mmkvPreferences.getKeystore(),
   set: (json) => mmkvPreferences.setKeystore(json),
   clear: () => mmkvPreferences.clearKeystore(),
+};
+
+/** The per-purchase limit and the record of purchases, over the device's preferences. */
+export const purchaseStore: PurchaseStore = {
+  getLimit: () => mmkvPreferences.getPurchaseLimit(),
+  setLimit: (ncg) =>
+    ncg === null ? mmkvPreferences.clearPurchaseLimit() : mmkvPreferences.setPurchaseLimit(ncg),
+  getLog: () => mmkvPreferences.getPurchaseLog(),
+  setLog: (json) => mmkvPreferences.setPurchaseLog(json),
 };
 
 /** NCG held by an account, from a public node (the purchase card's balance line). */

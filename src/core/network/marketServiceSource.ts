@@ -100,6 +100,9 @@ const listingSchema = z.object({
   quantity: z.number().int().positive().safe(),
   unitPrice: z.number().finite().nonnegative(),
   sellerAvatarAddress: z.string(),
+  sellerAgentAddress: z.string(),
+  tradableId: z.string(),
+  legacy: z.boolean(),
   registeredBlockIndex: z.number().int().safe(),
   // Ordinary and buff skills together; only whether there are any is read.
   skillModels: z.array(z.unknown()),
@@ -240,6 +243,9 @@ export class MarketServiceSource implements MarketSource {
             unitPrice: row.unitPrice,
             hasSkill: row.skillModels.length > 0,
             sellerAvatarAddress: row.sellerAvatarAddress,
+            sellerAgentAddress: row.sellerAgentAddress,
+            tradableId: row.tradableId,
+            legacy: row.legacy,
             registeredBlockIndex: row.registeredBlockIndex,
           })),
         );

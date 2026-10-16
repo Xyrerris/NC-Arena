@@ -3,7 +3,7 @@
  * buying, for each way the comparison with the avatar's account can come out.
  */
 
-import { describeOpened, shortAgent, storedLine } from './keystoreUiState';
+import { describeOpened, limitLine, parseLimit, shortAgent, storedLine } from './keystoreUiState';
 
 const KEY = '008aeeda4d805471df9b2a5b0f38a0c3bcba786b';
 const OTHER = '0xD7E4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1f2e';
@@ -13,6 +13,31 @@ describe('shortAgent', () => {
     expect(shortAgent(KEY)).toBe('0x008a…786b');
     expect(shortAgent(`0x${KEY.toUpperCase()}`)).toBe('0x008a…786b');
     expect(shortAgent('0xABCD')).toBe('0xabcd');
+  });
+});
+
+describe('parseLimit', () => {
+  it('reads an amount above zero with at most two decimals, with either mark', () => {
+    expect(parseLimit('250')).toBe(250);
+    expect(parseLimit(' 12,5 ')).toBe(12.5);
+    expect(parseLimit('12.50')).toBe(12.5);
+    expect(parseLimit('0,01')).toBe(0.01);
+    expect(parseLimit('100000')).toBe(100_000);
+  });
+
+  it.each(['', '0', '0,00', '-5', '1,234', '1.2.3', 'abc', '12 NCG', '100000,01', '100001', '1e3'])(
+    'refuses %j',
+    (text) => {
+      expect(parseLimit(text)).toBeNull();
+    },
+  );
+});
+
+describe('limitLine', () => {
+  it('says what the limit is, with the app’s comma, or that nothing can be bought without one', () => {
+    expect(limitLine(250)).toBe('Limit: 250 NCG per purchase');
+    expect(limitLine(12.5)).toBe('Limit: 12,5 NCG per purchase');
+    expect(limitLine(null)).toBe('No limit set: nothing can be bought.');
   });
 });
 

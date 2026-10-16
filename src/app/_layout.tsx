@@ -16,6 +16,7 @@ import {
   collectionRepository,
   keystoreStore,
   marketLibrary,
+  purchaseStore,
   sheetLibrary,
 } from '@/core/data/arenaRepository';
 import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
@@ -67,6 +68,7 @@ const ARENA_DATA: ArenaData = {
   market: marketLibrary,
   balance: balanceSource,
   keystore: keystoreStore,
+  purchases: purchaseStore,
 };
 
 export default function RootLayout() {

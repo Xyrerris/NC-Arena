@@ -14,7 +14,12 @@ import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { err, ok, type AvatarSource } from '@/core/common';
-import { ArenaDataProvider, type KeystoreStore, type RosterRepository } from '@/core/data';
+import {
+  ArenaDataProvider,
+  type KeystoreStore,
+  type PurchaseStore,
+  type RosterRepository,
+} from '@/core/data';
 import type { PlayerDraft } from '@/core/model';
 import {
   createStubLiveData,
@@ -82,6 +87,16 @@ describe('KeystoreSection', () => {
   let kept: string | null;
   let store: KeystoreStore;
   let avatarSource: AvatarSource | undefined;
+  let limit: number | null;
+  let withPurchases: boolean;
+  const purchases: PurchaseStore = {
+    getLimit: () => limit,
+    setLimit: (ncg) => {
+      limit = ncg;
+    },
+    getLog: () => null,
+    setLog: () => {},
+  };
 
   const agent = (agentAddress: string): AvatarSource => ({
     name: 'test',
@@ -98,6 +113,7 @@ describe('KeystoreSection', () => {
               useLiveData: createStubLiveData(),
               avatarSource,
               keystore: store,
+              purchases: withPurchases ? purchases : undefined,
             }}
           >
             {children}
@@ -121,6 +137,8 @@ describe('KeystoreSection', () => {
       },
     };
     avatarSource = undefined;
+    limit = null;
+    withPurchases = true;
   });
 
   afterEach(async () => {
@@ -252,6 +270,58 @@ describe('KeystoreSection', () => {
     await test('hunter2');
 
     await waitFor(() => expect(screen.getByTestId('keystore-claimed')).toBeTruthy());
+  });
+
+  describe('the limit per purchase', () => {
+    it('says nothing can be bought without one, and that the mode is a dry run', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('purchase-limit-line')).toBe('No limit set: nothing can be bought.');
+      expect(text('purchase-mode')).toContain('dry run');
+      expect(screen.queryByTestId('purchase-limit-remove')).toBeNull();
+    });
+
+    it('saves an amount typed with a comma, shows it, and empties the field', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('purchase-limit-input', '12,5');
+      await press('purchase-limit-save');
+
+      expect(limit).toBe(12.5);
+      expect(text('purchase-limit-line')).toBe('Limit: 12,5 NCG per purchase');
+      expect(screen.getByTestId('purchase-limit-input').props.value).toBe('');
+    });
+
+    it('refuses an amount that is not above zero with two decimals, and keeps what was there', async () => {
+      limit = 50;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('purchase-limit-input', '1,234');
+      await press('purchase-limit-save');
+
+      expect(limit).toBe(50);
+      expect(text('purchase-limit-input-error')).toBe(
+        'Enter an amount above 0, with at most two decimals.',
+      );
+    });
+
+    it('removes the limit, which means nothing can be bought again', async () => {
+      limit = 50;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+      expect(text('purchase-limit-line')).toBe('Limit: 50 NCG per purchase');
+
+      await press('purchase-limit-remove');
+
+      expect(limit).toBeNull();
+      expect(text('purchase-limit-line')).toBe('No limit set: nothing can be bought.');
+    });
+
+    it('is not shown where the app supplies no purchase store', async () => {
+      withPurchases = false;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(screen.queryByTestId('purchase-limit')).toBeNull();
+    });
   });
 
   it('removes the keystore and says nothing of it is left', async () => {
