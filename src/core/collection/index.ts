@@ -4,6 +4,7 @@ export * from './equipmentCatalog';
 export * from './itemCategory';
 export * from './marketMatch';
 export * from './otherItems';
+export * from './ownership';
 export * from './reconciliation';
 export * from './sampleSheet';
 export * from './unlockedState';

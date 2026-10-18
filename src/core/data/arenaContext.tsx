@@ -14,7 +14,13 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
-import type { AvatarSource, BalanceSource, TransactionSender, TransactionSource } from '../common';
+import type {
+  AvatarSource,
+  BalanceSource,
+  InventorySource,
+  TransactionSender,
+  TransactionSource,
+} from '../common';
 import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
 import type { MarketLibrary } from './marketLibrary';
@@ -47,6 +53,11 @@ export interface ArenaData {
    * like the rest: only the market sheet reads it, and a build that forgot to wire it fails there.
    */
   market?: MarketLibrary;
+  /**
+   * What the active avatar owns, read from the chain so the collection screen can mark the pieces
+   * it already has. Optional like the rest: without it the screen shows no ownership at all.
+   */
+  inventory?: InventorySource;
   /**
    * How much NCG an account holds, for the purchase card (ADR-0044, step A). Optional like the
    * rest; without it the card says the balance could not be read instead of guessing one.

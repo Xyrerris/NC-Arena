@@ -73,6 +73,7 @@ export {
 export { MimirAvatarSource } from './mimirAvatarSource';
 export { NodeAvatarSource } from './nodeAvatarSource';
 export { NodeBalanceSource } from './nodeBalanceSource';
+export { NodeInventorySource } from './nodeInventorySource';
 export { GENESIS_HASHES, NodeTransactionSource } from './nodeTransactionSource';
 export { NodeTransactionSender } from './nodeTransactionSender';
 export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';

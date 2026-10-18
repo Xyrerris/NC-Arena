@@ -49,8 +49,22 @@ describe('toRowUi', () => {
       itemCountLabel: '2 items',
       // No catalog: nothing says these are equipment, so no mark is claimed.
       items: [
-        { key: '10110000-0', label: '10110000', needsSkill: false, a11y: '10110000' },
-        { key: '10310000-1', label: '10310000', needsSkill: false, a11y: '10310000' },
+        {
+          key: '10110000-0',
+          label: '10110000',
+          needsSkill: false,
+          a11y: '10110000',
+          owned: false,
+          ownedText: null,
+        },
+        {
+          key: '10310000-1',
+          label: '10310000',
+          needsSkill: false,
+          a11y: '10310000',
+          owned: false,
+          ownedText: null,
+        },
       ],
     });
     expect(rows([])[1]?.itemCountLabel).toBe('1 item');
@@ -179,8 +193,48 @@ describe('toEquipmentLines', () => {
         label: 'Long Sword +4 · Normal',
         needsSkill: false,
         a11y: 'Long Sword +4 · Normal',
+        owned: false,
+        ownedText: null,
       },
     ]);
+  });
+});
+
+describe('ownership marks', () => {
+  const catalog = parseEquipmentCatalog(
+    ['id,_name,item_sub_type,grade,elemental_type', '10110000,Long Sword,Weapon,1,Normal'].join(
+      '\n',
+    ),
+  );
+  const bag = {
+    equipment: [{ itemId: 10110000, level: 0, hasSkill: true }],
+    stackable: new Map<number, number>([[10210000, 3]]),
+  };
+
+  it('says nothing about ownership until an inventory has been read', () => {
+    const { rows } = reconcile(SHEET, null, new Set());
+
+    const ui = toRowUi(rows[0]!, catalog);
+
+    expect(ui.ownedSummary).toBeNull();
+    expect(ui.items.every((item) => item.ownedText === null)).toBe(true);
+  });
+
+  it('tags each line as in the bag or still to find, and counts what is already held', () => {
+    const { rows } = reconcile(SHEET, null, new Set());
+
+    const ui = toRowUi(rows[0]!, catalog, new Map(), bag);
+
+    expect(ui.items.map((item) => item.ownedText)).toEqual(['IN BAG', 'IN BAG ×3', 'TO FIND']);
+    expect(ui.items.map((item) => item.owned)).toEqual([true, true, false]);
+    expect(ui.items[0]?.a11y).toBe('Long Sword +0 · Normal, needs a skill, in bag');
+    expect(ui.ownedSummary).toBe('2 of 3 already in your bag');
+  });
+
+  it('does not summarise a collection that is already unlocked', () => {
+    const { rows } = reconcile(SHEET, chain([1]), new Set());
+
+    expect(toRowUi(rows[0]!, catalog, new Map(), bag).ownedSummary).toBeNull();
   });
 });
 

@@ -22,6 +22,13 @@ export type {
   UnlockedCollections,
 } from './collectionSource';
 export type {
+  AvatarInventory,
+  InventoryError,
+  InventoryFailure,
+  InventorySource,
+  OwnedEquipment,
+} from './inventorySource';
+export type {
   MarketError,
   MarketFailure,
   MarketListing,

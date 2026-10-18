@@ -74,6 +74,20 @@ export const collectionStrings = {
   marketButtonA11y: (id: number) => `Find the pieces of collection ${id} on the market`,
   marketNotSold: 'Not sold on the market',
 
+  ownedTag: 'IN BAG',
+  ownedTagMany: (count: number) => `IN BAG ×${count}`,
+  ownedPartial: (owned: number, needed: number) => `${owned} OF ${needed} IN BAG`,
+  missingTag: 'TO FIND',
+  ownedA11y: (label: string, tag: string) => `${label}, ${tag.toLowerCase()}`,
+  ownedSummary: (have: number, total: number) => `${have} of ${total} already in your bag`,
+  itemYouHave: (count: number) => `you have ${count}`,
+  inventoryReading: 'Reading your inventory…',
+  inventoryUpdated: (since: string, source: string) => `Inventory read ${since} · ${source}`,
+  inventoryNone: 'The chain has no avatar at this address, so what you own is not shown.',
+  inventoryFailedOffline: 'Could not read your inventory. The pieces you own are not marked.',
+  inventoryFailedOther:
+    'Your inventory could not be read right now. The pieces you own are not marked.',
+
   marketTitle: (id: number) => `Market · Collection ${id}`,
   marketClose: 'CLOSE',
   marketCloseA11y: 'Close the market list',

@@ -8,6 +8,8 @@
 
 import {
   ITEM_CATEGORIES,
+  ownedCount,
+  ownedPieces,
   type CollectionBonus,
   type CollectionRequirement,
   type CollectionRow,
@@ -21,7 +23,7 @@ import {
   type RowFilter,
   type RowSort,
 } from '@/core/collection';
-import { timeSince } from '@/core/common';
+import { timeSince, type AvatarInventory } from '@/core/common';
 import type { StoredChainRead } from '@/core/data';
 import type { Tone } from '@/core/design-system';
 
@@ -119,6 +121,8 @@ export interface CollectionRowUi {
   readonly market: { readonly label: string; readonly a11y: string } | null;
   /** Said instead of the button when every piece is one the market does not sell (Aura, Grimoire). */
   readonly marketNote: string | null;
+  /** `2 of 3 already in your bag`, or null without an inventory read or for an unlocked collection. */
+  readonly ownedSummary: string | null;
   /** What the row's button does, or null when there is nothing to do. */
   readonly action: { readonly tick: boolean; readonly label: string; readonly a11y: string } | null;
 }
@@ -134,9 +138,34 @@ export const requirementLabel = (
     : words.piece(info.name, requirement.level, info.element);
 };
 
+/** What the avatar holds, as far as the collection view-models need it. */
+export type Holdings = Pick<AvatarInventory, 'equipment' | 'stackable'>;
+
+/**
+ * Whether a requirement is already in the bag, as a tag. `null` when no inventory was read: the
+ * line then says nothing rather than claim a piece is missing.
+ */
+export const ownedTag = (
+  requirement: CollectionRequirement,
+  holdings: Holdings | null,
+): { readonly text: string; readonly have: boolean } | null => {
+  if (holdings === null) return null;
+  const owned = ownedCount(requirement, holdings);
+  const needed = Math.max(1, requirement.count);
+  if (owned >= needed) {
+    return { text: owned > 1 ? words.ownedTagMany(owned) : words.ownedTag, have: true };
+  }
+  if (owned > 0) return { text: words.ownedPartial(owned, needed), have: false };
+  return { text: words.missingTag, have: false };
+};
+
 export interface RequirementUi {
   readonly key: string;
   readonly label: string;
+  /** The ownership tag (`IN BAG`, `TO FIND`...), or null when no inventory has been read. */
+  readonly ownedText: string | null;
+  /** True when the avatar already holds what this line asks for. */
+  readonly owned: boolean;
   /** Draws the skill mark. Only for a piece the catalog knows is equipment (see `requirementUi`). */
   readonly needsSkill: boolean;
   readonly a11y: string;
@@ -152,14 +181,19 @@ export const requirementUi = (
   requirement: CollectionRequirement,
   index: number,
   catalog: EquipmentCatalog,
+  holdings: Holdings | null = null,
 ): RequirementUi => {
   const label = requirementLabel(requirement, catalog);
   const needsSkill = catalog.has(requirement.itemId) && requirement.skillContains;
+  const tag = ownedTag(requirement, holdings);
+  const described = needsSkill ? words.itemNeedsSkill(label) : label;
   return {
     key: `${requirement.itemId}-${index}`,
     label,
+    ownedText: tag?.text ?? null,
+    owned: tag?.have ?? false,
     needsSkill,
-    a11y: needsSkill ? words.itemNeedsSkill(label) : label,
+    a11y: tag === null ? described : words.ownedA11y(described, tag.text),
   };
 };
 
@@ -167,6 +201,7 @@ export const toRowUi = (
   row: CollectionRow,
   catalog: EquipmentCatalog = new Map(),
   others: OtherItemCatalog = new Map(),
+  holdings: Holdings | null = null,
 ): CollectionRowUi => {
   const id = row.collection.id;
   const status = STATUS[row.status];
@@ -180,6 +215,10 @@ export const toRowUi = (
   // so no piece has a market and the row stays as it was.
   const offered = row.status === 'UNLOCKED' ? null : marketPieces(row.collection, catalog, others);
   const searchable = offered !== null && canSearchMarket(offered);
+  // An unlocked collection has nothing left to buy, so a summary of the bag would only be noise.
+  const owned =
+    holdings === null || row.status === 'UNLOCKED' ? null : ownedPieces(row.collection, holdings);
+  const ownedSummary = owned === null ? null : words.ownedSummary(owned.have, owned.total);
   return {
     key: `collection-${id}`,
     collectionId: id,
@@ -190,7 +229,10 @@ export const toRowUi = (
     statusLabel: status.label,
     statusTone: status.tone,
     itemCountLabel: words.itemCount(row.itemsNeeded),
-    items: row.collection.requirements.map((r, index) => requirementUi(r, index, catalog)),
+    items: row.collection.requirements.map((r, index) =>
+      requirementUi(r, index, catalog, holdings),
+    ),
+    ownedSummary: ownedSummary,
     bonusText: bonusLabel(row.collection.bonuses),
     action,
   };
@@ -242,7 +284,10 @@ export type ItemLineUi =
  * open collections it helps, under a heading per kind of equipment. The list arrives sorted by
  * how many collections a piece helps, so a heading takes its place from the first piece under it.
  */
-export const toEquipmentLines = (list: MissingEquipmentList): readonly ItemLineUi[] => {
+export const toEquipmentLines = (
+  list: MissingEquipmentList,
+  holdings: Holdings | null = null,
+): readonly ItemLineUi[] => {
   const kinds: string[] = [];
   for (const piece of list.entries) if (!kinds.includes(piece.subType)) kinds.push(piece.subType);
 
@@ -257,7 +302,20 @@ export const toEquipmentLines = (list: MissingEquipmentList): readonly ItemLineU
         text: `${words.piece(piece.name, piece.level, piece.element)} · ${
           piece.skillContains ? words.withSkill : words.noSkill
         }`,
-        detail: words.helps(piece.neededBy.length),
+        detail:
+          holdings === null
+            ? words.helps(piece.neededBy.length)
+            : `${words.helps(piece.neededBy.length)} · ${words.itemYouHave(
+                ownedCount(
+                  {
+                    itemId: piece.id,
+                    count: 1,
+                    level: piece.level,
+                    skillContains: piece.skillContains,
+                  },
+                  holdings,
+                ),
+              )}`,
       })),
   ]);
 };
@@ -272,6 +330,39 @@ export const toItemLines = (groups: readonly ItemGroup[]): readonly ItemLineUi[]
       text: words.itemUnlocks(item.itemId, item.neededBy.length),
     })),
   ]);
+
+export type InventoryRead =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'running' }
+  | { readonly kind: 'ready'; readonly inventory: AvatarInventory }
+  /** The chain has no avatar at this address. */
+  | { readonly kind: 'none' }
+  | { readonly kind: 'failed'; readonly reason: 'OFFLINE' | 'FAILED' };
+
+/** The one line above the list about the inventory: reading, how old it is, or why it is missing. */
+export const inventoryNote = (
+  read: InventoryRead,
+  now: number,
+): { readonly text: string; readonly tone: 'subtle' | 'negative' | 'accent' } | null => {
+  switch (read.kind) {
+    case 'idle':
+      return null;
+    case 'running':
+      return { text: words.inventoryReading, tone: 'accent' };
+    case 'ready':
+      return {
+        text: words.inventoryUpdated(timeSince(read.inventory.readAt, now), read.inventory.source),
+        tone: 'subtle',
+      };
+    case 'none':
+      return { text: words.inventoryNone, tone: 'negative' };
+    case 'failed':
+      return {
+        text: read.reason === 'OFFLINE' ? words.inventoryFailedOffline : words.inventoryFailedOther,
+        tone: 'negative',
+      };
+  }
+};
 
 export type RefreshUi =
   | { readonly kind: 'idle' }

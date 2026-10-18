@@ -26,7 +26,9 @@ import {
   ok,
   type AvatarSource,
   type BalanceSource,
+  type AvatarInventory,
   type CollectionSource,
+  type InventorySource,
   type MarketListing,
   type ScanOptions,
   type TransactionSource,
@@ -109,6 +111,7 @@ describe('CollectionScreen', () => {
   let purchaseLog: string | null;
   let purchaseMode: string | null;
   let transactions: TransactionSource | undefined;
+  let inventory: InventorySource | undefined;
   const keystore: KeystoreStore = {
     get: () => keystoreText,
     set: (json) => {
@@ -155,6 +158,7 @@ describe('CollectionScreen', () => {
               keystore,
               purchases,
               transactions,
+              inventory,
             }}
           >
             {children}
@@ -198,6 +202,7 @@ describe('CollectionScreen', () => {
     purchaseLog = null;
     purchaseMode = null;
     transactions = undefined;
+    inventory = undefined;
     mockPush.mockClear();
   });
 
@@ -395,6 +400,67 @@ describe('CollectionScreen', () => {
     // Collection 1 is unlocked, so the shared weapon now serves two collections, not three.
     expect(screen.getByText('10110000 · helps 2 collections')).toBeTruthy();
     expect(screen.queryByTestId('collection-list')).toBeNull();
+  });
+
+  describe('what the avatar already owns', () => {
+    const bag = (overrides: Partial<AvatarInventory> = {}): InventorySource => ({
+      name: 'test',
+      readInventory: jest.fn(() =>
+        Promise.resolve(
+          ok({
+            equipment: [{ itemId: 10110000, level: 0, hasSkill: true }],
+            stackable: new Map<number, number>(),
+            source: 'node',
+            readAt: NOW,
+            ...overrides,
+          }),
+        ),
+      ),
+    });
+
+    it('marks the pieces already in the bag and sums them up per collection', async () => {
+      makeViewerWithAvatar();
+      inventory = bag();
+      await mount();
+
+      // Collection 2 asks for the one weapon the bag holds; collection 3 asks for it and a belt.
+      expect(text('collection-owned-summary-2')).toBe(words.ownedSummary(1, 1));
+      expect(text('collection-owned-summary-3')).toBe(words.ownedSummary(1, 2));
+      expect(text('collection-owned-2-10110000-0')).toBe(words.ownedTag);
+      expect(screen.getByTestId('collection-inventory-note')).toBeTruthy();
+      expect(inventory.readInventory).toHaveBeenCalledWith(AVATAR);
+    });
+
+    it('marks what is still to find when the bag has none of it', async () => {
+      makeViewerWithAvatar();
+      inventory = bag({ equipment: [] });
+      await mount();
+
+      expect(text('collection-owned-summary-2')).toBe(words.ownedSummary(0, 1));
+      expect(text('collection-owned-2-10110000-0')).toBe(words.missingTag);
+    });
+
+    it('marks nothing, and says why, when the inventory cannot be read', async () => {
+      makeViewerWithAvatar();
+      inventory = {
+        name: 'test',
+        readInventory: jest.fn(() => Promise.resolve(err({ reason: 'OFFLINE', message: 'down' }))),
+      };
+      await mount();
+
+      expect(text('collection-inventory-note')).toBe(words.inventoryFailedOffline);
+      expect(screen.queryByTestId('collection-owned-summary-2')).toBeNull();
+      // The collections themselves are untouched by the failure.
+      expect(listedIds()).toEqual([2, 4, 5, 6, 3]);
+    });
+
+    it('shows no ownership at all when no inventory source is wired', async () => {
+      makeViewerWithAvatar();
+      await mount();
+
+      expect(screen.queryByTestId('collection-inventory-note')).toBeNull();
+      expect(screen.queryByTestId('collection-owned-summary-2')).toBeNull();
+    });
   });
 
   describe('without a sheet prop (the real route)', () => {

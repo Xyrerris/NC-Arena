@@ -223,6 +223,16 @@ function CollectionHeader({
         </ArenaText>
       )}
       <RefreshLine refresh={refresh} onRetry={controller.onRefresh} />
+      {controller.inventoryNote === null ? null : (
+        <ArenaText
+          variant="bodyCaption"
+          tone={controller.inventoryNote.tone}
+          accessibilityLiveRegion="polite"
+          testID="collection-inventory-note"
+        >
+          {controller.inventoryNote.text}
+        </ArenaText>
+      )}
 
       <SegmentedTabs
         tabs={VIEW_TABS}

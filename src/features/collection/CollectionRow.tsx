@@ -44,6 +44,15 @@ function CollectionRowView({ row, onAction, onMarket }: CollectionRowProps) {
       <ArenaText variant="bodyCaption" tone="subtle">
         {row.bonusText}
       </ArenaText>
+      {row.ownedSummary === null ? null : (
+        <ArenaText
+          variant="bodySmall"
+          tone="accent"
+          testID={`collection-owned-summary-${row.collectionId}`}
+        >
+          {row.ownedSummary}
+        </ArenaText>
+      )}
       <View style={styles.items}>
         {row.items.map((item) => (
           <View
@@ -57,6 +66,15 @@ function CollectionRowView({ row, onAction, onMarket }: CollectionRowProps) {
             <ArenaText variant="numericMicro" tone="subtle" style={styles.itemText}>
               {item.label}
             </ArenaText>
+            {item.ownedText === null ? null : (
+              <ArenaText
+                variant="numericMicro"
+                tone={item.owned ? 'accent' : 'subtle'}
+                testID={`collection-owned-${row.collectionId}-${item.key}`}
+              >
+                {item.ownedText}
+              </ArenaText>
+            )}
           </View>
         ))}
       </View>

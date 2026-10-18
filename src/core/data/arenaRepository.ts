@@ -34,6 +34,7 @@ import type {
   AvatarSource,
   BalanceSource,
   CollectionSource,
+  InventorySource,
   TransactionSender,
   TransactionSource,
 } from '../common';
@@ -47,6 +48,7 @@ import {
   NodeAvatarSource,
   NodeBalanceSource,
   NodeCollectionSource,
+  NodeInventorySource,
   NodeTransactionSender,
   NodeTransactionSource,
   RemoteAccountGateway,
@@ -123,6 +125,14 @@ export const sheetLibrary: SheetLibrary = createSheetLibrary({ source: new GameS
 export const marketLibrary: MarketLibrary = createMarketLibrary({
   source: new MarketServiceSource(),
 });
+
+/**
+ * What an avatar owns, read from a plain node (docs/AVATAR_INVENTORY.md). Mimir has an
+ * `inventory` query too, but on 2026-10-18 it held no document for a live avatar, so the node —
+ * which is never behind — is the only source. Public, like the chain sources, so not behind the
+ * backend flag.
+ */
+export const inventorySource: InventorySource = new NodeInventorySource();
 
 /** Who is at an avatar address, read from the same two public services. */
 export const avatarSource: AvatarSource = new FallbackAvatarSource([

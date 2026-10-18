@@ -36,6 +36,8 @@ import type { ViewerAvatar } from '@/core/model';
 
 import {
   failureMessage,
+  inventoryNote,
+  type InventoryRead,
   toHeaderUi,
   toEquipmentLines,
   toItemLines,
@@ -59,6 +61,8 @@ const NO_AVATAR: ViewerAvatar = {
 
 export interface CollectionController {
   avatar: ViewerAvatar | null;
+  /** One line about the inventory read, or null when there is nothing to say. */
+  inventoryNote: { readonly text: string; readonly tone: 'subtle' | 'negative' | 'accent' } | null;
   header: CollectionHeaderUi;
   rows: readonly CollectionRowUi[];
   itemLines: readonly ItemLineUi[];
@@ -99,7 +103,7 @@ export const useCollection = (
   catalog: EquipmentCatalog = NO_CATALOG,
   others: OtherItemCatalog = NO_OTHERS,
 ): CollectionController => {
-  const { collections, useLiveData } = useArenaData();
+  const { collections, inventory: inventorySource, useLiveData } = useArenaData();
   if (collections === undefined) {
     throw new Error(
       'useCollection needs `collections` on ArenaData. The route layer supplies it in ' +
@@ -187,11 +191,62 @@ export const useCollection = (
     };
   }, [avatar, read]);
 
+  // What the avatar owns, so a piece already in the bag is not bought again. Read with the chain
+  // read, and kept apart from it: a failure here leaves the collections as they were and only
+  // takes the "in bag" marks away, which the note above the list says.
+  // The answer is stored with the avatar it was read for, so another avatar's bag is never shown
+  // for this one and "reading" needs no state of its own: it is any avatar with no answer yet.
+  const avatarKey = avatar === null ? null : `${avatar.planet}:${avatar.address}`;
+  const [inventoryAnswer, setInventoryAnswer] = useState<{
+    readonly key: string;
+    readonly read: InventoryRead;
+  } | null>(null);
+  const inventoryRun = useRef(0);
+  const readInventory = useCallback(
+    (subjectAvatar: ViewerAvatar) => {
+      if (inventorySource === undefined) return;
+      const run = ++inventoryRun.current;
+      const key = `${subjectAvatar.planet}:${subjectAvatar.address}`;
+      void inventorySource.readInventory(subjectAvatar).then((result) => {
+        // An older request, or one that outlived the screen, is dropped.
+        if (!mounted.current || run !== inventoryRun.current) return;
+        // A failed refresh keeps the bag already read: stale marks beat none, and the note says so.
+        if (!result.ok) {
+          setInventoryAnswer((current) =>
+            current?.key === key && current.read.kind === 'ready'
+              ? current
+              : { key, read: { kind: 'failed', reason: result.error.reason } },
+          );
+          return;
+        }
+        setInventoryAnswer({
+          key,
+          read:
+            result.value === null ? { kind: 'none' } : { kind: 'ready', inventory: result.value },
+        });
+      });
+    },
+    [inventorySource],
+  );
+  useEffect(() => {
+    if (avatar !== null) readInventory(avatar);
+    return () => {
+      inventoryRun.current += 1;
+    };
+  }, [avatar, readInventory]);
+  const inventoryRead: InventoryRead =
+    inventorySource === undefined || avatarKey === null
+      ? { kind: 'idle' }
+      : inventoryAnswer?.key === avatarKey
+        ? inventoryAnswer.read
+        : { kind: 'running' };
+
   const onRefresh = useCallback(() => {
     if (avatar === null) return;
     setRefresh({ kind: 'running' });
     void read(avatar);
-  }, [avatar, read]);
+    readInventory(avatar);
+  }, [avatar, read, readInventory]);
 
   // The clock the "updated N ago" label is rendered against: state with a self-rescheduling
   // timer, as the roster's is (`useRoster`), so the label changes when it could and not before.
@@ -222,8 +277,9 @@ export const useCollection = (
     catalog,
     others,
   );
+  const holdings = inventoryRead.kind === 'ready' ? inventoryRead.inventory : null;
   const rows = sortRows(filterRows(rewarded, filter), sort).map((row) =>
-    toRowUi(row, catalog, others),
+    toRowUi(row, catalog, others, holdings),
   );
   // With a catalog the items view lists equipment by name, level, element and skill; without one
   // (the placeholder sheet) it falls back to bare ids, which is all the sheet itself can say.
@@ -231,10 +287,13 @@ export const useCollection = (
 
   return {
     avatar,
+    inventoryNote: inventoryNote(inventoryRead, now),
     header: toHeaderUi(reconciliation, chainRead, now),
     rows,
     itemLines:
-      equipment === null ? toItemLines(missingItemGroups(rewarded)) : toEquipmentLines(equipment),
+      equipment === null
+        ? toItemLines(missingItemGroups(rewarded))
+        : toEquipmentLines(equipment, holdings),
     unlistedSlots: equipment?.unlistedSlots ?? 0,
     view,
     filter,
