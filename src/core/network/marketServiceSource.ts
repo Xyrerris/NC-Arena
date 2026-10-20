@@ -71,7 +71,8 @@ export function marketItemsUrl(
   itemId: number,
   offset: number,
 ): string {
-  if (!Number.isSafeInteger(itemSubType) || itemSubType <= 0) {
+  // 0 is a real route: lib9c's `Food`, which the service answers like any other (checked live 2026-10-20).
+  if (!Number.isSafeInteger(itemSubType) || itemSubType < 0) {
     throw new Error(`Not an item sub type: ${itemSubType}`);
   }
   // An empty or malformed id would not be "no filter" to the service: it would be the whole sub

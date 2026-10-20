@@ -50,8 +50,15 @@ describe('marketItemsUrl', () => {
   it('refuses what would turn into the whole sub type, or into nonsense', () => {
     expect(() => marketItemsUrl(BASE, SUB_TYPE, 0, 0)).toThrow('item id');
     expect(() => marketItemsUrl(BASE, SUB_TYPE, 1.5, 0)).toThrow('item id');
-    expect(() => marketItemsUrl(BASE, 0, ITEM, 0)).toThrow('sub type');
+    expect(() => marketItemsUrl(BASE, -1, ITEM, 0)).toThrow('sub type');
+    expect(() => marketItemsUrl(BASE, 1.5, ITEM, 0)).toThrow('sub type');
     expect(() => marketItemsUrl(BASE, SUB_TYPE, ITEM, -1)).toThrow('offset');
+  });
+
+  it('accepts sub type 0, the route of food: the service answers it (checked live 2026-10-20)', () => {
+    expect(marketItemsUrl(BASE, 0, 201016, 0)).toBe(
+      `${BASE}/Market/products/items/0?limit=1000&offset=0&order=cp_desc&itemIds=201016`,
+    );
   });
 });
 
