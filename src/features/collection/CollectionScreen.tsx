@@ -32,6 +32,7 @@ import { useViewerAvatar } from '@/core/data';
 import { CollectionRowItem } from './CollectionRow';
 import { FilterPanel } from './FilterPanel';
 import { MarketSheet } from './MarketSheet';
+import { OffersView } from './OffersView';
 import { SkillMark } from './SkillMark';
 import {
   SORT_OPTIONS,
@@ -178,8 +179,16 @@ function CollectionBody({
           <CollectionHeader controller={controller} sampleData={sampleData} />
           {controller.view === 'COLLECTIONS' ? (
             <CollectionList controller={controller} onMarket={setMarketId} />
-          ) : (
+          ) : controller.view === 'ITEMS' ? (
             <ItemList controller={controller} />
+          ) : (
+            <OffersView
+              controller={controller}
+              sheet={sheet}
+              catalog={catalog ?? NO_CATALOG}
+              others={others ?? NO_OTHERS}
+              planet={controller.avatar.planet}
+            />
           )}
           {marketCollection === undefined ? null : (
             <MarketSheet

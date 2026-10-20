@@ -9,7 +9,8 @@ export const collectionStrings = {
 
   viewCollections: 'COLLECTIONS',
   viewItems: 'ITEMS',
-  viewsA11y: 'Show collections or the items still to find',
+  viewOffers: 'OFFERS',
+  viewsA11y: 'Show collections, the items still to find, or the best offers for them',
 
   filterOpen: 'OPEN',
   filterDisputed: 'DISPUTED',
@@ -134,6 +135,45 @@ export const collectionStrings = {
   purchaseNotBuilt: 'Buying for real is not available yet. Nothing is ever sent from here.',
   listingCp: (cp: string) => `CP ${cp}`,
   listingSeller: (seller: string) => `seller ${seller}`,
+
+  offersIntro: (pieces: number, collections: number) =>
+    `${pieces} ${pieces === 1 ? 'piece' : 'pieces'} still to find in ` +
+    `${collections} ${collections === 1 ? 'collection' : 'collections'}. ` +
+    'The cheapest offer for each, by asking price. The list follows the filters above.',
+  offersNoInventory:
+    'Your inventory is not read, so pieces you already own may be listed as missing.',
+  offersUnsearchable: (count: number) =>
+    `${count} ${count === 1 ? 'piece' : 'pieces'} cannot be searched ` +
+    '(not in the game data, or not on the market).',
+  offersFind: 'FIND OFFERS',
+  offersFindA11y: 'Read the market for every piece still to find',
+  offersStop: 'STOP',
+  offersStopA11y: 'Stop reading the market',
+  offersReading: (done: number, total: number) =>
+    `Reading the market… ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}. ` +
+    'The order can change until it is done.',
+  offersStopped: (done: number, total: number, found: number) =>
+    `Stopped after ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}: ` +
+    `${found} ${found === 1 ? 'offer' : 'offers'} found so far, the rest not read.`,
+  offersDone: (found: number, nothing: number) =>
+    `${found} ${found === 1 ? 'offer' : 'offers'} found` +
+    (nothing === 0 ? '.' : `, ${nothing} with nothing on sale.`),
+  offersFailed: (count: number) =>
+    `${count} ${count === 1 ? 'piece' : 'pieces'} could not be read.`,
+  offersRetryFailed: 'READ THEM AGAIN',
+  offersRetryFailedA11y: 'Read the pieces that failed again',
+  offersAgain: 'READ AGAIN',
+  offersAgainA11y: 'Read the market again for every piece',
+  offersNothingToFind: 'Nothing left to find',
+  offersNothingToFindBody: 'Every piece these collections ask for is already in the bag.',
+  offersHelps: (count: number) => `helps ${count} ${count === 1 ? 'collection' : 'collections'}`,
+  offersUnits: (units: string, lots: number) =>
+    `${units} units in ${lots} ${lots === 1 ? 'lot' : 'lots'}`,
+  offersTotal: (price: string) => `${price} NCG`,
+  offersPicksTitle: 'This takes more than one lot. Buy them one at a time:',
+  offersClose: 'CLOSE',
+  offersCloseA11y: 'Close the offer',
+  offersSheetTitle: 'Offer',
 
   sheetLoading: 'Loading the collection list…',
   sheetFailedOffline: 'Could not reach the game data. Check the connection and try again.',

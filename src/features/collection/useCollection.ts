@@ -24,13 +24,14 @@ import {
   rewardStats,
   sortRows,
   type Collection,
+  type CollectionRow,
   type EquipmentCatalog,
   type ItemCategory,
   type OtherItemCatalog,
   type RowFilter,
   type RowSort,
 } from '@/core/collection';
-import { nextChangeIn } from '@/core/common';
+import { nextChangeIn, type AvatarInventory } from '@/core/common';
 import { useArenaData, useViewerAvatar } from '@/core/data';
 import type { ViewerAvatar } from '@/core/model';
 
@@ -68,6 +69,13 @@ export interface CollectionController {
   itemLines: readonly ItemLineUi[];
   /** Open-collection slots for costumes and materials, which the items view does not list yet. */
   unlistedSlots: number;
+  /**
+   * The ids of the open collections the filters leave, comma-separated: what the offers view covers.
+   * A string, so it compares by content while the rows it comes from are rebuilt on every render.
+   */
+  offerIds: string;
+  /** What the avatar holds, or null while the inventory is unread or unreadable. */
+  holdings: AvatarInventory | null;
   view: CollectionView;
   filter: RowFilter;
   sort: RowSort;
@@ -97,6 +105,13 @@ export interface CollectionController {
 
 const NO_CATALOG: EquipmentCatalog = new Map();
 const NO_OTHERS: OtherItemCatalog = new Map();
+
+/** The ids of the collections not unlocked, comma-separated: a value that compares by content. */
+const openIdList = (rows: readonly CollectionRow[]): string =>
+  rows
+    .filter((row) => row.status !== 'UNLOCKED')
+    .map((row) => row.collection.id)
+    .join(',');
 
 export const useCollection = (
   sheet: readonly Collection[],
@@ -285,16 +300,20 @@ export const useCollection = (
   // (the placeholder sheet) it falls back to bare ids, which is all the sheet itself can say.
   const equipment = catalog.size > 0 ? missingEquipment(rewarded, catalog) : null;
 
+  const itemLines =
+    equipment === null
+      ? toItemLines(missingItemGroups(rewarded))
+      : toEquipmentLines(equipment, holdings);
+
   return {
     avatar,
     inventoryNote: inventoryNote(inventoryRead, now),
     header: toHeaderUi(reconciliation, chainRead, now),
     rows,
-    itemLines:
-      equipment === null
-        ? toItemLines(missingItemGroups(rewarded))
-        : toEquipmentLines(equipment, holdings),
+    itemLines,
     unlistedSlots: equipment?.unlistedSlots ?? 0,
+    offerIds: openIdList(rewarded),
+    holdings,
     view,
     filter,
     sort,

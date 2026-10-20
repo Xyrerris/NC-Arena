@@ -1,3 +1,4 @@
+export * from './bestOffers';
 export * from './collectionProgress';
 export * from './collectionSheet';
 export * from './equipmentCatalog';

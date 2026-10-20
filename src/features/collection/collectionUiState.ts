@@ -30,11 +30,12 @@ import type { Tone } from '@/core/design-system';
 import { canSearchMarket, marketPieces } from './marketUiState';
 import { collectionStrings as words } from './strings';
 
-export type CollectionView = 'COLLECTIONS' | 'ITEMS';
+export type CollectionView = 'COLLECTIONS' | 'ITEMS' | 'OFFERS';
 
 export const VIEW_TABS: readonly { value: CollectionView; label: string }[] = [
   { value: 'COLLECTIONS', label: words.viewCollections },
   { value: 'ITEMS', label: words.viewItems },
+  { value: 'OFFERS', label: words.viewOffers },
 ];
 
 export const FILTER_OPTIONS: readonly { filter: RowFilter; label: string }[] = [

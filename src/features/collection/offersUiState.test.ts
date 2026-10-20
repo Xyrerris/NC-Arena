@@ -1,0 +1,120 @@
+import type { Collection, EquipmentCatalog, Offer } from '@/core/collection';
+import type { MarketListing } from '@/core/common';
+
+import type { MarketPiece } from './marketUiState';
+import { collectionsById, offerTargets, offersStatus, toOfferRow } from './offersUiState';
+
+const SWORD = { itemId: 10110000, level: 9, skillContains: false, count: 1 };
+const catalog: EquipmentCatalog = new Map([
+  [10110000, { name: 'Long Sword', subType: 'Weapon', element: 'Normal' } as never],
+]);
+
+const collection = (id: number, ...requirements: (typeof SWORD)[]): Collection => ({
+  id,
+  requirements,
+  bonuses: [],
+});
+
+const listing = (overrides: Partial<MarketListing> = {}): MarketListing => ({
+  productId: 'p1',
+  itemId: 10110000,
+  itemSubType: 6,
+  level: 9,
+  grade: 1,
+  elementalType: 0,
+  combatPoint: 1200,
+  price: 3,
+  quantity: 1,
+  unitPrice: 3,
+  hasSkill: false,
+  sellerAvatarAddress: '0xebb88102b3C561168aF72f71fdB9eA1469FDAA63',
+  sellerAgentAddress: '0xaaaa',
+  tradableId: 'g',
+  legacy: false,
+  registeredBlockIndex: 1,
+  ...overrides,
+});
+
+const piece: MarketPiece = {
+  key: '10110000|9|false',
+  requirement: SWORD,
+  route: { kind: 'route', itemSubType: 6 },
+  label: 'Long Sword +9 · Normal',
+  needsSkill: false,
+  count: 1,
+};
+
+const offer = (overrides: Partial<Offer> = {}): Offer => ({
+  key: piece.key,
+  requirement: SWORD,
+  need: 1,
+  collectionIds: [1],
+  picks: [listing()],
+  units: 1,
+  price: 3,
+  combatPoint: 1200,
+  ...overrides,
+});
+
+describe('offerTargets', () => {
+  it('lists what is missing with a route, and counts the rest as not searchable', () => {
+    const unknown = { itemId: 999, level: 0, skillContains: false, count: 1 };
+    const result = offerTargets([collection(1, SWORD, unknown)], null, catalog);
+    expect(result.targets.map((t) => t.piece.key)).toEqual(['10110000|9|false']);
+    expect(result.unsearchable).toBe(1);
+  });
+
+  it('drops what the bag holds', () => {
+    const held = {
+      equipment: [{ itemId: 10110000, level: 9, hasSkill: false }],
+      stackable: new Map<number, number>(),
+    };
+    expect(offerTargets([collection(1, SWORD)], held, catalog)).toEqual({
+      targets: [],
+      unsearchable: 0,
+    });
+  });
+});
+
+describe('collectionsById', () => {
+  const sheet = [collection(1, SWORD), collection(2, SWORD), collection(3, SWORD)];
+
+  it('keeps the sheet order and ignores ids it does not have', () => {
+    expect(collectionsById(sheet, '3,1,9').map((c) => c.id)).toEqual([1, 3]);
+  });
+
+  it('is empty for an empty list', () => {
+    expect(collectionsById(sheet, '')).toEqual([]);
+  });
+});
+
+describe('toOfferRow', () => {
+  it('shows a single piece by its asking price, with its seller and what it helps', () => {
+    const ui = toOfferRow(offer({ collectionIds: [1, 2] }), piece);
+    expect(ui.title).toBe('Long Sword +9 · Normal');
+    expect(ui.price).toBe('3 NCG');
+    expect(ui.detail).toBe('helps 2 collections · CP 1.200 · seller 0xebb8…AA63');
+  });
+
+  it('shows a counted piece by what all of it costs, and says how many lots', () => {
+    const lots = [listing({ productId: 'a', price: 4 }), listing({ productId: 'b', price: 6 })];
+    const ui = toOfferRow(offer({ need: 2, picks: lots, units: 2, price: 10 }), piece);
+    expect(ui.title).toBe('Long Sword +9 · Normal · needs 2');
+    expect(ui.price).toBe('10 NCG');
+    expect(ui.detail).toContain('2 units in 2 lots');
+    expect(ui.detail).not.toContain('seller');
+  });
+});
+
+describe('offersStatus', () => {
+  const base = { total: 10, done: 4, offers: 3, withoutOffer: 1 };
+
+  it('says nothing before a read, how far it is during one, and what came out of it after', () => {
+    expect(offersStatus({ ...base, phase: 'idle' })).toBeNull();
+    expect(offersStatus({ ...base, phase: 'running' })).toContain('4 of 10 pieces');
+    expect(offersStatus({ ...base, phase: 'done' })).toBe(
+      '3 offers found, 1 with nothing on sale.',
+    );
+    expect(offersStatus({ ...base, phase: 'stopped' })).toContain('the rest not read');
+  });
+});

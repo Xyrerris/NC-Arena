@@ -47,6 +47,32 @@ export const pieceKey = (requirement: CollectionRequirement): string =>
 
 const NO_OTHERS: OtherItemCatalog = new Map();
 
+/** The piece a requirement is, or null when neither catalog can say where it is sold. */
+export const marketPieceFor = (
+  requirement: CollectionRequirement,
+  catalog: EquipmentCatalog,
+  others: OtherItemCatalog = NO_OTHERS,
+): MarketPiece | null => {
+  const route = marketRouteFor(requirement, catalog, others);
+  if (route.kind === 'unknown') return null;
+
+  const info = catalog.get(requirement.itemId);
+  const other = others.get(requirement.itemId);
+  return {
+    key: pieceKey(requirement),
+    requirement,
+    route,
+    label:
+      info !== undefined
+        ? words.piece(info.name, requirement.level, info.element)
+        : other !== undefined && other.name !== ''
+          ? other.name
+          : String(requirement.itemId),
+    needsSkill: info !== undefined && requirement.skillContains,
+    count: requirement.count,
+  };
+};
+
 export const marketPieces = (
   collection: Collection,
   catalog: EquipmentCatalog,
@@ -58,31 +84,14 @@ export const marketPieces = (
   let unlisted = 0;
 
   for (const requirement of collection.requirements) {
-    const route = marketRouteFor(requirement, catalog, others);
-    if (route.kind === 'unknown') {
+    const piece = marketPieceFor(requirement, catalog, others);
+    if (piece === null) {
       unlisted += 1;
       continue;
     }
-    const key = pieceKey(requirement);
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const info = catalog.get(requirement.itemId);
-    const other = others.get(requirement.itemId);
-    const piece: MarketPiece = {
-      key,
-      requirement,
-      route,
-      label:
-        info !== undefined
-          ? words.piece(info.name, requirement.level, info.element)
-          : other !== undefined && other.name !== ''
-            ? other.name
-            : String(requirement.itemId),
-      needsSkill: info !== undefined && requirement.skillContains,
-      count: requirement.count,
-    };
-    (route.kind === 'route' ? sold : notSold).push(piece);
+    if (seen.has(piece.key)) continue;
+    seen.add(piece.key);
+    (piece.route.kind === 'route' ? sold : notSold).push(piece);
   }
   return { pieces: [...sold, ...notSold], unlisted };
 };

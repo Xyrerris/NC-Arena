@@ -592,6 +592,120 @@ describe('CollectionScreen', () => {
       expect(fake.scan).toHaveBeenCalledTimes(2);
     });
 
+    describe('the offers view', () => {
+      const openOffers = async (): Promise<void> => {
+        await act(async () => {
+          fireEvent.press(screen.getByText(words.viewOffers));
+        });
+      };
+      // Collections 2 and 3 both ask for the Long Sword +0 with a skill, so two are missing; the
+      // Plate Armor is asked for once. Collections 4-6 ask for items the sheets do not name.
+      const SWORD_KEY = '10110000|0|true';
+      const SWORD_ROW = `offer-row-${SWORD_KEY}`;
+
+      it('reads nothing until asked, then lists the cheapest way to get what is missing', async () => {
+        makeViewerWithAvatar();
+        const fake = fakeMarket((itemId) => scanned(itemId === 10110000 ? SWORDS : []));
+        market = fake.library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+
+        await openOffers();
+        expect(fake.scan).not.toHaveBeenCalled();
+        expect(text('offers-intro')).toBe(words.offersIntro(2, 5));
+        expect(text('offers-unsearchable')).toBe(words.offersUnsearchable(2));
+
+        await press('offers-find');
+        await act(async () => {});
+
+        expect(fake.scan).toHaveBeenCalledWith('heimdall', 6, 10110000, expect.anything());
+        expect(fake.scan).toHaveBeenCalledWith('heimdall', 7, 10310000, expect.anything());
+        // Two swords are needed and two are on sale, at 3 and 5: the offer is both, 8 NCG in all.
+        expect(text(`offer-price-${SWORD_KEY}`)).toBe('8 NCG');
+        expect(screen.getByText('Long Sword +0 · Normal · needs 2')).toBeTruthy();
+        // The armor has nothing on sale: no offer, and the line says so.
+        expect(screen.queryByText(/Plate Armor/)).toBeNull();
+        expect(text('offers-status')).toBe(words.offersDone(1, 1));
+      });
+
+      it('opens the lots of an offer one at a time, each on its own purchase card', async () => {
+        makeViewerWithAvatar();
+        market = fakeMarket((itemId) => scanned(itemId === 10110000 ? SWORDS : [])).library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await openOffers();
+        await press('offers-find');
+        await act(async () => {});
+
+        await press(SWORD_ROW);
+        expect(text('offer-picks-title')).toBe(words.offersPicksTitle);
+
+        await press('offer-pick-00000000-0000-0000-0000-000000000003');
+        await act(async () => {});
+        expect(text('purchase-price')).toBe('3 NCG');
+
+        await press('purchase-back');
+        expect(screen.getByTestId('offer-picks-title')).toBeTruthy();
+        await press('offer-close');
+        expect(screen.queryByTestId('offer-sheet')).toBeNull();
+      });
+
+      it('says what failed and reads only that again', async () => {
+        makeViewerWithAvatar();
+        const swordAnswers = [
+          err({ reason: 'OFFLINE' as const, message: 'down' }),
+          scanned(SWORDS),
+        ];
+        const fake = fakeMarket((itemId) =>
+          itemId === 10110000 ? (swordAnswers.shift() ?? scanned(SWORDS)) : scanned([]),
+        );
+        market = fake.library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await openOffers();
+        await press('offers-find');
+        await act(async () => {});
+
+        expect(text('offers-failed')).toBe(words.offersFailed(1));
+        expect(screen.queryByTestId(SWORD_ROW)).toBeNull();
+        expect(fake.scan).toHaveBeenCalledTimes(2);
+
+        await press('offers-retry-failed');
+        await act(async () => {});
+
+        // Only the sword was read again; the armor's answer was kept.
+        expect(fake.scan).toHaveBeenCalledTimes(3);
+        expect(screen.getByTestId(SWORD_ROW)).toBeTruthy();
+        expect(screen.queryByTestId('offers-failed')).toBeNull();
+      });
+
+      it('leaves out a piece the bag already holds', async () => {
+        makeViewerWithAvatar();
+        inventory = {
+          name: 'test',
+          readInventory: jest.fn(() =>
+            Promise.resolve(
+              ok({
+                equipment: [
+                  { itemId: 10110000, level: 0, hasSkill: true },
+                  { itemId: 10110000, level: 0, hasSkill: true },
+                ],
+                stackable: new Map<number, number>(),
+                source: 'node',
+                readAt: NOW,
+              }),
+            ),
+          ),
+        };
+        const fake = fakeMarket(() => scanned(SWORDS));
+        market = fake.library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await openOffers();
+        await press('offers-find');
+        await act(async () => {});
+
+        expect(fake.scan).not.toHaveBeenCalledWith('heimdall', 6, 10110000, expect.anything());
+        expect(fake.scan).toHaveBeenCalledWith('heimdall', 7, 10310000, expect.anything());
+      });
+    });
+
     it('filters by category, any of the selected, with the equipment types under Equipment', async () => {
       makeViewerWithAvatar();
       const sheetsWithAll = {
