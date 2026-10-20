@@ -54,7 +54,7 @@ export interface PurchaseCardUi {
 
 const hundredths = (ncg: number): number => Math.round(ncg * 100);
 
-const balanceMessage = (balance: BalanceState): string =>
+export const balanceMessage = (balance: BalanceState): string =>
   balance.kind === 'known'
     ? words.purchaseBalance(formatNcg(balance.ncg))
     : balance.why === 'no-avatar'

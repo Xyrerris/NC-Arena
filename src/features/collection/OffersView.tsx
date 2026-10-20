@@ -12,14 +12,21 @@ import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/collection';
-import { ArenaButton, ArenaText, color, layout, space } from '@/core/design-system';
+import { ArenaButton, ArenaText, SortChip, color, layout, space } from '@/core/design-system';
 import type { Planet } from '@/core/model';
 
 import type { CollectionController } from './useCollection';
 import { OfferSheet } from './OfferSheet';
-import { collectionsById, offerTargets, offersStatus, toOfferRow } from './offersUiState';
+import {
+  collectionsById,
+  offerTargets,
+  offersStatus,
+  selectionSummary,
+  toOfferRow,
+} from './offersUiState';
 import { collectionStrings as words } from './strings';
 import { useBestOffers } from './useBestOffers';
+import { useNcgBalance } from './useNcgBalance';
 
 export interface OffersViewProps {
   controller: CollectionController;
@@ -48,6 +55,26 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
   }, [targets, offers.result.offers]);
   const open = openKey === null ? undefined : rows.find((row) => row.offer.key === openKey);
 
+  // The offers picked for the total. Kept by key and read against the rows as they are now, so an
+  // offer that a new read took away leaves the selection with it. Not kept anywhere: prices age.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (key: string): void => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  };
+  const chosen = rows.filter((row) => selected.has(row.offer.key));
+  const balance = useNcgBalance(planet, chosen.length > 0);
+  const summary =
+    chosen.length === 0
+      ? null
+      : selectionSummary(
+          chosen.map((r) => r.offer),
+          balance,
+        );
+
   const status = offersStatus({
     phase: offers.phase,
     total: offers.total,
@@ -70,35 +97,52 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
   }
 
   return (
-    <>
+    <View style={styles.fill}>
       <FlashList
         data={rows}
+        extraData={selected}
         keyExtractor={(row) => row.offer.key}
-        renderItem={({ item }) => (
-          <Pressable
-            style={styles.row}
-            accessibilityRole="button"
-            accessibilityLabel={words.purchaseReviewA11y(item.ui.a11y)}
-            onPress={() => setOpenKey(item.offer.key)}
-            testID={`offer-row-${item.offer.key}`}
-          >
-            <View style={styles.rowTop}>
-              <ArenaText variant="bodyMedium" tone="primary" style={styles.rowTitle}>
-                {item.ui.title}
-              </ArenaText>
-              <ArenaText
-                variant="titleMedium"
-                tone="primary"
-                testID={`offer-price-${item.offer.key}`}
+        renderItem={({ item }) => {
+          const isSelected = selected.has(item.offer.key);
+          return (
+            <View style={styles.row}>
+              <Pressable
+                style={styles.rowBody}
+                accessibilityRole="button"
+                accessibilityLabel={words.purchaseReviewA11y(item.ui.a11y)}
+                onPress={() => setOpenKey(item.offer.key)}
+                testID={`offer-row-${item.offer.key}`}
               >
-                {item.ui.price}
-              </ArenaText>
+                <View style={styles.rowTop}>
+                  <ArenaText variant="bodyMedium" tone="primary" style={styles.rowTitle}>
+                    {item.ui.title}
+                  </ArenaText>
+                  <ArenaText
+                    variant="titleMedium"
+                    tone="primary"
+                    testID={`offer-price-${item.offer.key}`}
+                  >
+                    {item.ui.price}
+                  </ArenaText>
+                </View>
+                <ArenaText variant="bodyCaption" tone="subtle">
+                  {item.ui.detail}
+                </ArenaText>
+              </Pressable>
+              <SortChip
+                label={isSelected ? words.offersSelected : words.offersSelect}
+                accessibilityLabel={
+                  isSelected
+                    ? words.offersUnselectA11y(item.piece.label)
+                    : words.offersSelectA11y(item.piece.label)
+                }
+                selected={isSelected}
+                onPress={() => toggle(item.offer.key)}
+                testID={`offer-select-${item.offer.key}`}
+              />
             </View>
-            <ArenaText variant="bodyCaption" tone="subtle">
-              {item.ui.detail}
-            </ArenaText>
-          </Pressable>
-        )}
+          );
+        }}
         ListHeaderComponent={
           <View style={styles.header}>
             <ArenaText variant="bodyCaption" tone="subtle" testID="offers-intro">
@@ -166,6 +210,47 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
         contentContainerStyle={styles.list}
         testID="offers-list"
       />
+      {summary === null ? null : (
+        <View style={styles.bar} testID="offers-bar">
+          <ArenaText
+            variant="titleMedium"
+            tone="primary"
+            accessibilityLiveRegion="polite"
+            testID="offers-bar-title"
+          >
+            {summary.title}
+          </ArenaText>
+          {summary.units === null ? null : (
+            <ArenaText variant="bodyCaption" tone="subtle" testID="offers-bar-units">
+              {summary.units}
+            </ArenaText>
+          )}
+          <ArenaText variant="bodySmall" tone="body" testID="offers-bar-balance">
+            {summary.balanceLine}
+          </ArenaText>
+          {summary.afterLine === null ? null : (
+            <ArenaText
+              variant="bodySmall"
+              tone={summary.enough === 'short' ? 'negative' : 'subtle'}
+              testID="offers-bar-after"
+            >
+              {summary.afterLine}
+            </ArenaText>
+          )}
+          <ArenaText variant="bodyCaption" tone="subtle">
+            {words.offersBarNote}
+          </ArenaText>
+          <View style={styles.actions}>
+            <ArenaButton
+              label={words.offersClear}
+              accessibilityLabel={words.offersClearA11y}
+              variant="secondary"
+              onPress={() => setSelected(new Set())}
+              testID="offers-clear"
+            />
+          </View>
+        </View>
+      )}
       {open === undefined ? null : (
         <OfferSheet
           key={open.offer.key}
@@ -175,7 +260,7 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
           onClose={() => setOpenKey(null)}
         />
       )}
-    </>
+    </View>
   );
 }
 
@@ -183,13 +268,24 @@ const styles = StyleSheet.create({
   list: { paddingBottom: space[40] },
   header: { paddingHorizontal: layout.screenGutter, paddingTop: space[12], gap: space[8] },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space[8] },
+  fill: { flex: 1 },
   row: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: layout.screenGutter,
-    paddingVertical: space[12],
-    minHeight: layout.minTouchTarget,
+    paddingVertical: space[4],
+    gap: space[8],
     borderBottomWidth: 1,
     borderBottomColor: color.decorative.divider,
-    gap: space[2],
+  },
+  rowBody: { flex: 1, minHeight: layout.minTouchTarget, justifyContent: 'center', gap: space[2] },
+  bar: {
+    paddingHorizontal: layout.screenGutter,
+    paddingVertical: space[12],
+    gap: space[4],
+    backgroundColor: color.raised,
+    borderTopWidth: 1,
+    borderTopColor: color.decorative.hairline,
   },
   rowTop: {
     flexDirection: 'row',

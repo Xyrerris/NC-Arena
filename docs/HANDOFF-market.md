@@ -5,6 +5,24 @@ and has no PR**. This file is the map; the reasoning is in **ADR-0044** in DECIS
 "Built (2026-10-14)…" and "Next: buying the missing pieces (2026-10-15)"). The collection tracker
 itself is in [HANDOFF-collection.md](HANDOFF-collection.md); read that first if you have not.
 
+## Status 2026-10-20 — read this first
+
+- **A real purchase has been made.** The owner bought one piece through the app with the send switched on:
+  the item arrived and the NCG deducted was exactly the price shown. So the chain **does** accept this
+  signature (DER, low-S) and this `buy_product3` layout, and the "first real send" caveats below are settled.
+  Not yet seen: a `FAILURE` for an offer sold meanwhile, and a lot of several units.
+- **The repository still ships `LIVE_SENDING_BUILT = false`, and the tests run with it `false`.** The real
+  purchase used a local build with the flag on; that edit was not committed. Do not flip it in a commit or
+  change the tests to expect `true`: turning it on in a release is the owner's one-line decision. If
+  `purchasePolicy.ts` shows as modified with `true`, it is the owner's local change and the policy/keystore
+  tests will fail against it (4 did on 2026-10-20) — that is expected, not a bug.
+- **Built since, on `feat/best-offers`** (ADR-0044, "Built (2026-10-20)"): food is searchable (sub type 0 was
+  refused by the URL guard); the **OFFERS** view lists the cheapest offer for every missing piece, read only
+  on request, three scans at a time; counted pieces are priced by an exact knapsack over the lots; offers can
+  be **selected** and the bar adds their asking prices and compares them with the balance. Nothing is bought
+  from the bar. The cart that buys (2b) still waits on a cap on the total, one passphrase for a batch, and a
+  screen to see and clear the purchase record.
+
 ## The feature
 
 On the collections screen, every open collection that has a piece the market sells has a
@@ -250,13 +268,13 @@ Suggested steps (each shippable, none spends):
      that times out, is _unknown_ and stays `sent` — only a refusal by the node (`REFUSED`) or a failure the chain
      reports frees the offer. The card has a live mode (`BUY FOR REAL (price)` → a confirmation with the price, "cannot
      be undone" and the passphrase → `CONFIRM AND PAY (price)`), and the wallet block has a **Real purchases** switch
-     with its own confirmation. **Everything is tested with fakes; the real `stageTransaction` has never been called by
-     this code.** The switch that makes it reachable is `LIVE_SENDING_BUILT` in `core/common/purchasePolicy.ts`, and it
+     with its own confirmation. **Everything is tested with fakes** — _update 2026-10-20: the owner has since made one
+     real purchase with the switch on; the tests still run with it off._ The switch that makes it reachable is `LIVE_SENDING_BUILT` in `core/common/purchasePolicy.ts`, and it
      is **`false`**: while it is, `resolveMode` answers `dry-run` for anything, the wallet block says real purchases are
      switched off in this build, and nothing can reach `stage`. I tried to set it to `true` and the permission layer
      refused that edit, so I left it; it is one line and the owner's to turn on. **To go live:** set it to `true`, run
      `npm run verify`, build, turn on **Real purchases** in the wallet block, set a low limit, and buy one cheap piece.
-     What the first real send will also settle, and nothing before it can: that the chain accepts this signature
+     What the first real send settles, and nothing before it could (_done 2026-10-20 except the failed-offer shape_): that the chain accepts this signature
      (DER, low-S) and this action layout; that the account has Mead for the fee; the real shape of a `FAILURE` for an
      offer sold meanwhile. **Known gaps:** no screen lists the purchase record, so a `sent` record that stays unknown (it
      blocks that offer) cannot be cleared from the app yet — the person must check the inventory and the balance and a

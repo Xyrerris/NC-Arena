@@ -24,6 +24,7 @@ import {
   shortSeller,
   type MarketPiece,
 } from './marketUiState';
+import { balanceMessage, type BalanceState } from './purchaseCardState';
 import { collectionStrings as words } from './strings';
 
 type Holdings = Pick<AvatarInventory, 'equipment' | 'stackable'>;
@@ -109,6 +110,56 @@ export const toOfferRow = (offer: Offer, piece: MarketPiece): OfferRowUi => {
     price,
     detail,
     a11y: `${piece.label}, ${price}, ${detail}`,
+  };
+};
+
+export interface SelectionUi {
+  readonly count: number;
+  /** Everything the selected offers cost, in NCG, as the sum of their asking prices. */
+  readonly total: number;
+  readonly title: string;
+  /** Units held by counted offers, when any is selected: a count of pieces would hide them. */
+  readonly units: string | null;
+  readonly balanceLine: string;
+  readonly afterLine: string | null;
+  /** `short` only when the balance is known and below the total. */
+  readonly enough: 'yes' | 'short' | 'unknown';
+}
+
+const hundredths = (ncg: number): number => Math.round(ncg * 100);
+
+/**
+ * What the selected offers add up to and whether the account covers it. Prices are added in whole
+ * hundredths so no float is summed, and a balance that is not known is never "short".
+ */
+export const selectionSummary = (
+  selected: readonly Offer[],
+  balance: BalanceState | null,
+): SelectionUi => {
+  const cents = selected.reduce((sum, offer) => sum + hundredths(offer.price), 0);
+  const total = cents / 100;
+  const units = selected.some((offer) => offer.need > 1)
+    ? words.offersBarUnits(statFormatter.exact(selected.reduce((sum, o) => sum + o.units, 0)))
+    : null;
+
+  let enough: SelectionUi['enough'] = 'unknown';
+  let afterLine: string | null = null;
+  if (balance?.kind === 'known') {
+    const left = hundredths(balance.ncg) - cents;
+    enough = left >= 0 ? 'yes' : 'short';
+    afterLine =
+      left >= 0
+        ? words.purchaseLeft(formatNcg(left / 100))
+        : words.purchaseShort(formatNcg(-left / 100));
+  }
+  return {
+    count: selected.length,
+    total,
+    title: words.offersBarTitle(selected.length, formatNcg(total)),
+    units,
+    balanceLine: balance === null ? words.offersBarReading : balanceMessage(balance),
+    afterLine,
+    enough,
   };
 };
 

@@ -676,6 +676,81 @@ describe('CollectionScreen', () => {
         expect(screen.queryByTestId('offers-failed')).toBeNull();
       });
 
+      describe('selecting offers for a total', () => {
+        const SELECT = `offer-select-${SWORD_KEY}`;
+        const withAccount = (held: number): void => {
+          avatarSource = {
+            name: 'test',
+            readAvatar: jest.fn(() =>
+              Promise.resolve(
+                ok({ name: 'Xyrerris', level: 400, agentAddress: `0x${TEST_AGENT_ADDRESS}` }),
+              ),
+            ),
+          };
+          balance = { name: 'test', readNcg: jest.fn(() => Promise.resolve(ok(held))) };
+        };
+        const found = async (): Promise<void> => {
+          makeViewerWithAvatar();
+          market = fakeMarket((itemId) => scanned(itemId === 10110000 ? SWORDS : [])).library;
+          await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+          await openOffers();
+          await press('offers-find');
+          await act(async () => {});
+        };
+        afterEach(() => {
+          avatarSource = undefined;
+          balance = undefined;
+        });
+
+        it('shows no total until something is selected', async () => {
+          withAccount(10);
+          await found();
+          expect(screen.queryByTestId('offers-bar')).toBeNull();
+          expect(balance?.readNcg).not.toHaveBeenCalled();
+        });
+
+        it('adds up the selection and says what the account would be left with', async () => {
+          withAccount(10);
+          await found();
+
+          await press(SELECT);
+          await act(async () => {});
+
+          expect(text('offers-bar-title')).toBe(words.offersBarTitle(1, '8'));
+          expect(text('offers-bar-units')).toBe(words.offersBarUnits('2'));
+          expect(text('offers-bar-balance')).toBe('You hold 10 NCG');
+          expect(text('offers-bar-after')).toBe('Would leave 2 NCG');
+          expect(screen.getByTestId(SELECT).props.accessibilityState).toMatchObject({
+            selected: true,
+          });
+        });
+
+        it('says how much is short when the account cannot pay it, and clears on request', async () => {
+          withAccount(5);
+          await found();
+          await press(SELECT);
+          await act(async () => {});
+
+          expect(text('offers-bar-after')).toBe('3 NCG short of the price');
+
+          await press('offers-clear');
+          expect(screen.queryByTestId('offers-bar')).toBeNull();
+          await press(SELECT);
+          await press(SELECT);
+          expect(screen.queryByTestId('offers-bar')).toBeNull();
+        });
+
+        it('does not call an unreadable balance short', async () => {
+          avatarSource = undefined;
+          await found();
+          await press(SELECT);
+          await act(async () => {});
+
+          expect(text('offers-bar-balance')).toBe(words.purchaseBalanceNoAvatar);
+          expect(screen.queryByTestId('offers-bar-after')).toBeNull();
+        });
+      });
+
       it('leaves out a piece the bag already holds', async () => {
         makeViewerWithAvatar();
         inventory = {

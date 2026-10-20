@@ -2795,6 +2795,36 @@ person choose the piece. Buying comes after, and not from this step.
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.
 
+**Built (2026-10-20): an Offers view with a total, and the first real purchase is done.**
+
+- **The real purchase was made (owner, 2026-10-20).** One piece was bought through the app with the send
+  switched on, on the owner's machine: the item arrived and the NCG deducted was the price shown. That settles
+  what the entry below left open — the chain accepts this signature (DER, low-S) and this `buy_product3`
+  layout. It does **not** change what the repository ships: `LIVE_SENDING_BUILT` is still `false` in the
+  committed code, and the tests keep running with it `false` (the build with the switch on was local and was
+  not committed). Turning it on in a release remains a one-line, deliberate change of the owner's. Still not
+  seen: the shape of a `FAILURE` for an offer sold meanwhile, and a lot of several units.
+- **Food has a market route.** Sub type 0 answered with real listings (checked live); `marketItemsUrl` refused
+  it (`<= 0`), so every food piece read as "the market could not be read". The guard is now `< 0`.
+- **Offers view** (`OFFERS`, third tab of the collections screen). For the open collections the filters leave,
+  the pieces still missing (`missingPieces`: what the open collections ask for in all, less what the bag holds,
+  one copy per collection) and, for each, the cheapest offer (`bestOffers`, `core/collection`). Order: total
+  price, then the **requirement's** level descending (a collection accepts one exact level, so a listing of
+  another level is never an offer — "highest level" can only mean the required one), then combat point.
+  **It reads only when asked** (FIND OFFERS), three scans at a time: measured on 2026-10-20, 273 distinct
+  items across the 942 collections of the sheet, and three in parallel were four to five times faster than
+  one after another with no failure. The buyer's own listings are left out.
+- **Counted pieces are priced.** The 2026-10-15 entry declined to price "N units" from several lots because a
+  greedy answer would be wrong without showing it. `cheapestLots` is the exact answer instead: a knapsack in
+  whole hundredths over the 40 cheapest lots by unit price and the 40 cheapest by total price, which may
+  overshoot the count when that is cheaper. Each lot is still its own purchase, reviewed on its own card.
+- **Selection and total (step 2a of the cart).** Each offer has a SELECT toggle; the bar under the list adds the
+  asking prices in whole hundredths and sets them against the account's NCG (`useNcgBalance`, shared with the
+  purchase card). A balance that cannot be read is never "short". The selection is held in memory only —
+  prices age in a minute — and **nothing is bought from the bar**: an offer is still bought on its own card,
+  which re-reads it. Buying a selection (2b) waits on: a cap on the total, one passphrase for the batch, a
+  record per purchase, and a way to see and clear the purchase record.
+
 **Built (2026-10-16): the send, step D of buying — switched off.** A signed purchase can now be staged
 (`TransactionSender`, `runPurchase`'s live branch) and watched to its end (`awaitPurchase`); the card has a
 confirmation that names the price, and the wallet block a switch with its own confirmation. The decisions that
@@ -2804,7 +2834,8 @@ the node stops knowing, a wait that times out all stay `sent`, because freeing o
 bought twice); a refusal by the node, or a failure the chain reports, does. Everything is verified with fakes; the
 real `stageTransaction` was never called. **`LIVE_SENDING_BUILT` stays `false`** — the one switch to real
 sending is the owner's, by hand (the assistant's attempt to flip it was refused by the permission layer, and was not
-retried). See HANDOFF-market.md, step D.
+retried). See HANDOFF-market.md, step D. _Update 2026-10-20: the owner has since made a real purchase with it on
+(see the entry above); the committed value stays `false`._
 
 **Built (2026-10-16): a purchase up to the signature, step C of buying.** `dryRunPurchase` builds the
 `buy_product3` action, has a public node assemble the transaction, verifies it field by field before signing,

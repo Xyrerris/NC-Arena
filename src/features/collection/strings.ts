@@ -170,6 +170,19 @@ export const collectionStrings = {
   offersUnits: (units: string, lots: number) =>
     `${units} units in ${lots} ${lots === 1 ? 'lot' : 'lots'}`,
   offersTotal: (price: string) => `${price} NCG`,
+  offersSelect: 'SELECT',
+  offersSelected: 'SELECTED',
+  offersSelectA11y: (label: string) => `Select ${label} for the total`,
+  offersUnselectA11y: (label: string) => `Remove ${label} from the total`,
+  offersBarTitle: (count: number, total: string) =>
+    `${count} ${count === 1 ? 'offer' : 'offers'} selected · ${total} NCG`,
+  offersBarUnits: (units: string) => `${units} units in all`,
+  offersBarReading: 'Reading your balance…',
+  offersBarNote:
+    'Asking prices, read a little while ago. Nothing is bought from here: ' +
+    'each offer is bought on its own card, which checks the price again.',
+  offersClear: 'CLEAR',
+  offersClearA11y: 'Clear the selection',
   offersPicksTitle: 'This takes more than one lot. Buy them one at a time:',
   offersClose: 'CLOSE',
   offersCloseA11y: 'Close the offer',

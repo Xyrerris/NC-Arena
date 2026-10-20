@@ -2,7 +2,13 @@ import type { Collection, EquipmentCatalog, Offer } from '@/core/collection';
 import type { MarketListing } from '@/core/common';
 
 import type { MarketPiece } from './marketUiState';
-import { collectionsById, offerTargets, offersStatus, toOfferRow } from './offersUiState';
+import {
+  collectionsById,
+  offerTargets,
+  offersStatus,
+  selectionSummary,
+  toOfferRow,
+} from './offersUiState';
 
 const SWORD = { itemId: 10110000, level: 9, skillContains: false, count: 1 };
 const catalog: EquipmentCatalog = new Map([
@@ -103,6 +109,41 @@ describe('toOfferRow', () => {
     expect(ui.price).toBe('10 NCG');
     expect(ui.detail).toContain('2 units in 2 lots');
     expect(ui.detail).not.toContain('seller');
+  });
+});
+
+describe('selectionSummary', () => {
+  const cheap = (price: number) => offer({ key: `k${price}`, price, picks: [listing({ price })] });
+
+  it('adds the asking prices in whole hundredths', () => {
+    const ui = selectionSummary([cheap(0.1), cheap(0.2)], null);
+    expect(ui.total).toBe(0.3);
+    expect(ui.title).toBe('2 offers selected · 0,3 NCG');
+  });
+
+  it('says what would be left, or how much is short, once the balance is known', () => {
+    const enough = selectionSummary([cheap(3)], { kind: 'known', ncg: 10 });
+    expect(enough.enough).toBe('yes');
+    expect(enough.afterLine).toBe('Would leave 7 NCG');
+
+    const short = selectionSummary([cheap(3), cheap(9)], { kind: 'known', ncg: 10 });
+    expect(short.enough).toBe('short');
+    expect(short.afterLine).toBe('2 NCG short of the price');
+  });
+
+  it('never calls a balance it could not read short, and says it is still being read', () => {
+    const unknown = selectionSummary([cheap(3)], { kind: 'unknown', why: 'offline' });
+    expect(unknown.enough).toBe('unknown');
+    expect(unknown.afterLine).toBeNull();
+    expect(unknown.balanceLine).toBe('Your balance is unknown: the chain could not be reached.');
+
+    expect(selectionSummary([cheap(3)], null).balanceLine).toBe('Reading your balance…');
+  });
+
+  it('counts the units of counted offers, and says nothing of them for single pieces', () => {
+    expect(selectionSummary([cheap(3)], null).units).toBeNull();
+    const counted = offer({ need: 5, units: 6, price: 12 });
+    expect(selectionSummary([counted], null).units).toBe('6 units in all');
   });
 });
 

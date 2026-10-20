@@ -18,7 +18,8 @@ import type { MarketListing } from '@/core/common';
 import { useArenaData, useViewerAvatar } from '@/core/data';
 import type { Planet } from '@/core/model';
 
-import type { BalanceState, PurchaseCheck } from './purchaseCardState';
+import type { PurchaseCheck } from './purchaseCardState';
+import { readNcgBalance } from './useNcgBalance';
 
 export const usePurchaseCheck = (planet: Planet, listing: MarketListing): PurchaseCheck => {
   const { market, avatarSource, balance } = useArenaData();
@@ -34,28 +35,12 @@ export const usePurchaseCheck = (planet: Planet, listing: MarketListing): Purcha
   useEffect(() => {
     const controller = new AbortController();
 
-    const readBalance = async (): Promise<BalanceState> => {
-      if (avatar === null || avatarSource === undefined || balance === undefined) {
-        return { kind: 'unknown', why: 'no-avatar' };
-      }
-      const identity = await avatarSource.readAvatar(avatar);
-      if (!identity.ok) {
-        return { kind: 'unknown', why: identity.error.reason === 'OFFLINE' ? 'offline' : 'failed' };
-      }
-      if (identity.value === null) return { kind: 'unknown', why: 'no-avatar' };
-      const held = await balance.readNcg(planet, identity.value.agentAddress);
-      if (!held.ok) {
-        return { kind: 'unknown', why: held.error.reason === 'OFFLINE' ? 'offline' : 'failed' };
-      }
-      return { kind: 'known', ncg: held.value };
-    };
-
     void Promise.all([
       market.scan(planet, listing.itemSubType, listing.itemId, {
         fresh: true,
         signal: controller.signal,
       }),
-      readBalance(),
+      readNcgBalance(planet, avatar, avatarSource, balance),
     ]).then(([scan, balanceState]) => {
       if (controller.signal.aborted) return;
       if (!scan.ok) {
