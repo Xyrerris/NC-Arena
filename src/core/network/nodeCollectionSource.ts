@@ -21,15 +21,15 @@ import {
   type UnlockedCollections,
 } from '../common';
 import { parseUnlockedCollectionIds } from '../collection';
-import { normaliseAvatarAddress, type Planet, type ViewerAvatar } from '../model';
-import { postGraphql } from './chainGraphql';
+import { normaliseAvatarAddress, type ViewerAvatar } from '../model';
+import { postGraphql, type GraphqlEndpoints } from './chainGraphql';
 import type { NetworkError } from './errors';
 
 /** The collection account. */
 const COLLECTION_ACCOUNT = '0x000000000000000000000000000000000000001f';
 
 /** A planet's node, or its nodes in the order to try them (`postGraphql` falls over on transport failures). */
-export type NodeEndpoints = Partial<Record<Planet, string | readonly string[]>>;
+export type NodeEndpoints = GraphqlEndpoints;
 
 /**
  * Public nodes per planet, in the order of the planet registry's `headless.gql`

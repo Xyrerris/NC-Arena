@@ -31,6 +31,7 @@ export const createMemoryPreferences = (
   let purchaseBatchLimit: number | null = null;
   let purchaseLog: string | null = null;
   let purchaseMode: string | null = null;
+  let endpointRegistry: string | null = null;
   let setupSkipped = false;
 
   return {
@@ -116,6 +117,10 @@ export const createMemoryPreferences = (
     getPurchaseLog: () => purchaseLog,
     setPurchaseLog: (json) => {
       purchaseLog = json;
+    },
+    getEndpointRegistry: () => endpointRegistry,
+    setEndpointRegistry: (json) => {
+      endpointRegistry = json;
     },
     getSetupSkipped: () => setupSkipped,
     setSetupSkipped: () => {

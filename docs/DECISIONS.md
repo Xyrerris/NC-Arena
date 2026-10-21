@@ -2921,8 +2921,9 @@ branch (HANDOFF.md, Operational) and is deliberately left out of the spike.
 
 ## ADR-0045 — Chain nodes come in ordered lists, and the app falls over between them
 
-**Status:** part 1 built, 2026-10-21 (`feat/node-failover`). Part 2 (read the list at start-up) is
-decided here and not built.
+**Status:** built, 2026-10-21 (`feat/node-failover`). Part 1 is the ordered lists with fallback; part 2
+reads the list at start-up (see "Built: part 2" at the end, which settles the open questions of
+"Next step").
 
 **Context.** Every plain-node read and the transaction sender went to one URL per planet,
 `heimdall-rpc-1.nine-chronicles.com`. On 2026-10-21 it timed out and then answered `502 Bad Gateway`
@@ -2953,7 +2954,7 @@ more. For Heimdall `headless.gql` is `heimdall6.9capi.com` alone; for Odin it is
 5. Thor still has no entry: the registry gives it nothing this app has verified.
 6. No ordering by speed yet. The client measures round-trip time; here the order is the registry's.
 
-**Next step (part 2, not built): read the registry at start-up.** The list above is a snapshot, so a
+**Next step (part 2, as designed before it was built): read the registry at start-up.** The list above is a snapshot, so a
 change on Planetarium's side (a node retired, one added) still needs a release. To remove that:
 
 - **A `PlanetRegistrySource` in `core/network`**: `GET https://planets.nine-chronicles.com/planets/`
@@ -2985,6 +2986,38 @@ change on Planetarium's side (a node retired, one added) still needs a release. 
   unknown planet; the cache used when the fetch fails; the static list used when both are missing;
   a probe in `scripts/check-boundaries.mjs` if `core/network` ever needs to reach prefs (it should
   not).
+
+**Built: part 2 (2026-10-21).** The owner decided the three open questions: order by **measured latency**
+as the client does; take **Mimir and the market from the registry** too; **no Thor** for now.
+
+- `core/network/planetRegistry.ts`: `PlanetRegistrySource` (GET, 8 s) and `parsePlanetRegistry`. It reads
+  `headless.gql`, `mimir.gql` and `market.rest` of **`odin` and `heimdall` only** (`SERVED_PLANETS`: Thor is
+  left out even if the registry grows an entry for it — add it there once it has been probed). A URL must be
+  `https` (the registry lists an `http` world-boss service). An entry that does not parse, or a planet with no
+  node, is dropped on its own. The cache (`encodeRegistryCache`/`decodeRegistryCache`) is
+  `{ version: 1, readAt, registry }`; any other shape is a miss.
+- `core/network/nodeRanking.ts`: `rankByLatency` probes every candidate **together** with `{ __typename }`
+  (4 s deadline each) and orders them fastest first. A node that does not answer is **kept, last**, in its
+  given order. The ranking is **not** cached: latency is a fact about this network now.
+- `core/network/endpointBook.ts`: `EndpointBook` holds the built-in lists, the registry layer and the
+  ranking, and hands the sources `nodes`, `mimir` and `market` tables whose entries are **read live** (getters),
+  so no source changed shape and none is rebuilt when a list changes. Candidates are the registry's, in its
+  order, then the built-in ones it did not mention. The market is the first candidate only: a scan is paged
+  against one host, and the registry gives one.
+- `core/data/endpointRefresh.ts`: `loadCached()` applies the cached registry synchronously at module load;
+  `refresh()` (called once from `_layout` after boot, never awaited) reads the registry if the cache is more
+  than a day old, absent or dated in the future, keeps it in preferences (`pref.endpointRegistry`), then ranks
+  nodes and Mimir for each planet. It cannot throw: a failure leaves the list as it was. Outcome: `FETCHED`,
+  `CACHED` or `BUILT_IN`.
+- Every source behind a table now takes `GraphqlEndpoints` (Mimir sources and the item-sheet source included),
+  so Mimir fails over too. `NODE_ENDPOINTS`, `MIMIR_ENDPOINTS` and `MARKET_SERVICE_ENDPOINTS` stay as the
+  built-in lists — what a cold start with no network and no cache uses.
+- Checked live the same day: the registry parses to the two planets above; for Heimdall the ranking puts
+  `heimdall6.9capi.com` first and `heimdall-mimir.9c.gg` before `mimir.nine-chronicles.dev` (0.7 s against
+  2.2 s earlier).
+- **Not done:** the built-in market and Mimir URLs are still the old ones, used only behind the registry's;
+  the background task (`backgroundSync`) loads the cache but never refreshes it; there is no UI that says
+  which node answered. None of those blocked anything.
 
 **Consequences.** One dead node no longer takes the inventory, the balance, the avatar lookup and
 the sender down together. The default list is data that goes stale; part 2 exists to stop

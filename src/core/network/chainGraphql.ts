@@ -15,6 +15,7 @@
 import { z } from 'zod';
 
 import { err, ok, type Result } from '../common';
+import type { Planet } from '../model';
 import type { NetworkError } from './errors';
 import { HttpClient } from './httpClient';
 
@@ -49,7 +50,11 @@ export const networkFailure = (
  */
 export const FAILOVER_TIMEOUT_MS = 10_000;
 
-async function postOne(
+/** A planet's GraphQL service, or its services in the order to try them. */
+export type GraphqlEndpoints = Partial<Record<Planet, string | readonly string[]>>;
+
+/** One endpoint, one deadline: what `postGraphql` does per node, and what a latency probe needs. */
+export async function postGraphqlTo(
   endpoint: string,
   query: string,
   timeoutMs?: number,
@@ -86,7 +91,7 @@ export async function postGraphql(
     message: 'no endpoint is configured',
   });
   for (const url of list) {
-    last = await postOne(url, query, timeoutMs);
+    last = await postGraphqlTo(url, query, timeoutMs);
     if (last.ok) return last;
   }
   return last;

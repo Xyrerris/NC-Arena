@@ -29,10 +29,13 @@ itself is in [HANDOFF-collection.md](HANDOFF-collection.md); read that first if 
   a fake sender and `resolveMode` replaced in `BatchSheet.live.test.tsx`, the flag staying `false`. The first
   real batch should be two cheap pieces with a low batch limit.
 
-- **Node failover, 2026-10-21 (`feat/node-failover`, ADR-0045).** `heimdall-rpc-1` went down (timeout, then 502) and the collection screen said the inventory "could not be read right now". Every node source now takes
-  an ordered list per planet and falls over on a transport failure; the default is the planet registry's
-  `headless.gql` (Heimdall: `heimdall6.9capi.com`). **Next, not built:** read the registry at start-up, cache
-  it in prefs, fall back to the static list — the design and the open questions are in ADR-0045, "Next step".
+- **Node failover and the planet registry, 2026-10-21 (`feat/node-failover`, ADR-0045).** `heimdall-rpc-1`
+  went down (timeout, then 502) and the collection screen said the inventory "could not be read right now".
+  Every node source now takes an ordered list per planet and falls over on a transport failure. At start-up
+  the app applies the cached planet registry, then (once a day) re-reads it and orders nodes and Mimir **by
+  measured latency**; Mimir and the market come from the registry too. Thor is left out on purpose
+  (`SERVED_PLANETS`). The built-in lists are the fallback. Details and what is not done: ADR-0045, "Built:
+  part 2".
 
 ## The feature
 

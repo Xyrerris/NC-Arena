@@ -27,7 +27,7 @@ import {
   type SheetSource,
 } from '../common';
 import type { Planet } from '../model';
-import { networkFailure, postGraphql } from './chainGraphql';
+import { networkFailure, postGraphql, type GraphqlEndpoints } from './chainGraphql';
 import type { NetworkError } from './errors';
 import { HttpClient } from './httpClient';
 import { MIMIR_ENDPOINTS } from './mimirCollectionSource';
@@ -69,7 +69,7 @@ export class GameSheetSource implements SheetSource {
 
   constructor(
     private readonly collectionSheetUrl: string = LIB9C_COLLECTION_SHEET_URL,
-    private readonly endpoints: Partial<Record<Planet, string>> = MIMIR_ENDPOINTS,
+    private readonly endpoints: GraphqlEndpoints = MIMIR_ENDPOINTS,
   ) {}
 
   async read(planet: Planet): Promise<Result<GameSheets, SheetError>> {

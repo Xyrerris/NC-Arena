@@ -135,6 +135,12 @@ export const mmkvPreferences: ArenaPreferences = {
   },
   setPurchaseLog: (json) => storage.set(PREF_KEYS.purchaseLog, json),
 
+  getEndpointRegistry: () => {
+    const stored = storage.getString(PREF_KEYS.endpointRegistry);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setEndpointRegistry: (json) => storage.set(PREF_KEYS.endpointRegistry, json),
+
   getSetupSkipped: () => storage.getBoolean(PREF_KEYS.setupSkipped) === true,
   setSetupSkipped: () => storage.set(PREF_KEYS.setupSkipped, true),
 };

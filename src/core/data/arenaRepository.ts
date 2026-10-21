@@ -39,25 +39,32 @@ import type {
   TransactionSource,
 } from '../common';
 import {
+  EndpointBook,
   FallbackAvatarSource,
   FallbackCollectionSource,
   GameSheetSource,
+  MARKET_SERVICE_ENDPOINTS,
+  MIMIR_ENDPOINTS,
   MarketServiceSource,
   MimirAvatarSource,
   MimirCollectionSource,
+  NODE_ENDPOINTS,
   NodeAvatarSource,
   NodeBalanceSource,
   NodeCollectionSource,
   NodeInventorySource,
   NodeTransactionSender,
   NodeTransactionSource,
+  PlanetRegistrySource,
   RemoteAccountGateway,
   RemoteRosterSource,
+  graphqlLatencyProbe,
 } from '../network';
 import { arenaDb } from '../db/client';
 import { mmkvPreferences } from '../prefs/mmkvPreferences';
 import type { KeystoreStore, PurchaseStore } from './arenaContext';
 import { createCollectionRepository } from './collectionRepository';
+import { createEndpointRefresh } from './endpointRefresh';
 import { createMarketLibrary, type MarketLibrary } from './marketLibrary';
 import { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
 import { createRosterRepository } from './rosterRepository';
@@ -90,6 +97,38 @@ export const arenaRepository = createRosterRepository({
 });
 
 /**
+ * Where every public chain service is (ADR-0045): the built-in lists, replaced by the planet
+ * registry's answer and ordered by measured latency. The sources below read it on every call, so
+ * a list that changes half-way through a session reaches the next request without any of them
+ * being rebuilt. Like them it is not behind the backend flag.
+ */
+export const endpointBook = new EndpointBook({
+  nodes: NODE_ENDPOINTS,
+  mimir: MIMIR_ENDPOINTS,
+  market: MARKET_SERVICE_ENDPOINTS,
+});
+
+const endpointRefresh = createEndpointRefresh({
+  book: endpointBook,
+  reader: new PlanetRegistrySource(),
+  probe: graphqlLatencyProbe(),
+  cache: {
+    get: () => mmkvPreferences.getEndpointRegistry(),
+    set: (json) => mmkvPreferences.setEndpointRegistry(json),
+  },
+});
+
+// Applied before anything below can be called, so the first request of a session already uses
+// what the last one learned. Synchronous: MMKV reads are.
+endpointRefresh.loadCached();
+
+/**
+ * Reads the registry again (if the cached one is a day old) and orders the nodes by latency. Called
+ * once after boot and never awaited by a screen; it cannot throw.
+ */
+export const refreshEndpoints = endpointRefresh.refresh;
+
+/**
  * Where the unlocked collections are read from (ADR-0044): Mimir first, a plain node behind it.
  *
  * Unlike the sources above it is **not** gated by `EXPO_PUBLIC_API_URL`. Both are public chain
@@ -97,8 +136,8 @@ export const arenaRepository = createRosterRepository({
  * has a chain to read — the off switch is about the roster's upstream, not about Nine Chronicles.
  */
 export const collectionSource: CollectionSource = new FallbackCollectionSource([
-  new MimirCollectionSource(),
-  new NodeCollectionSource(),
+  new MimirCollectionSource(endpointBook.mimir),
+  new NodeCollectionSource(endpointBook.nodes),
 ]);
 
 /**
@@ -115,7 +154,9 @@ export const collectionRepository = createCollectionRepository({
  * The collection sheet (lib9c) and the equipment names (Mimir), fetched when the collection tab
  * opens and kept for the run. Not bundled: that waits on a licence decision (ADR-0044).
  */
-export const sheetLibrary: SheetLibrary = createSheetLibrary({ source: new GameSheetSource() });
+export const sheetLibrary: SheetLibrary = createSheetLibrary({
+  source: new GameSheetSource(undefined, endpointBook.mimir),
+});
 
 /**
  * What is on sale of an item, read from Planetarium's market service and kept for a minute. Like
@@ -123,7 +164,7 @@ export const sheetLibrary: SheetLibrary = createSheetLibrary({ source: new GameS
  * of the backend, so a build with no backend still has a market to read.
  */
 export const marketLibrary: MarketLibrary = createMarketLibrary({
-  source: new MarketServiceSource(),
+  source: new MarketServiceSource(endpointBook.market),
 });
 
 /**
@@ -132,12 +173,12 @@ export const marketLibrary: MarketLibrary = createMarketLibrary({
  * which is never behind — is the only source. Public, like the chain sources, so not behind the
  * backend flag.
  */
-export const inventorySource: InventorySource = new NodeInventorySource();
+export const inventorySource: InventorySource = new NodeInventorySource(endpointBook.nodes);
 
 /** Who is at an avatar address, read from the same two public services. */
 export const avatarSource: AvatarSource = new FallbackAvatarSource([
-  new MimirAvatarSource(),
-  new NodeAvatarSource(),
+  new MimirAvatarSource(endpointBook.mimir),
+  new NodeAvatarSource(endpointBook.nodes),
 ]);
 
 /** The imported keystore (a passphrase-locked file), over the device's preferences. */
@@ -148,7 +189,7 @@ export const keystoreStore: KeystoreStore = {
 };
 
 /** Nonce, currency and the unsigned and signed forms of a transaction, from a public node. It cannot send. */
-export const transactionSource: TransactionSource = new NodeTransactionSource();
+export const transactionSource: TransactionSource = new NodeTransactionSource(endpointBook.nodes);
 
 /** The per-purchase limit and the record of purchases, over the device's preferences. */
 export const purchaseStore: PurchaseStore = {
@@ -170,10 +211,10 @@ export const purchaseStore: PurchaseStore = {
  * The one thing that can stage a transaction. Built here and handed down, but only a purchase that
  * resolved to `live` (which needs `LIVE_SENDING_BUILT` and the person's own setting) ever uses it.
  */
-export const transactionSender: TransactionSender = new NodeTransactionSender();
+export const transactionSender: TransactionSender = new NodeTransactionSender(endpointBook.nodes);
 
 /** NCG held by an account, from a public node (the purchase card's balance line). */
-export const balanceSource: BalanceSource = new NodeBalanceSource();
+export const balanceSource: BalanceSource = new NodeBalanceSource(endpointBook.nodes);
 
 /**
  * TanStack Query's one client, which §4 puts among the providers and §7 explains the job of:

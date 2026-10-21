@@ -78,5 +78,19 @@ export { GENESIS_HASHES, NodeTransactionSource } from './nodeTransactionSource';
 export { NodeTransactionSender } from './nodeTransactionSender';
 export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';
 export { NODE_ENDPOINTS, NodeCollectionSource, type NodeEndpoints } from './nodeCollectionSource';
+export type { GraphqlEndpoints } from './chainGraphql';
+export { EndpointBook, type EndpointDefaults, type EndpointKind } from './endpointBook';
+export { graphqlLatencyProbe, rankByLatency, type LatencyProbe } from './nodeRanking';
+export {
+  PLANET_REGISTRY_URL,
+  PlanetRegistrySource,
+  SERVED_PLANETS,
+  decodeRegistryCache,
+  encodeRegistryCache,
+  parsePlanetRegistry,
+  type PlanetEndpoints,
+  type PlanetRegistry,
+  type RegistryReader,
+} from './planetRegistry';
 export { RemoteAccountGateway } from './remoteAccountGateway';
 export { RemoteRosterSource } from './remoteRosterSource';

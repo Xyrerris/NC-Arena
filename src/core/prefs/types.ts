@@ -144,6 +144,14 @@ export interface ArenaPreferences {
   setPurchaseMode(mode: 'dry-run' | 'live'): void;
 
   /**
+   * The last good answer of the planet registry (ADR-0045) as JSON text, or null. Kept as text and
+   * validated by whoever reads it (`decodeRegistryCache`): a shape this code no longer knows is a
+   * cache miss, not an error. It is only where to find nodes, never anything personal.
+   */
+  getEndpointRegistry(): string | null;
+  setEndpointRegistry(json: string): void;
+
+  /**
    * The user chose to keep this ladder on this device only, and to skip the setup gate
    * (ADR-0038). It does not stop them pairing later from the "You" screen; it only stops the
    * gate standing in front of the roster on every launch.
@@ -170,5 +178,6 @@ export const PREF_KEYS = {
   purchaseBatchLimit: 'pref.purchaseBatchLimit',
   purchaseLog: 'pref.purchaseLog',
   purchaseMode: 'pref.purchaseMode',
+  endpointRegistry: 'pref.endpointRegistry',
   setupSkipped: 'pref.setupSkipped',
 } as const;

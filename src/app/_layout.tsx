@@ -18,6 +18,7 @@ import {
   keystoreStore,
   marketLibrary,
   purchaseStore,
+  refreshEndpoints,
   sheetLibrary,
   transactionSender,
   transactionSource,
@@ -99,6 +100,14 @@ export default function RootLayout() {
     scheduleBackgroundSync().catch((cause: unknown) => {
       if (__DEV__) console.warn('The periodic sync could not be scheduled.', cause);
     });
+  }, [booted]);
+
+  // Where the chain services are (ADR-0045): read the planet registry if the cached one is old, and
+  // order the nodes by latency. Not awaited and not tied to any screen — the lists it improves are
+  // read live — and it cannot throw, so a refusal is a list that stays as it was.
+  useEffect(() => {
+    if (!booted) return;
+    void refreshEndpoints();
   }, [booted]);
 
   // Splash stays up. Returning null rather than a spinner is deliberate: a spinner behind a
