@@ -88,6 +88,8 @@ describe('KeystoreSection', () => {
   let store: KeystoreStore;
   let avatarSource: AvatarSource | undefined;
   let limit: number | null;
+  let batchLimit: number | null;
+  let log: string | null;
   let mode: string | null;
   let withPurchases: boolean;
   const purchases: PurchaseStore = {
@@ -95,8 +97,14 @@ describe('KeystoreSection', () => {
     setLimit: (ncg) => {
       limit = ncg;
     },
-    getLog: () => null,
-    setLog: () => {},
+    getBatchLimit: () => batchLimit,
+    setBatchLimit: (ncg) => {
+      batchLimit = ncg;
+    },
+    getLog: () => log,
+    setLog: (json) => {
+      log = json;
+    },
     getMode: () => mode,
     setMode: (next) => {
       mode = next;
@@ -143,6 +151,8 @@ describe('KeystoreSection', () => {
     };
     avatarSource = undefined;
     limit = null;
+    batchLimit = null;
+    log = null;
     mode = null;
     withPurchases = true;
   });
@@ -276,6 +286,98 @@ describe('KeystoreSection', () => {
     await test('hunter2');
 
     await waitFor(() => expect(screen.getByTestId('keystore-claimed')).toBeTruthy());
+  });
+
+  describe('the limit for a whole batch', () => {
+    it('says no selection can be bought without one', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('batch-limit-line')).toBe('No batch limit set: no selection can be bought.');
+      expect(screen.queryByTestId('batch-limit-remove')).toBeNull();
+    });
+
+    it('saves an amount, keeps it apart from the limit per purchase, and removes it again', async () => {
+      limit = 50;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('batch-limit-input', '120,5');
+      await press('batch-limit-save');
+
+      expect(batchLimit).toBe(120.5);
+      expect(limit).toBe(50);
+      expect(text('batch-limit-line')).toBe('Batch limit: 120,5 NCG for all together');
+      expect(screen.getByTestId('batch-limit-input').props.value).toBe('');
+
+      await press('batch-limit-remove');
+      expect(batchLimit).toBeNull();
+      expect(text('batch-limit-line')).toBe('No batch limit set: no selection can be bought.');
+    });
+
+    it('refuses an amount that is not above zero with two decimals, and keeps what was there', async () => {
+      batchLimit = 80;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('batch-limit-input', '0');
+      await press('batch-limit-save');
+
+      expect(batchLimit).toBe(80);
+      expect(text('batch-limit-input-error')).toBe(
+        'Enter an amount above 0, with at most two decimals.',
+      );
+    });
+  });
+
+  describe('purchases not settled', () => {
+    const record = (id: string, status: string, mode = 'live') => ({
+      id,
+      productId: `product-${id}`,
+      planet: 'heimdall',
+      itemId: 10110000,
+      price: 12.5,
+      mode,
+      status,
+      at: 1_700_000_000_000,
+      transactionId: null,
+      note: 'no answer to the send',
+    });
+
+    it('shows nothing when every purchase is settled, or was only a dry run', async () => {
+      log = JSON.stringify([
+        record('a', 'confirmed'),
+        record('b', 'failed'),
+        record('c', 'dry-run', 'dry-run'),
+      ]);
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(screen.queryByTestId('unsettled')).toBeNull();
+    });
+
+    it('lists a real purchase whose end is not known, and clears it only when asked', async () => {
+      log = JSON.stringify([record('a', 'sent'), record('b', 'confirmed')]);
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('unsettled-a')).toBe('10110000 · 12,5 NCG · sent · no answer to the send');
+      expect(screen.queryByTestId('unsettled-b')).toBeNull();
+
+      await press('unsettled-clear-a');
+
+      expect(screen.queryByTestId('unsettled')).toBeNull();
+      const stored = JSON.parse(log ?? '[]') as { id: string; status: string; note: string }[];
+      // It is freed (failed is what frees an offer), with a note that says how; the settled one is untouched.
+      expect(stored.find((r) => r.id === 'a')).toMatchObject({
+        status: 'failed',
+        note: 'cleared by hand after checking the inventory and the balance',
+      });
+      expect(stored.find((r) => r.id === 'b')?.status).toBe('confirmed');
+    });
+
+    it('does not touch a record it cannot read', async () => {
+      log = '{not json';
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(screen.queryByTestId('unsettled')).toBeNull();
+      expect(log).toBe('{not json');
+    });
   });
 
   describe('the limit per purchase', () => {

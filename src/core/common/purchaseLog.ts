@@ -91,6 +91,33 @@ export function updateRecord(
   return records.map((record) => (record.id === id ? { ...record, ...patch } : record));
 }
 
+/**
+ * The live purchases whose end is not known: written, and either never signed or sent with no
+ * verdict. They block their offer, deliberately, and are what a person has to look at.
+ */
+export const unsettledRecords = (records: readonly PurchaseRecord[]): readonly PurchaseRecord[] =>
+  records.filter(
+    (record) =>
+      record.mode === 'live' && (record.status === 'prepared' || record.status === 'sent'),
+  );
+
+/**
+ * Frees an unsettled purchase the person has checked by hand (inventory and balance). It becomes
+ * `failed` with a note that says how, because "failed" is what frees the offer; any other record is
+ * left exactly as it is, so this cannot rewrite a purchase that is known.
+ */
+export function clearUnsettled(
+  records: readonly PurchaseRecord[],
+  id: string,
+): readonly PurchaseRecord[] {
+  const target = records.find((record) => record.id === id);
+  if (target === undefined || unsettledRecords([target]).length === 0) return records;
+  return updateRecord(records, id, {
+    status: 'failed',
+    note: 'cleared by hand after checking the inventory and the balance',
+  });
+}
+
 /** Where the log text lives. Over preferences on a device, over a variable in a test. */
 export interface PurchaseLogStore {
   read(): PurchaseLogRead;

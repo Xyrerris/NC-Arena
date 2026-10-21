@@ -66,6 +66,33 @@ export const limitLine = (limit: number | null): string =>
     ? 'No limit set: nothing can be bought.'
     : `Limit: ${String(limit).replace('.', ',')} NCG per purchase`;
 
+export const BATCH_LIMIT_LABEL = 'Limit for a whole batch (NCG)';
+export const BATCH_LIMIT_HINT =
+  'The most a selection of offers may cost together. With none, no selection can be bought.';
+
+export const batchLimitLine = (limit: number | null): string =>
+  limit === null
+    ? 'No batch limit set: no selection can be bought.'
+    : `Batch limit: ${String(limit).replace('.', ',')} NCG for all together`;
+
+export const UNSETTLED_TITLE = 'Purchases not settled';
+export const UNSETTLED_HINT =
+  'A real purchase whose end is not known keeps its offer blocked, so it is not bought twice. ' +
+  'Look at your inventory and your balance; only if you are sure, clear it.';
+export const UNSETTLED_CLEAR = 'I CHECKED: CLEAR IT';
+export const UNSETTLED_CLEAR_A11Y = (what: string): string =>
+  `Clear the unsettled purchase of ${what}, after checking the inventory and the balance`;
+
+/** One unsettled purchase as a line: what, how much, its state, and the note the flow left. */
+export const unsettledLine = (record: {
+  readonly itemId: number;
+  readonly price: number;
+  readonly status: string;
+  readonly note: string | null;
+}): string =>
+  `${record.itemId} · ${String(record.price).replace('.', ',')} NCG · ${record.status}` +
+  (record.note === null ? '' : ` · ${record.note}`);
+
 /** `0x1a2b…c3d4`: enough to tell accounts apart on a phone. */
 export const shortAgent = (address: string): string => {
   const bare = address.replace(/^0x/i, '').toLowerCase();

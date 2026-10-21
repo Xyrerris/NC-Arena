@@ -28,6 +28,7 @@ export const createMemoryPreferences = (
   let apiKey: string | null = initial.apiKey ?? null;
   let keystore: string | null = null;
   let purchaseLimit: number | null = null;
+  let purchaseBatchLimit: number | null = null;
   let purchaseLog: string | null = null;
   let purchaseMode: string | null = null;
   let setupSkipped = false;
@@ -100,6 +101,13 @@ export const createMemoryPreferences = (
     },
     clearPurchaseLimit: () => {
       purchaseLimit = null;
+    },
+    getPurchaseBatchLimit: () => purchaseBatchLimit,
+    setPurchaseBatchLimit: (ncg) => {
+      purchaseBatchLimit = ncg;
+    },
+    clearPurchaseBatchLimit: () => {
+      purchaseBatchLimit = null;
     },
     getPurchaseMode: () => purchaseMode,
     setPurchaseMode: (mode) => {

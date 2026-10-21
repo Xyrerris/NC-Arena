@@ -2795,6 +2795,42 @@ person choose the piece. Buying comes after, and not from this step.
   a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
   phone app does it, hands off to something that does, or only lists, is decided separately.
 
+**Built (2026-10-21): buying a selection — the cart, step 2b.** The offers view's bar has BUY THE SELECTION,
+which opens a sheet that lists exactly what will be bought and runs it. The decisions that matter:
+
+- **A batch is N purchases, not one bigger one.** Each piece is its own transaction through the same
+  `runPurchase` and `awaitPurchase` as a single purchase, so every guarantee of step D holds per piece: the
+  rules, the record written first, the signature, "doubt keeps the offer blocked". One transaction with
+  several products was considered and rejected: one piece sold meanwhile would very likely fail them all,
+  and the lib9c behaviour for that is not verified. N transactions cost more Mead and are slower, and are
+  predictable.
+- **One at a time, each settled before the next.** The next piece is not begun until the chain has decided
+  the one before (so the node's next nonce is right, and the balance handed to each piece is what the earlier
+  ones left). In a dry run there is nothing to wait for.
+- **It stops at doubt.** A piece sold meanwhile, whose price moved, already in the record, the buyer's own or
+  over the per-purchase limit moves no money and is skipped. Anything else — a chain failure, a send with no
+  verdict, a node that said no, a signature that failed, a balance or account problem — ends the batch there
+  and the pieces after it are **not attempted** (`core/common/purchaseBatch`, `continuesAfter`).
+- **A ceiling on the whole batch, and none means no batch.** A new setting, apart from the limit per
+  purchase (`pref.purchaseBatchLimit`, set on the You tab). `checkBatch` refuses before anything is written
+  if there is no ceiling, the total is above it, the balance is unknown or below the total, an offer is
+  twice in it, or a piece is not single equipment.
+- **Only single equipment, for now.** `toPurchaseOffer` covers the five equipment sub types with quantity 1.
+  Costumes, materials and food are lots/fungibles whose `buy_product3` layout has never been checked against
+  the chain, and the real purchase made on 2026-10-20 was a piece of equipment. Offers that are not single
+  equipment are left out of the batch, whole, and the sheet says how many.
+- **The key is held for the length of the batch** (it signs every piece) and cleared in a `finally`; the
+  passphrase is typed once, at the confirmation, and never stored. The balance is read when the batch starts,
+  not taken from the bar.
+- **Purchases not settled are visible and clearable** on the You tab. A live purchase whose end is not known
+  blocks its offer; before this there was no way out from the app. Clearing one marks it `failed` with a note
+  saying it was cleared by hand after checking the inventory and the balance — the person's word, which the
+  app cannot verify — and it only touches an unsettled live purchase.
+- **Tested with the flag off.** `LIVE_SENDING_BUILT` is still `false` and the suites run that way: the live
+  sheet is exercised in `BatchSheet.live.test.tsx` the way `PurchaseCard.live.test.tsx` does, by replacing
+  `resolveMode` in that file, with a fake sender. **The batch has never been run live against the real
+  chain.** The first one should be two cheap pieces, a low batch limit, by the owner.
+
 **Built (2026-10-20): an Offers view with a total, and the first real purchase is done.**
 
 - **The real purchase was made (owner, 2026-10-20).** One piece was bought through the app with the send

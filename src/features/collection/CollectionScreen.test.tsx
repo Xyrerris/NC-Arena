@@ -126,6 +126,8 @@ describe('CollectionScreen', () => {
     setLimit: (ncg) => {
       purchaseLimit = ncg;
     },
+    getBatchLimit: () => null,
+    setBatchLimit: () => {},
     getLog: () => purchaseLog,
     setLog: (json) => {
       purchaseLog = json;
@@ -738,6 +740,30 @@ describe('CollectionScreen', () => {
           await press(SELECT);
           await press(SELECT);
           expect(screen.queryByTestId('offers-bar')).toBeNull();
+        });
+
+        it('opens the batch for the selection, listing each lot to be bought, and closes again', async () => {
+          withAccount(10);
+          await found();
+          await press(SELECT);
+          await act(async () => {});
+
+          await press('offers-buy');
+
+          // The sword offer needs two and is two lots, 3 and 5: two purchases, 8 NCG in all.
+          expect(text('batch-total')).toBe(words.batchTotalLine(2, '8'));
+          expect(
+            screen.getByTestId('batch-line-00000000-0000-0000-0000-000000000003'),
+          ).toBeTruthy();
+          expect(
+            screen.getByTestId('batch-line-00000000-0000-0000-0000-000000000005'),
+          ).toBeTruthy();
+          // Nothing was bought by opening it, and the build can only try.
+          expect(text('batch-mode-note')).toContain('nothing is sent');
+
+          await press('batch-close');
+          expect(screen.queryByTestId('batch-sheet')).toBeNull();
+          expect(screen.getByTestId('offers-bar')).toBeTruthy();
         });
 
         it('does not call an unreadable balance short', async () => {

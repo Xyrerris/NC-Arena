@@ -24,6 +24,11 @@ export interface PurchaseLimitController {
   /** Saves the typed amount. Returns whether it was valid and saved. */
   readonly onSave: (text: string) => boolean;
   readonly onRemove: () => void;
+  /** The ceiling on a whole batch, or null for none (no batch can be bought). */
+  readonly batchLimit: number | null;
+  readonly batchError: string | null;
+  readonly onSaveBatch: (text: string) => boolean;
+  readonly onRemoveBatch: () => void;
   /** Whether this build can send at all. When false the mode cannot be changed. */
   readonly liveBuilt: boolean;
   readonly mode: PurchaseMode;
@@ -37,6 +42,31 @@ export const usePurchaseLimit = (
   const [limit, setLimit] = useState<number | null>(() => purchases?.getLimit() ?? null);
   const [stored, setStored] = useState<string | null>(() => purchases?.getMode() ?? null);
   const [error, setError] = useState<string | null>(null);
+  const [batchLimit, setBatchLimit] = useState<number | null>(
+    () => purchases?.getBatchLimit() ?? null,
+  );
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  const onSaveBatch = useCallback(
+    (text: string): boolean => {
+      const parsed = parseLimit(text);
+      if (parsed === null) {
+        setBatchError(LIMIT_ERROR);
+        return false;
+      }
+      purchases?.setBatchLimit(parsed);
+      setBatchLimit(parsed);
+      setBatchError(null);
+      return true;
+    },
+    [purchases],
+  );
+
+  const onRemoveBatch = useCallback((): void => {
+    purchases?.setBatchLimit(null);
+    setBatchLimit(null);
+    setBatchError(null);
+  }, [purchases]);
 
   const onSave = useCallback(
     (text: string): boolean => {
@@ -71,5 +101,17 @@ export const usePurchaseLimit = (
 
   return purchases === undefined
     ? null
-    : { limit, error, onSave, onRemove, liveBuilt, mode: resolveMode(stored, liveBuilt), onMode };
+    : {
+        limit,
+        error,
+        onSave,
+        onRemove,
+        batchLimit,
+        batchError,
+        onSaveBatch,
+        onRemoveBatch,
+        liveBuilt,
+        mode: resolveMode(stored, liveBuilt),
+        onMode,
+      };
 };

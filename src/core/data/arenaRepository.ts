@@ -155,6 +155,11 @@ export const purchaseStore: PurchaseStore = {
   getLimit: () => mmkvPreferences.getPurchaseLimit(),
   setLimit: (ncg) =>
     ncg === null ? mmkvPreferences.clearPurchaseLimit() : mmkvPreferences.setPurchaseLimit(ncg),
+  getBatchLimit: () => mmkvPreferences.getPurchaseBatchLimit(),
+  setBatchLimit: (ncg) =>
+    ncg === null
+      ? mmkvPreferences.clearPurchaseBatchLimit()
+      : mmkvPreferences.setPurchaseBatchLimit(ncg),
   getLog: () => mmkvPreferences.getPurchaseLog(),
   setLog: (json) => mmkvPreferences.setPurchaseLog(json),
   getMode: () => mmkvPreferences.getPurchaseMode(),

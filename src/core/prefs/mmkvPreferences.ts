@@ -116,6 +116,14 @@ export const mmkvPreferences: ArenaPreferences = {
   clearPurchaseLimit: () => {
     storage.remove(PREF_KEYS.purchaseLimit);
   },
+  getPurchaseBatchLimit: () => {
+    const stored = storage.getNumber(PREF_KEYS.purchaseBatchLimit);
+    return stored === undefined || !Number.isFinite(stored) || stored <= 0 ? null : stored;
+  },
+  setPurchaseBatchLimit: (ncg) => storage.set(PREF_KEYS.purchaseBatchLimit, ncg),
+  clearPurchaseBatchLimit: () => {
+    storage.remove(PREF_KEYS.purchaseBatchLimit);
+  },
   getPurchaseMode: () => {
     const stored = storage.getString(PREF_KEYS.purchaseMode);
     return stored === undefined || stored === '' ? null : stored;

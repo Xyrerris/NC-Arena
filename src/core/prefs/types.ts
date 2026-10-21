@@ -124,6 +124,13 @@ export interface ArenaPreferences {
   setPurchaseLimit(ncg: number): void;
   clearPurchaseLimit(): void;
   /**
+   * The most, in NCG, a whole *batch* of purchases may cost together, or null for none. Separate from
+   * the per-purchase limit and with the same default: **none means no batch**.
+   */
+  getPurchaseBatchLimit(): number | null;
+  setPurchaseBatchLimit(ncg: number): void;
+  clearPurchaseBatchLimit(): void;
+  /**
    * The record of purchases as JSON text (`core/common/purchaseLog`), or null. Kept as text and
    * validated by whoever reads it: a record that cannot be read is refused over, not replaced.
    */
@@ -160,6 +167,7 @@ export const PREF_KEYS = {
   apiKey: 'pref.apiKey',
   keystore: 'pref.keystore',
   purchaseLimit: 'pref.purchaseLimit',
+  purchaseBatchLimit: 'pref.purchaseBatchLimit',
   purchaseLog: 'pref.purchaseLog',
   purchaseMode: 'pref.purchaseMode',
   setupSkipped: 'pref.setupSkipped',

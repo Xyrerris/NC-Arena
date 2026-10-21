@@ -20,8 +20,14 @@ itself is in [HANDOFF-collection.md](HANDOFF-collection.md); read that first if 
   refused by the URL guard); the **OFFERS** view lists the cheapest offer for every missing piece, read only
   on request, three scans at a time; counted pieces are priced by an exact knapsack over the lots; offers can
   be **selected** and the bar adds their asking prices and compares them with the balance. Nothing is bought
-  from the bar. The cart that buys (2b) still waits on a cap on the total, one passphrase for a batch, and a
-  screen to see and clear the purchase record.
+  from the bar.
+- **Built 2026-10-21 (`feat/best-offers`): the cart that buys (2b).** BUY THE SELECTION opens a sheet that runs
+  the selected pieces as N purchases, one at a time, each settled before the next, stopping at the first thing
+  that is not understood (ADR-0044, "Built (2026-10-21)"). New: a **limit for a whole batch** on the You tab
+  (none means no batch), and the list of **purchases not settled** with a way to clear one. Only single
+  equipment can be in a batch. **It has never run live against the real chain**; the live path is tested with
+  a fake sender and `resolveMode` replaced in `BatchSheet.live.test.tsx`, the flag staying `false`. The first
+  real batch should be two cheap pieces with a low batch limit.
 
 ## The feature
 

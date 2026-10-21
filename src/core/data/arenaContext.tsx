@@ -92,6 +92,9 @@ export interface ArenaData {
 export interface PurchaseStore {
   getLimit(): number | null;
   setLimit(ncg: number | null): void;
+  /** The most a whole batch of purchases may cost in all; none means no batch. */
+  getBatchLimit(): number | null;
+  setBatchLimit(ncg: number | null): void;
   getLog(): string | null;
   setLog(json: string): void;
   /** `live` when the person has turned real purchases on, or null. Anything else is a dry run. */

@@ -20,6 +20,8 @@ import {
 } from '@/core/design-system';
 
 import {
+  BATCH_LIMIT_HINT,
+  BATCH_LIMIT_LABEL,
   CLAIMED_DIFFERS_NOTE,
   IMPORT_BUTTON,
   IMPORT_HINT,
@@ -46,12 +48,19 @@ import {
   SECTION_HINT,
   SECTION_TITLE,
   TEST_BUTTON,
+  UNSETTLED_CLEAR,
+  UNSETTLED_CLEAR_A11Y,
+  UNSETTLED_HINT,
+  UNSETTLED_TITLE,
   WRONG_NOTE,
+  batchLimitLine,
   describeOpened,
   storedLine,
+  unsettledLine,
 } from './keystoreUiState';
 import { useKeystore } from './useKeystore';
 import { usePurchaseLimit } from './usePurchaseLimit';
+import { usePurchaseRecord } from './usePurchaseRecord';
 
 export interface KeystoreSectionProps {
   /** Whether this build can send. Defaults to the build's own switch; a test passes it. */
@@ -61,8 +70,10 @@ export interface KeystoreSectionProps {
 export function KeystoreSection({ liveBuilt }: KeystoreSectionProps = {}) {
   const keystore = useKeystore();
   const purchase = usePurchaseLimit(liveBuilt);
+  const record = usePurchaseRecord();
   const [confirmingMode, setConfirmingMode] = useState(false);
   const [limitText, setLimitText] = useState('');
+  const [batchText, setBatchText] = useState('');
   const [text, setText] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [justSaved, setJustSaved] = useState(false);
@@ -230,6 +241,35 @@ export function KeystoreSection({ liveBuilt }: KeystoreSectionProps = {}) {
               testID="purchase-limit-remove"
             />
           )}
+          <ArenaText variant="bodyMedium" testID="batch-limit-line">
+            {batchLimitLine(purchase.batchLimit)}
+          </ArenaText>
+          <FormField
+            label={BATCH_LIMIT_LABEL}
+            value={batchText}
+            onChangeText={setBatchText}
+            error={purchase.batchError}
+            hint={BATCH_LIMIT_HINT}
+            keyboardType="decimal-pad"
+            numeric
+            testID="batch-limit-input"
+          />
+          <ArenaButton
+            label={LIMIT_SAVE}
+            variant="secondary"
+            onPress={() => {
+              if (purchase.onSaveBatch(batchText)) setBatchText('');
+            }}
+            testID="batch-limit-save"
+          />
+          {purchase.batchLimit === null ? null : (
+            <ArenaButton
+              label={LIMIT_REMOVE}
+              variant="secondary"
+              onPress={purchase.onRemoveBatch}
+              testID="batch-limit-remove"
+            />
+          )}
           {!purchase.liveBuilt ? (
             <ArenaText variant="bodyCaption" tone="subtle" testID="purchase-mode">
               {MODE_NOTE}
@@ -280,6 +320,31 @@ export function KeystoreSection({ liveBuilt }: KeystoreSectionProps = {}) {
               )}
             </View>
           )}
+        </View>
+      )}
+
+      {record === null || record.unsettled.length === 0 ? null : (
+        <View style={styles.limit} testID="unsettled">
+          <ArenaText variant="bodyMedium" tone="negative">
+            {UNSETTLED_TITLE}
+          </ArenaText>
+          <ArenaText variant="bodyCaption" tone="subtle">
+            {UNSETTLED_HINT}
+          </ArenaText>
+          {record.unsettled.map((entry) => (
+            <View key={entry.id} style={styles.limit}>
+              <ArenaText variant="bodySmall" testID={`unsettled-${entry.id}`}>
+                {unsettledLine(entry)}
+              </ArenaText>
+              <ArenaButton
+                label={UNSETTLED_CLEAR}
+                accessibilityLabel={UNSETTLED_CLEAR_A11Y(String(entry.itemId))}
+                variant="secondary"
+                onPress={() => record.onClear(entry.id)}
+                testID={`unsettled-clear-${entry.id}`}
+              />
+            </View>
+          ))}
         </View>
       )}
     </View>

@@ -6,9 +6,11 @@
 import {
   MAX_RECORDS,
   appendRecord,
+  clearUnsettled,
   parsePurchaseLog,
   purchaseLogOver,
   serialisePurchaseLog,
+  unsettledRecords,
   updateRecord,
   type PurchaseRecord,
 } from './purchaseLog';
@@ -73,6 +75,42 @@ describe('appendRecord and updateRecord', () => {
     expect(log[0]).toEqual(blocking);
     expect(log.find((r) => r.id === 'r1')).toBeUndefined();
     expect(log[log.length - 1]?.id).toBe('r999');
+  });
+});
+
+describe('unsettledRecords and clearUnsettled', () => {
+  const live = (n: number, status: PurchaseRecord['status']) =>
+    record(n, { mode: 'live', status, note: null });
+
+  it('lists the real purchases whose end is not known, and nothing else', () => {
+    const log = [
+      live(1, 'prepared'),
+      live(2, 'sent'),
+      live(3, 'confirmed'),
+      live(4, 'failed'),
+      record(5, { mode: 'dry-run', status: 'prepared' }),
+    ];
+    expect(unsettledRecords(log).map((r) => r.id)).toEqual(['r1', 'r2']);
+  });
+
+  it('frees an unsettled purchase by marking it failed, with a note that says how', () => {
+    const cleared = clearUnsettled([live(1, 'sent'), live(2, 'sent')], 'r1');
+
+    expect(cleared[0]).toMatchObject({
+      status: 'failed',
+      note: 'cleared by hand after checking the inventory and the balance',
+    });
+    expect(cleared[1]?.status).toBe('sent');
+    expect(unsettledRecords(cleared).map((r) => r.id)).toEqual(['r2']);
+  });
+
+  it('leaves a purchase that is known exactly as it is, and an unknown id alone', () => {
+    const log = [live(1, 'confirmed'), live(2, 'failed'), record(3)];
+
+    expect(clearUnsettled(log, 'r1')).toEqual(log);
+    expect(clearUnsettled(log, 'r2')).toEqual(log);
+    expect(clearUnsettled(log, 'r3')).toEqual(log);
+    expect(clearUnsettled(log, 'nope')).toEqual(log);
   });
 });
 

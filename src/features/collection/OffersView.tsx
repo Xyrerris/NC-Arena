@@ -15,6 +15,8 @@ import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/coll
 import { ArenaButton, ArenaText, SortChip, color, layout, space } from '@/core/design-system';
 import type { Planet } from '@/core/model';
 
+import { BatchSheet } from './BatchSheet';
+import { batchPlan } from './batchUiState';
 import type { CollectionController } from './useCollection';
 import { OfferSheet } from './OfferSheet';
 import {
@@ -66,6 +68,7 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
     });
   };
   const chosen = rows.filter((row) => selected.has(row.offer.key));
+  const [buying, setBuying] = useState(false);
   const balance = useNcgBalance(planet, chosen.length > 0);
   const summary =
     chosen.length === 0
@@ -242,6 +245,12 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
           </ArenaText>
           <View style={styles.actions}>
             <ArenaButton
+              label={words.offersBuySelection}
+              accessibilityLabel={words.offersBuySelectionA11y}
+              onPress={() => setBuying(true)}
+              testID="offers-buy"
+            />
+            <ArenaButton
               label={words.offersClear}
               accessibilityLabel={words.offersClearA11y}
               variant="secondary"
@@ -250,6 +259,9 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
             />
           </View>
         </View>
+      )}
+      {!buying ? null : (
+        <BatchSheet planet={planet} plan={batchPlan(chosen)} onClose={() => setBuying(false)} />
       )}
       {open === undefined ? null : (
         <OfferSheet
