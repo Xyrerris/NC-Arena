@@ -77,6 +77,6 @@ export { NodeInventorySource } from './nodeInventorySource';
 export { GENESIS_HASHES, NodeTransactionSource } from './nodeTransactionSource';
 export { NodeTransactionSender } from './nodeTransactionSender';
 export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';
-export { NODE_ENDPOINTS, NodeCollectionSource } from './nodeCollectionSource';
+export { NODE_ENDPOINTS, NodeCollectionSource, type NodeEndpoints } from './nodeCollectionSource';
 export { RemoteAccountGateway } from './remoteAccountGateway';
 export { RemoteRosterSource } from './remoteRosterSource';

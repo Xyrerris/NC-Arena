@@ -28,19 +28,31 @@ import type { NetworkError } from './errors';
 /** The collection account. */
 const COLLECTION_ACCOUNT = '0x000000000000000000000000000000000000001f';
 
+/** A planet's node, or its nodes in the order to try them (`postGraphql` falls over on transport failures). */
+export type NodeEndpoints = Partial<Record<Planet, string | readonly string[]>>;
+
 /**
- * Public nodes, one per planet. Thor is absent on purpose: `thor-rpc-1` answered 502 when this
- * was written, and a URL guessed by analogy is not one to ship. Add it when it is verified.
+ * Public nodes per planet, in the order of the planet registry's `headless.gql`
+ * (https://planets.nine-chronicles.com/planets/, read 2026-10-21 — the same list the official
+ * client's node selector works from). The old Heimdall `heimdall-rpc-1` is gone from it: it timed
+ * out and answered 502 while `heimdall6.9capi.com` answered in under half a second.
+ *
+ * Thor is absent on purpose: the registry gives it no node this app has verified, and a URL
+ * guessed by analogy is not one to ship. Add it when it is verified.
  */
-export const NODE_ENDPOINTS: Partial<Record<Planet, string>> = {
-  odin: 'https://odin-rpc-1.nine-chronicles.com/graphql',
-  heimdall: 'https://heimdall-rpc-1.nine-chronicles.com/graphql',
+export const NODE_ENDPOINTS: NodeEndpoints = {
+  odin: [
+    'https://odin-rpc-1.nine-chronicles.com/graphql',
+    'https://odin5.9capi.com/graphql',
+    'https://odin6.9capi.com/graphql',
+  ],
+  heimdall: ['https://heimdall6.9capi.com/graphql'],
 };
 
 export class NodeCollectionSource implements CollectionSource {
   readonly name = 'node';
 
-  constructor(private readonly endpoints: Partial<Record<Planet, string>> = NODE_ENDPOINTS) {}
+  constructor(private readonly endpoints: NodeEndpoints = NODE_ENDPOINTS) {}
 
   async readUnlocked(
     avatar: ViewerAvatar,

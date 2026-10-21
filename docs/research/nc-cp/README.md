@@ -29,7 +29,8 @@ Only Adventure is in `fixture.ts`. World Boss and Arena overshoot slightly and t
 
 ## Where each input comes from
 
-Public node, no auth: `https://heimdall-rpc-1.nine-chronicles.com/graphql` (Odin: `odin-rpc-1`).
+Public node, no auth: `https://heimdall6.9capi.com/graphql` (Odin: `odin-rpc-1`; `heimdall-rpc-1`
+was down on 2026-10-21 — the planet registry's `headless.gql` is the list to follow, ADR-0045).
 Work on **Heimdall** (owner's instruction). A community list of live nodes is at
 `https://api.9capi.com/rpc`.
 

@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { err, ok, type BalanceError, type BalanceSource, type Result } from '../common';
 import type { Planet } from '../model';
 import { networkFailure, postGraphql } from './chainGraphql';
-import { NODE_ENDPOINTS } from './nodeCollectionSource';
+import { NODE_ENDPOINTS, type NodeEndpoints } from './nodeCollectionSource';
 
 const dataSchema = z.object({ goldBalance: z.string().regex(/^\d+(\.\d+)?$/) });
 
@@ -26,7 +26,7 @@ const AGENT_ADDRESS = /^(0x)?([0-9a-fA-F]{40})$/;
 export class NodeBalanceSource implements BalanceSource {
   readonly name = 'node';
 
-  constructor(private readonly endpoints: Partial<Record<Planet, string>> = NODE_ENDPOINTS) {}
+  constructor(private readonly endpoints: NodeEndpoints = NODE_ENDPOINTS) {}
 
   async readNcg(planet: Planet, agentAddress: string): Promise<Result<number, BalanceError>> {
     const endpoint = this.endpoints[planet];

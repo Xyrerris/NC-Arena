@@ -30,7 +30,7 @@ import { bytesToHex, decodeBencodex, dictGet, hexToBytes } from '../common/benco
 import { DEFAULT_GAS } from '../common/transaction';
 import type { Planet } from '../model';
 import { networkFailure, postGraphql } from './chainGraphql';
-import { NODE_ENDPOINTS } from './nodeCollectionSource';
+import { NODE_ENDPOINTS, type NodeEndpoints } from './nodeCollectionSource';
 
 /** From the planet registry. A signed transaction is only valid on the chain it names. */
 export const GENESIS_HASHES: Partial<Record<Planet, string>> = {
@@ -47,7 +47,7 @@ const AGENT = /^(?:0x)?([0-9a-fA-F]{40})$/;
 export class NodeTransactionSource implements TransactionSource {
   readonly name = 'node';
 
-  constructor(private readonly endpoints: Partial<Record<Planet, string>> = NODE_ENDPOINTS) {}
+  constructor(private readonly endpoints: NodeEndpoints = NODE_ENDPOINTS) {}
 
   genesisHash(planet: Planet): string | null {
     return GENESIS_HASHES[planet] ?? null;

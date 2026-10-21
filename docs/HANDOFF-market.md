@@ -29,6 +29,11 @@ itself is in [HANDOFF-collection.md](HANDOFF-collection.md); read that first if 
   a fake sender and `resolveMode` replaced in `BatchSheet.live.test.tsx`, the flag staying `false`. The first
   real batch should be two cheap pieces with a low batch limit.
 
+- **Node failover, 2026-10-21 (`feat/node-failover`, ADR-0045).** `heimdall-rpc-1` went down (timeout, then 502) and the collection screen said the inventory "could not be read right now". Every node source now takes
+  an ordered list per planet and falls over on a transport failure; the default is the planet registry's
+  `headless.gql` (Heimdall: `heimdall6.9capi.com`). **Next, not built:** read the registry at start-up, cache
+  it in prefs, fall back to the static list — the design and the open questions are in ADR-0045, "Next step".
+
 ## The feature
 
 On the collections screen, every open collection that has a piece the market sells has a
@@ -351,6 +356,6 @@ At `656943c`: 891 tests (all Jest projects), 609 (Node coverage run), 46 (backen
 - Is a keystore **file** the right thing for the owner to import (does the owner have one, and where),
   or would a raw private key pasted once be expected? The passphrase proposal assumes a keystore.
 - Which node endpoints may the app use for the nonce and transactions: the planet registry's public ones
-  (`heimdall-rpc-1.nine-chronicles.com`, `heimdall6.9capi.com`)? They answered in the 2026-10-01 probes.
+  (since 2026-10-21 `heimdall6.9capi.com` for Heimdall; `heimdall-rpc-1` is out of the list — ADR-0045)?
 - Merge into `claude/backend-data-management-w98hph` (which deploys the backend) or keep a separate line?
   Nothing in this feature touches `backend/`.

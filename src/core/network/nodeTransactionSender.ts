@@ -29,7 +29,7 @@ import {
 import { bytesToHex } from '../common/bencodex';
 import type { Planet } from '../model';
 import { networkFailure, postGraphql } from './chainGraphql';
-import { NODE_ENDPOINTS } from './nodeCollectionSource';
+import { NODE_ENDPOINTS, type NodeEndpoints } from './nodeCollectionSource';
 
 const TX_ID = /^[0-9a-fA-F]{64}$/;
 
@@ -42,7 +42,7 @@ const resultSchema = z.object({
 export class NodeTransactionSender implements TransactionSender {
   readonly name = 'node';
 
-  constructor(private readonly endpoints: Partial<Record<Planet, string>> = NODE_ENDPOINTS) {}
+  constructor(private readonly endpoints: NodeEndpoints = NODE_ENDPOINTS) {}
 
   async stage(planet: Planet, signed: Uint8Array): Promise<Result<string, StageError>> {
     const endpoint = this.endpoints[planet];

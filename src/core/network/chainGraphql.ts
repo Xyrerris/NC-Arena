@@ -43,12 +43,19 @@ export const networkFailure = (
   message: `${source}: ${error.code} — ${error.message}`,
 });
 
-export async function postGraphql(
+/**
+ * A deadline per node when there is another to fall back to: a dead one (observed 2026-10-21:
+ * `heimdall-rpc-1` timed out, then answered 502) should cost seconds, not the full 20.
+ */
+export const FAILOVER_TIMEOUT_MS = 10_000;
+
+async function postOne(
   endpoint: string,
   query: string,
+  timeoutMs?: number,
 ): Promise<Result<GraphqlEnvelope, NetworkError>> {
   // The endpoint is the whole URL, so the request path is empty.
-  const response = await new HttpClient(endpoint, null).request<unknown>('', {
+  const response = await new HttpClient(endpoint, null, { timeoutMs }).request<unknown>('', {
     method: 'POST',
     body: JSON.stringify({ query }),
   });
@@ -59,4 +66,28 @@ export async function postGraphql(
     return err({ code: 'MALFORMED_RESPONSE', message: 'the answer was not a GraphQL response' });
   }
   return ok({ data: parsed.data.data ?? null, errors: parsed.data.errors ?? [] });
+}
+
+/**
+ * Posts to one endpoint, or to a list of them in order. Only a **transport** failure moves on to
+ * the next node — unreachable, out of time, a non-2xx from a gateway, an answer that is not
+ * GraphQL. A GraphQL `errors` array is the query's own answer and is returned as it is: another
+ * node would only say the same. When every node fails, the last failure is returned.
+ */
+export async function postGraphql(
+  endpoint: string | readonly string[],
+  query: string,
+): Promise<Result<GraphqlEnvelope, NetworkError>> {
+  const list = typeof endpoint === 'string' ? [endpoint] : endpoint;
+  const timeoutMs = list.length > 1 ? FAILOVER_TIMEOUT_MS : undefined;
+
+  let last: Result<GraphqlEnvelope, NetworkError> = err({
+    code: 'OFFLINE',
+    message: 'no endpoint is configured',
+  });
+  for (const url of list) {
+    last = await postOne(url, query, timeoutMs);
+    if (last.ok) return last;
+  }
+  return last;
 }

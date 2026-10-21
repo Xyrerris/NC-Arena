@@ -22,9 +22,9 @@ import {
   type InventorySource,
   type Result,
 } from '../common';
-import { normaliseAvatarAddress, type Planet, type ViewerAvatar } from '../model';
+import { normaliseAvatarAddress, type ViewerAvatar } from '../model';
 import { networkFailure, postGraphql } from './chainGraphql';
-import { NODE_ENDPOINTS } from './nodeCollectionSource';
+import { NODE_ENDPOINTS, type NodeEndpoints } from './nodeCollectionSource';
 
 const idSchema = z.number().int().safe();
 
@@ -54,7 +54,7 @@ export class NodeInventorySource implements InventorySource {
   readonly name = 'node';
 
   constructor(
-    private readonly endpoints: Partial<Record<Planet, string>> = NODE_ENDPOINTS,
+    private readonly endpoints: NodeEndpoints = NODE_ENDPOINTS,
     private readonly now: () => number = Date.now,
   ) {}
 

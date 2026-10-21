@@ -72,7 +72,7 @@ describe('NodeInventorySource', () => {
       },
     });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://heimdall-rpc-1.nine-chronicles.com/graphql');
+    expect(url).toBe('https://heimdall6.9capi.com/graphql');
     expect(String(init.body)).toContain(AVATAR.address);
   });
 

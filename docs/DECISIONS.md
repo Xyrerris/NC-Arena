@@ -2918,3 +2918,74 @@ too — the node's state is Bencodex hex and the decoder is already there — wi
 it cannot read instead of skipping it, because a shorter list reads as more progress than there
 is. A backend change (an address column and its migration) will deploy on push to the backend
 branch (HANDOFF.md, Operational) and is deliberately left out of the spike.
+
+## ADR-0045 — Chain nodes come in ordered lists, and the app falls over between them
+
+**Status:** part 1 built, 2026-10-21 (`feat/node-failover`). Part 2 (read the list at start-up) is
+decided here and not built.
+
+**Context.** Every plain-node read and the transaction sender went to one URL per planet,
+`heimdall-rpc-1.nine-chronicles.com`. On 2026-10-21 it timed out and then answered `502 Bad Gateway`
+while the official client worked: the collection screen showed "Your inventory could not be read
+right now" (a non-2xx is `FAILED`, not `OFFLINE`). The client does not have one node. Its log
+(`%APPDATA%\Nine Chronicles\logs\main.log`) shows it reading the **planet registry**
+(`https://planets.nine-chronicles.com/planets/`), picking a node by round-trip time among 18 clients,
+and landing on `heimdall6.9capi.com` (170 ms). Measured the same day with the inventory query for
+the owner's avatar: `heimdall6.9capi.com` 200 in 0.4 s (296 kB), `heimdall-rpc-1` timeout, then 502.
+The registry lists, per planet, `headless.gql` (nodes), `mimir.gql`, `market.rest`, `arena.gql` and
+more. For Heimdall `headless.gql` is `heimdall6.9capi.com` alone; for Odin it is `odin-rpc-1`,
+`odin5.9capi.com`, `odin6.9capi.com`.
+
+**Decision (part 1, built).**
+
+1. `NODE_ENDPOINTS` is `Partial<Record<Planet, string | readonly string[]>>` (`NodeEndpoints`): a
+   planet has a node or **an ordered list** of them. The default is the registry's `headless.gql`
+   order as read on 2026-10-21. `heimdall-rpc-1` is no longer in it.
+2. `postGraphql` takes one URL or a list and tries them **in order**. Only a **transport** failure
+   moves on: unreachable, out of time, a non-2xx, a body that is not GraphQL. A GraphQL `errors`
+   array is the query's own answer and is returned as it is — another node would say the same.
+   When every node fails, the **last** failure is returned.
+3. With more than one node each attempt has a **10 s** deadline (`FAILOVER_TIMEOUT_MS`) instead of
+   20 s, so a dead node costs seconds. A single endpoint keeps the 20 s.
+4. Every source behind `NODE_ENDPOINTS` gets this — avatar, inventory, balance, collection,
+   transaction reads and the sender. For the sender a retry on the next node re-posts the **same
+   signed transaction**, whose hash is its identity, so it cannot buy twice.
+5. Thor still has no entry: the registry gives it nothing this app has verified.
+6. No ordering by speed yet. The client measures round-trip time; here the order is the registry's.
+
+**Next step (part 2, not built): read the registry at start-up.** The list above is a snapshot, so a
+change on Planetarium's side (a node retired, one added) still needs a release. To remove that:
+
+- **A `PlanetRegistrySource` in `core/network`**: `GET https://planets.nine-chronicles.com/planets/`
+  through `HttpClient`, parsed with Zod (`name`, `rpcEndpoints['headless.gql']`; the other keys are
+  ignored). A planet whose list is missing, empty or not `https://` URLs is **dropped**, not
+  half-used. The result is a `NodeEndpoints`. Planets are matched by `name` (`odin`, `heimdall`),
+  never by position.
+- **A cache in `core/prefs`** (MMKV): the last good registry answer and when it was read. The
+  boundaries decide the split: `core/network` may not import `core/prefs`, and only `core/data`
+  knows both, so **`core/data` owns the refresh and the cache** and hands the sources a provider.
+- **The sources read a provider, not a constant.** They already read `this.endpoints[planet]` on every
+  call, so the change is the constructor taking `() => NodeEndpoints` (tests keep passing a plain
+  object through a one-line adapter). Resolution order per call: fresh registry answer, else cached
+  answer, else the static `NODE_ENDPOINTS`. **The static list stays**: it is what a cold start with
+  no network, and a registry that is down, fall back to.
+- **When:** one non-blocking refresh at start-up, not awaited by any screen. A cached answer younger
+  than a day is not refetched. Nothing waits on it: the first read of the session uses whatever
+  the provider has at that moment.
+- **Merge, don't replace:** the registry's nodes first, in its order, then any node of the static list
+  that it did not mention, so a registry that shrinks to one dead node does not leave the app with
+  nothing.
+- **Open, for the owner:** (a) whether to order by measured round-trip time as the client does (a
+  probe per start-up, and a place to keep the winner) or keep the registry order; (b) whether the
+  Mimir endpoint (`mimir.gql`) and the market (`market.rest`) should come from the same answer —
+  the market URL already equals the registry's, Mimir's differs (`mimir.nine-chronicles.dev` here,
+  `heimdall-mimir.9c.gg` in the client, 0.7 s against 2.2 s); (c) whether Thor is added once the
+  registry names a node for it that has been probed.
+- **Tests to write with it:** a registry answer that is malformed, empty for one planet, or has an
+  unknown planet; the cache used when the fetch fails; the static list used when both are missing;
+  a probe in `scripts/check-boundaries.mjs` if `core/network` ever needs to reach prefs (it should
+  not).
+
+**Consequences.** One dead node no longer takes the inventory, the balance, the avatar lookup and
+the sender down together. The default list is data that goes stale; part 2 exists to stop
+that being a release.
