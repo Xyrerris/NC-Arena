@@ -11,7 +11,12 @@ import { FlashList } from '@shopify/flash-list';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
-import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/collection';
+import type {
+  Collection,
+  EnhancementCosts,
+  EquipmentCatalog,
+  OtherItemCatalog,
+} from '@/core/collection';
 import { ArenaButton, ArenaText, SortChip, color, layout, space } from '@/core/design-system';
 import type { Planet } from '@/core/model';
 
@@ -35,26 +40,34 @@ export interface OffersViewProps {
   sheet: readonly Collection[];
   catalog: EquipmentCatalog;
   others: OtherItemCatalog;
+  /** What raising a piece costs; null when the sheet was not read, and then only exact levels are offers. */
+  costs: EnhancementCosts | null;
   planet: Planet;
 }
 
-export function OffersView({ controller, sheet, catalog, others, planet }: OffersViewProps) {
+export function OffersView({ controller, sheet, catalog, others, costs, planet }: OffersViewProps) {
   const { offerIds, holdings } = controller;
   const offerCollections = useMemo(() => collectionsById(sheet, offerIds), [sheet, offerIds]);
   const { targets, unsearchable } = useMemo(
     () => offerTargets(offerCollections, holdings, catalog, others),
     [offerCollections, holdings, catalog, others],
   );
-  const offers = useBestOffers(planet, targets);
+  const offers = useBestOffers(planet, targets, costs);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  // The offers above the standard price are left out, counted, and shown at the end on request.
+  const [showDear, setShowDear] = useState(false);
+  const dearCount = offers.result.overpriced.length;
 
   const rows = useMemo(() => {
     const pieces = new Map(targets.map((target) => [target.piece.key, target.piece]));
-    return offers.result.offers.flatMap((offer) => {
+    const shown = showDear
+      ? [...offers.result.offers, ...offers.result.overpriced]
+      : offers.result.offers;
+    return shown.flatMap((offer) => {
       const piece = pieces.get(offer.key);
       return piece === undefined ? [] : [{ offer, piece, ui: toOfferRow(offer, piece) }];
     });
-  }, [targets, offers.result.offers]);
+  }, [targets, offers.result.offers, offers.result.overpriced, showDear]);
   const open = openKey === null ? undefined : rows.find((row) => row.offer.key === openKey);
 
   // The offers picked for the total. Kept by key and read against the rows as they are now, so an
@@ -194,6 +207,22 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
                 {status}
               </ArenaText>
             )}
+            {dearCount === 0 ? null : (
+              <View style={styles.actions}>
+                <ArenaText variant="bodySmall" tone="subtle" testID="offers-overpriced">
+                  {words.offersOverpriced(dearCount, showDear)}
+                </ArenaText>
+                <ArenaButton
+                  label={showDear ? words.offersOverpricedHide : words.offersOverpricedShow}
+                  accessibilityLabel={
+                    showDear ? words.offersOverpricedHideA11y : words.offersOverpricedShowA11y
+                  }
+                  variant="secondary"
+                  onPress={() => setShowDear((now) => !now)}
+                  testID="offers-overpriced-toggle"
+                />
+              </View>
+            )}
             {offers.failed > 0 && offers.phase !== 'running' ? (
               <View style={styles.actions}>
                 <ArenaText variant="bodySmall" tone="negative" testID="offers-failed">
@@ -238,6 +267,11 @@ export function OffersView({ controller, sheet, catalog, others, planet }: Offer
               testID="offers-bar-after"
             >
               {summary.afterLine}
+            </ArenaText>
+          )}
+          {summary.raiseLine === null ? null : (
+            <ArenaText variant="bodySmall" tone="body" testID="offers-bar-raise">
+              {summary.raiseLine}
             </ArenaText>
           )}
           <ArenaText variant="bodyCaption" tone="subtle">

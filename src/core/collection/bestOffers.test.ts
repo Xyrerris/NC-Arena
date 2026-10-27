@@ -1,6 +1,7 @@
 import type { AvatarInventory, MarketListing } from '../common';
 import { bestOffers, cheapestLots, missingPieces, requirementKey } from './bestOffers';
 import type { Collection, CollectionRequirement } from './collectionSheet';
+import { parseEnhancementCosts } from './upgradeCost';
 
 const inventory = (
   equipment: AvatarInventory['equipment'] = [],
@@ -183,5 +184,68 @@ describe('bestOffers', () => {
     const first = bestOffers(inputs).offers.map((o) => o.key);
     const second = bestOffers([...inputs].reverse()).offers.map((o) => o.key);
     expect(second).toEqual(first);
+  });
+});
+
+describe('bestOffers with upgrade costs', () => {
+  // Legend (grade 5) weapons, cumulative NCG from +0.
+  const costs = parseEnhancementCosts(
+    [
+      'id,item_sub_type,grade,level,cost,exp',
+      ...[0, 0, 0, 20, 40, 80, 160, 320, 640].map(
+        (cost, i) => `${i + 1},Weapon,5,${i + 1},${cost},0`,
+      ),
+    ].join('\r\n'),
+  );
+  const wanted = req(10110000, 9);
+  const legend = (overrides: Partial<MarketListing>): MarketListing =>
+    listing({ grade: 5, ...overrides });
+  const run = (listings: MarketListing[]) =>
+    bestOffers([{ ...piece(wanted), listings }], { costs });
+
+  it('offers a piece a few levels under, priced at the listing plus the upgrade', () => {
+    const result = run([legend({ level: 8, price: 100 })]);
+    expect(result.offers[0]).toMatchObject({
+      price: 100,
+      upgradeNcg: 320,
+      total: 420,
+      fromLevel: 8,
+      verdict: 'good',
+    });
+  });
+
+  it('prefers the cheaper end result, an exact level or a raised one', () => {
+    const result = run([
+      legend({ level: 9, price: 700, productId: 'exact' }),
+      legend({ level: 8, price: 100, productId: 'raised' }),
+    ]);
+    expect(result.offers.map((o) => o.picks[0]?.productId)).toEqual(['raised']);
+    expect(result.offers[0]?.fromLevel).toBe(8);
+  });
+
+  it('does not reach further than three levels, nor raise what is not equipment', () => {
+    expect(run([legend({ level: 5, price: 1 })]).offers).toEqual([]);
+    expect(run([legend({ level: 8, price: 1, quantity: 2 })]).offers).toEqual([]);
+    expect(run([legend({ level: 8, price: 1, hasSkill: true })]).offers).toEqual([]);
+  });
+
+  it('judges an exact listing against the standard price: 600 good, 900 set aside as dear', () => {
+    expect(run([legend({ level: 9, price: 600 })]).offers[0]?.verdict).toBe('good');
+    expect(run([legend({ level: 9, price: 800 })]).offers[0]?.verdict).toBe('fair');
+    const dear = run([legend({ level: 9, price: 900 })]);
+    expect(dear.offers).toEqual([]);
+    expect(dear.overpriced).toHaveLength(1);
+    expect(dear.withoutOffer).toEqual([]);
+  });
+
+  it('adds nothing without the costs: exact levels only, no verdict', () => {
+    const result = bestOffers([
+      {
+        ...piece(wanted),
+        listings: [legend({ level: 8, price: 1 }), legend({ level: 9, price: 900 })],
+      },
+    ]);
+    expect(result.offers).toHaveLength(1);
+    expect(result.offers[0]).toMatchObject({ price: 900, verdict: null, upgradeNcg: 0 });
   });
 });

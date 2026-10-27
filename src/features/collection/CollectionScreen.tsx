@@ -26,7 +26,12 @@ import {
   radius,
   space,
 } from '@/core/design-system';
-import type { Collection, EquipmentCatalog, OtherItemCatalog } from '@/core/collection';
+import type {
+  Collection,
+  EnhancementCosts,
+  EquipmentCatalog,
+  OtherItemCatalog,
+} from '@/core/collection';
 import { useViewerAvatar } from '@/core/data';
 
 import { CollectionRowItem } from './CollectionRow';
@@ -88,6 +93,7 @@ function SheetGate({ sectionTabs }: { sectionTabs?: ReactNode }) {
         sheet={loaded.sheet}
         catalog={loaded.catalog}
         others={loaded.others}
+        costs={loaded.costs}
         sectionTabs={sectionTabs}
         sampleData={false}
       />
@@ -132,12 +138,14 @@ function CollectionBody({
   sheet,
   catalog,
   others,
+  costs,
   sectionTabs,
   sampleData,
 }: {
   sheet: readonly Collection[];
   catalog?: EquipmentCatalog;
   others?: OtherItemCatalog;
+  costs?: EnhancementCosts | null;
   sectionTabs?: ReactNode;
   sampleData: boolean;
 }) {
@@ -187,6 +195,7 @@ function CollectionBody({
               sheet={sheet}
               catalog={catalog ?? NO_CATALOG}
               others={others ?? NO_OTHERS}
+              costs={costs ?? null}
               planet={controller.avatar.planet}
             />
           )}

@@ -3,7 +3,11 @@
  * JSON from Mimir (one request, four sheets by alias), and the read is all of them or none.
  */
 
-import { GameSheetSource, LIB9C_COLLECTION_SHEET_URL } from './gameSheetSource';
+import {
+  GameSheetSource,
+  LIB9C_COLLECTION_SHEET_URL,
+  LIB9C_ENHANCEMENT_SHEET_URL,
+} from './gameSheetSource';
 
 const MIMIR = 'https://mimir.nine-chronicles.dev/heimdall/graphql/';
 
@@ -13,9 +17,18 @@ describe('GameSheetSource', () => {
     global.fetch = originalFetch;
   });
 
-  const route = (answers: { lib9c: Response | Error; mimir: Response | Error }): jest.Mock => {
+  const route = (answers: {
+    lib9c: Response | Error;
+    mimir: Response | Error;
+    enhancement?: Response | Error;
+  }): jest.Mock => {
     const fetchMock = jest.fn((url: string) => {
-      const answer = url === LIB9C_COLLECTION_SHEET_URL ? answers.lib9c : answers.mimir;
+      const answer =
+        url === LIB9C_COLLECTION_SHEET_URL
+          ? answers.lib9c
+          : url === LIB9C_ENHANCEMENT_SHEET_URL
+            ? (answers.enhancement ?? new Response('404: Not Found', { status: 404 }))
+            : answers.mimir;
       return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer.clone());
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -69,6 +82,29 @@ describe('GameSheetSource', () => {
     ]) {
       expect(String(mimirCall[1].body)).toContain(sheet);
     }
+  });
+
+  it('adds the upgrade costs when lib9c answers, and reads without them when it does not (ADR-0046)', async () => {
+    route({
+      lib9c: csv('id,item_id1\r\n1,10110000'),
+      mimir: sheetsJson(),
+      enhancement: csv('id,item_sub_type,grade,level,cost\r\n1,Weapon,5,1,0'),
+    });
+    const withCosts = await new GameSheetSource().read('heimdall');
+
+    route({
+      lib9c: csv('id,item_id1\r\n1,10110000'),
+      mimir: sheetsJson(),
+      enhancement: new TypeError('Network request failed'),
+    });
+    const without = await new GameSheetSource().read('heimdall');
+
+    expect(withCosts).toMatchObject({
+      ok: true,
+      value: { enhancementCsv: 'id,item_sub_type,grade,level,cost\r\n1,Weapon,5,1,0' },
+    });
+    expect(without.ok).toBe(true);
+    expect(without.ok && 'enhancementCsv' in without.value).toBe(false);
   });
 
   it('reads the item sheets from Heimdall for a planet Mimir does not serve', async () => {

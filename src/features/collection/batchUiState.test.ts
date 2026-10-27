@@ -43,6 +43,10 @@ const offer = (picks: MarketListing[], need = picks.length): Offer => ({
   units: picks.reduce((sum, l) => sum + l.quantity, 0),
   price: picks.reduce((sum, l) => sum + l.price, 0),
   combatPoint: 0,
+  upgradeNcg: 0,
+  fromLevel: null,
+  total: picks.reduce((sum, l) => sum + l.price, 0),
+  verdict: null,
 });
 
 describe('batchPlan', () => {

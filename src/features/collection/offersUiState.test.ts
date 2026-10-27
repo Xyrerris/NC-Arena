@@ -59,6 +59,10 @@ const offer = (overrides: Partial<Offer> = {}): Offer => ({
   units: 1,
   price: 3,
   combatPoint: 1200,
+  upgradeNcg: 0,
+  fromLevel: null,
+  total: 3,
+  verdict: null,
   ...overrides,
 });
 

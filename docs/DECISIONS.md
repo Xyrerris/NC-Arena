@@ -3022,3 +3022,37 @@ as the client does; take **Mimir and the market from the registry** too; **no Th
 **Consequences.** One dead node no longer takes the inventory, the balance, the avatar lookup and
 the sender down together. The default list is data that goes stale; part 2 exists to stop
 that being a release.
+
+## ADR-0046 — Offers can be raised: a few levels under the target, judged against the standard price
+
+**Status.** Accepted (2026-10-27).
+
+**Context.** A collection accepts one exact level, so a Legend +9 piece was only ever an offer
+when something was listed at +9. A +8 at a good price, raised for the NCG the game charges, is
+often cheaper, and nothing told the owner whether a listed +9 was fair.
+
+**Decision.**
+
+- **The cost is lib9c's.** `EnhancementCostSheetV3.csv` gives a cumulative `cost` in NCG per slot,
+  grade and level; the step from +A to +B is `cost[B] - cost[A]` (the amount `ItemEnhancement`
+  charges). Legend (grade 5): +4 20, +5 40, +9 640, +10 1280, doubling after. Grades 1-4 are
+  half of that; grades 6-8 use a much lower scale up to +30/+40 (grade 6 differs by slot). It is
+  **fetched** with the collection sheet (`GameSheetSource`), never bundled (GPL, as ADR-0044), and
+  its failure does not fail the read: without it the offers view is what it was.
+- **Raisable offers.** With the costs, a single piece (quantity 1) of the same item and skill
+  state, 1 to `MAX_UPGRADE_GAP` (3) levels under the requirement, is an offer priced at the listing
+  plus the upgrade and sorted by that total. `Offer.price` stays what the purchase pays; the
+  upgrade is `upgradeNcg`, the sum `total`, so the batch ceiling and the balance check never count
+  NCG that is spent later in the game.
+- **Verdict.** Every offer is set against the standard price of its level (the cumulative cost
+  from +0): `good` at or under it, `fair` up to 130%, `dear` beyond. Where the standard price is 0
+  (+1 to +3) there is no verdict. `dear` offers leave `offers` for `overpriced`; the view says how
+  many there are and shows them at the end on request.
+
+**Not priced.** The materials an upgrade takes (hammers or equipment, by the sheet's `exp`) are not
+in the total, the standard price ignores the +0 piece's own value, and the exp of the materials
+must land on the target level exactly. The reference is a ceiling for the NCG, not a quote.
+
+**Consequences.** The 130% line and the gap of 3 are judgement, not measured: they are constants
+(`FAIR_RATIO`, `MAX_UPGRADE_GAP`) to move once real listings have been looked at. The purchase card
+still buys the listing as listed; raising it afterwards is done in the game.

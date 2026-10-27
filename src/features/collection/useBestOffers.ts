@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { bestOffers, matchingListings, type BestOffers } from '@/core/collection';
+import { bestOffers, type BestOffers, type EnhancementCosts } from '@/core/collection';
 import type { MarketListing } from '@/core/common';
 import { useArenaData, useViewerAvatar } from '@/core/data';
 import type { Planet } from '@/core/model';
@@ -59,6 +59,7 @@ const signatureOf = (targets: readonly OfferTarget[]): string =>
 export const useBestOffers = (
   planet: Planet,
   targets: readonly OfferTarget[],
+  costs: EnhancementCosts | null = null,
 ): OffersController => {
   const { market, avatarSource } = useArenaData();
   if (market === undefined) {
@@ -119,10 +120,8 @@ export const useBestOffers = (
             put(target.piece.key, { kind: 'failed' });
             continue;
           }
-          put(target.piece.key, {
-            kind: 'ready',
-            listings: matchingListings(target.missing.requirement, result.value.listings),
-          });
+          // Every level is kept: `bestOffers` decides which are the piece and which can be raised.
+          put(target.piece.key, { kind: 'ready', listings: result.value.listings });
         }
       };
 
@@ -172,9 +171,12 @@ export const useBestOffers = (
             ? [{ ...target.missing, listings: outcome.listings }]
             : [];
         }),
-        agent === null ? {} : { excludeSeller: agent },
+        {
+          ...(agent === null ? {} : { excludeSeller: agent }),
+          ...(costs === null ? {} : { costs }),
+        },
       ),
-    [targets, current.outcomes, agent],
+    [targets, current.outcomes, agent, costs],
   );
 
   const outcomes = Object.values(current.outcomes);

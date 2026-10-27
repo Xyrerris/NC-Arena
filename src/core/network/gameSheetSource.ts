@@ -35,6 +35,10 @@ import { MIMIR_ENDPOINTS } from './mimirCollectionSource';
 export const LIB9C_COLLECTION_SHEET_URL =
   'https://raw.githubusercontent.com/planetarium/lib9c/development/Lib9c/TableCSV/CollectionSheet.csv';
 
+/** What raising a piece costs (ADR-0046); fetched like the collection sheet, never bundled. */
+export const LIB9C_ENHANCEMENT_SHEET_URL =
+  'https://raw.githubusercontent.com/planetarium/lib9c/development/Lib9c/TableCSV/EnhancementCostSheetV3.csv';
+
 /** Thor has no Mimir endpoint, and the item sheet is the same on every planet that has one. */
 const FALLBACK_PLANET: Planet = 'heimdall';
 
@@ -70,12 +74,14 @@ export class GameSheetSource implements SheetSource {
   constructor(
     private readonly collectionSheetUrl: string = LIB9C_COLLECTION_SHEET_URL,
     private readonly endpoints: GraphqlEndpoints = MIMIR_ENDPOINTS,
+    private readonly enhancementSheetUrl: string = LIB9C_ENHANCEMENT_SHEET_URL,
   ) {}
 
   async read(planet: Planet): Promise<Result<GameSheets, SheetError>> {
-    const [collection, items] = await Promise.all([
+    const [collection, items, enhancement] = await Promise.all([
       new HttpClient(this.collectionSheetUrl, null).requestText(''),
       this.readItemSheets(planet),
+      new HttpClient(this.enhancementSheetUrl, null).requestText(''),
     ]);
     if (!collection.ok) return err(this.failure(collection.error));
     if (!items.ok) return err(items.error);
@@ -84,6 +90,10 @@ export class GameSheetSource implements SheetSource {
     return ok({
       collectionCsv: collection.value,
       ...items.value,
+      // Not all-or-nothing: the costs only add upgradable offers and verdicts to the offers view.
+      ...(enhancement.ok && enhancement.value.trim() !== ''
+        ? { enhancementCsv: enhancement.value }
+        : {}),
       source: this.name,
     });
   }

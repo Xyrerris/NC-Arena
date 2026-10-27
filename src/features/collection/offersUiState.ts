@@ -14,6 +14,7 @@ import {
   type MissingPiece,
   type Offer,
   type OtherItemCatalog,
+  type Verdict,
 } from '@/core/collection';
 import { statFormatter, type AvatarInventory } from '@/core/common';
 
@@ -77,6 +78,12 @@ export const offerTargets = (
   return { targets, unsearchable };
 };
 
+const VERDICT_WORDS: Readonly<Record<Verdict, string>> = {
+  good: words.offersVerdictGood,
+  fair: words.offersVerdictFair,
+  dear: words.offersVerdictDear,
+};
+
 export interface OfferRowUi {
   readonly key: string;
   readonly title: string;
@@ -92,10 +99,27 @@ export interface OfferRowUi {
 export const toOfferRow = (offer: Offer, piece: MarketPiece): OfferRowUi => {
   const first = offer.picks[0];
   const counted = offer.need > 1 || offer.picks.length > 1;
-  const price =
-    counted || first === undefined ? words.offersTotal(formatNcg(offer.price)) : askingPrice(first);
+  const raised = offer.upgradeNcg > 0 && offer.fromLevel !== null;
+  // A raised piece shows what it costs in the end, so it sorts and reads like the rest.
+  const price = raised
+    ? words.offersTotal(formatNcg(offer.total))
+    : counted || first === undefined
+      ? words.offersTotal(formatNcg(offer.price))
+      : askingPrice(first);
 
-  const parts: string[] = [words.offersHelps(offer.collectionIds.length)];
+  const parts: string[] = [];
+  if (offer.verdict !== null) parts.push(VERDICT_WORDS[offer.verdict]);
+  parts.push(words.offersHelps(offer.collectionIds.length));
+  if (raised && offer.fromLevel !== null) {
+    parts.push(
+      words.offersRaise(
+        offer.fromLevel,
+        offer.requirement.level,
+        formatNcg(offer.price),
+        formatNcg(offer.upgradeNcg),
+      ),
+    );
+  }
   if (counted) {
     parts.push(words.offersUnits(statFormatter.exact(offer.units), offer.picks.length));
   }
@@ -122,6 +146,8 @@ export interface SelectionUi {
   readonly units: string | null;
   readonly balanceLine: string;
   readonly afterLine: string | null;
+  /** What the selected pieces still cost to raise after they are bought, when any have to be. */
+  readonly raiseLine: string | null;
   /** `short` only when the balance is known and below the total. */
   readonly enough: 'yes' | 'short' | 'unknown';
 }
@@ -138,6 +164,7 @@ export const selectionSummary = (
 ): SelectionUi => {
   const cents = selected.reduce((sum, offer) => sum + hundredths(offer.price), 0);
   const total = cents / 100;
+  const raiseCents = selected.reduce((sum, offer) => sum + hundredths(offer.upgradeNcg), 0);
   const units = selected.some((offer) => offer.need > 1)
     ? words.offersBarUnits(statFormatter.exact(selected.reduce((sum, o) => sum + o.units, 0)))
     : null;
@@ -159,6 +186,7 @@ export const selectionSummary = (
     units,
     balanceLine: balance === null ? words.offersBarReading : balanceMessage(balance),
     afterLine,
+    raiseLine: raiseCents === 0 ? null : words.offersBarRaise(formatNcg(raiseCents / 100)),
     enough,
   };
 };

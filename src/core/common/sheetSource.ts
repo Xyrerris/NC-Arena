@@ -22,6 +22,12 @@ export interface GameSheets {
   readonly costumeCsv: string;
   readonly materialCsv: string;
   readonly consumableCsv: string;
+  /**
+   * lib9c's `EnhancementCostSheetV3`: what raising a piece costs. Optional on purpose — without it
+   * the offers view still works, it just offers no upgradable pieces and gives no verdict — so a
+   * failure to fetch it does not fail the read.
+   */
+  readonly enhancementCsv?: string;
   /** What answered, for the screen's "from" line. */
   readonly source: string;
 }

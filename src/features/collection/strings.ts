@@ -170,6 +170,20 @@ export const collectionStrings = {
   offersUnits: (units: string, lots: number) =>
     `${units} units in ${lots} ${lots === 1 ? 'lot' : 'lots'}`,
   offersTotal: (price: string) => `${price} NCG`,
+  offersRaise: (from: number, to: number, listed: string, ncg: string) =>
+    `listed +${from} at ${listed} NCG · +${ncg} NCG to raise it to +${to}`,
+  offersVerdictGood: 'good price',
+  offersVerdictFair: 'fair price',
+  offersVerdictDear: 'above the standard price',
+  offersOverpriced: (count: number, shown: boolean) =>
+    `${count} ${count === 1 ? 'offer is' : 'offers are'} above the standard price` +
+    (shown ? ' and shown at the end.' : ' and left out.'),
+  offersOverpricedShow: 'SHOW THEM',
+  offersOverpricedShowA11y: 'Show the offers above the standard price',
+  offersOverpricedHide: 'HIDE THEM',
+  offersOverpricedHideA11y: 'Leave out the offers above the standard price',
+  offersBarRaise: (ncg: string) =>
+    `Plus ${ncg} NCG still to spend raising the pieces after buying them.`,
   offersSelect: 'SELECT',
   offersSelected: 'SELECTED',
   offersSelectA11y: (label: string) => `Select ${label} for the total`,

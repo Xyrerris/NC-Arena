@@ -9,3 +9,4 @@ export * from './ownership';
 export * from './reconciliation';
 export * from './sampleSheet';
 export * from './unlockedState';
+export * from './upgradeCost';

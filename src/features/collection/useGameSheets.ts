@@ -12,9 +12,11 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   parseCollectionSheet,
+  parseEnhancementCosts,
   parseEquipmentCatalog,
   parseOtherItems,
   type Collection,
+  type EnhancementCosts,
   type EquipmentCatalog,
   type OtherItemCatalog,
 } from '@/core/collection';
@@ -30,7 +32,19 @@ export type GameSheetsState =
       readonly catalog: EquipmentCatalog;
       /** Costumes, materials and food: what the rest of a collection is called. */
       readonly others: OtherItemCatalog;
+      /** What raising a piece costs; null when the sheet is missing or unreadable (not a failure). */
+      readonly costs: EnhancementCosts | null;
     };
+
+/** The costs only add to the offers view, so an unreadable sheet means no costs, not no screen. */
+const parseCosts = (csv: string | undefined): EnhancementCosts | null => {
+  if (csv === undefined) return null;
+  try {
+    return parseEnhancementCosts(csv);
+  } catch {
+    return null;
+  }
+};
 
 export const useGameSheets = (planet: Planet): GameSheetsState & { retry: () => void } => {
   const { sheets } = useArenaData();
@@ -58,6 +72,7 @@ export const useGameSheets = (planet: Planet): GameSheetsState & { retry: () => 
           sheet: parseCollectionSheet(result.value.collectionCsv),
           catalog: parseEquipmentCatalog(result.value.equipmentCsv),
           others: parseOtherItems(result.value),
+          costs: parseCosts(result.value.enhancementCsv),
         });
       } catch {
         setState({ status: 'failed', reason: 'MALFORMED' });
