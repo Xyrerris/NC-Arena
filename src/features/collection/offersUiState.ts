@@ -22,6 +22,7 @@ import {
   askingPrice,
   formatNcg,
   marketPieceFor,
+  pieceAsListed,
   shortSeller,
   type MarketPiece,
 } from './marketUiState';
@@ -96,8 +97,10 @@ export interface OfferRowUi {
  * One offer as a row. A piece bought singly shows the listing's asking price; a counted piece
  * (several units, from one lot or more) shows what all of it costs, since that is what is paid.
  */
-export const toOfferRow = (offer: Offer, piece: MarketPiece): OfferRowUi => {
+export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   const first = offer.picks[0];
+  // What is bought, at the level it is sold at: a raised piece is not yet the target's level.
+  const piece = pieceAsListed(target, first);
   const counted = offer.need > 1 || offer.picks.length > 1;
   const raised = offer.upgradeNcg > 0 && offer.fromLevel !== null;
   // A raised piece shows what it costs in the end, so it sorts and reads like the rest.
@@ -135,6 +138,41 @@ export const toOfferRow = (offer: Offer, piece: MarketPiece): OfferRowUi => {
     detail,
     a11y: `${piece.label}, ${price}, ${detail}`,
   };
+};
+
+export type OfferSort = 'price' | 'level';
+
+/** The level a piece is bought at; null for what has none (a costume, a material). */
+export const offerLevel = (offer: Offer, piece: MarketPiece): number | null =>
+  piece.equipment === undefined ? null : (offer.picks[0]?.level ?? null);
+
+/** The distinct levels the offers are sold at, highest first: the choices of the level filter. */
+export const offerLevels = <T extends { offer: Offer; piece: MarketPiece }>(
+  rows: readonly T[],
+): readonly number[] => {
+  const levels = new Set<number>();
+  for (const row of rows) {
+    const level = offerLevel(row.offer, row.piece);
+    if (level !== null) levels.add(level);
+  }
+  return [...levels].sort((a, b) => b - a);
+};
+
+/**
+ * The rows as the person asked to see them: only one level when `level` is given, and by price
+ * (the order they come in) or by level, highest first, the cheaper first within a level. What has
+ * no level goes last.
+ */
+export const arrangeOffers = <T extends { offer: Offer; piece: MarketPiece }>(
+  rows: readonly T[],
+  sort: OfferSort,
+  level: number | null,
+): readonly T[] => {
+  const kept =
+    level === null ? rows : rows.filter((row) => offerLevel(row.offer, row.piece) === level);
+  if (sort === 'price') return kept;
+  const rank = (row: T): number => offerLevel(row.offer, row.piece) ?? -1;
+  return [...kept].sort((a, b) => rank(b) - rank(a) || a.offer.total - b.offer.total);
 };
 
 export interface SelectionUi {

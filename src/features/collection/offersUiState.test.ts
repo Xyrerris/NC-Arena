@@ -3,7 +3,9 @@ import type { MarketListing } from '@/core/common';
 
 import type { MarketPiece } from './marketUiState';
 import {
+  arrangeOffers,
   collectionsById,
+  offerLevels,
   offerTargets,
   offersStatus,
   selectionSummary,
@@ -106,6 +108,22 @@ describe('toOfferRow', () => {
     expect(ui.detail).toBe('helps 2 collections · CP 1.200 · seller 0xebb8…AA63');
   });
 
+  it('names a raised piece at the level it is sold at, not the target it will reach', () => {
+    const equipment = { name: 'Long Sword', element: 'Normal' };
+    const ui = toOfferRow(
+      offer({
+        picks: [listing({ level: 3, price: 5 })],
+        price: 5,
+        upgradeNcg: 20,
+        fromLevel: 3,
+        total: 25,
+      }),
+      { ...piece, equipment },
+    );
+    expect(ui.title).toBe('Long Sword +3 · Normal');
+    expect(ui.detail).toContain('bought as +3 at 5 NCG · +20 NCG to raise it to +9');
+  });
+
   it('shows a counted piece by what all of it costs, and says how many lots', () => {
     const lots = [listing({ productId: 'a', price: 4 }), listing({ productId: 'b', price: 6 })];
     const ui = toOfferRow(offer({ need: 2, picks: lots, units: 2, price: 10 }), piece);
@@ -113,6 +131,43 @@ describe('toOfferRow', () => {
     expect(ui.price).toBe('10 NCG');
     expect(ui.detail).toContain('2 units in 2 lots');
     expect(ui.detail).not.toContain('seller');
+  });
+});
+
+describe('arrangeOffers', () => {
+  const equipment = { name: 'Long Sword', element: 'Normal' };
+  const row = (id: string, level: number | null, total: number) => ({
+    offer: offer({
+      key: id,
+      picks: [listing({ productId: id, level: level ?? 0 })],
+      price: total,
+      total,
+    }),
+    piece: level === null ? piece : { ...piece, equipment },
+  });
+  const rows = [
+    row('a', 3, 5),
+    row('b', 9, 40),
+    row('c', null, 1),
+    row('d', 9, 30),
+    row('e', 0, 2),
+  ];
+  const ids = (list: readonly { offer: Offer }[]) => list.map((r) => r.offer.key);
+
+  it('lists the levels sold, highest first, leaving out what has none', () => {
+    expect(offerLevels(rows)).toEqual([9, 3, 0]);
+  });
+
+  it('keeps the order it was given when sorting by price', () => {
+    expect(ids(arrangeOffers(rows, 'price', null))).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+
+  it('sorts by level, highest first, cheaper first within a level, no level last', () => {
+    expect(ids(arrangeOffers(rows, 'level', null))).toEqual(['d', 'b', 'a', 'e', 'c']);
+  });
+
+  it('keeps one level only, and drops what has no level', () => {
+    expect(ids(arrangeOffers(rows, 'price', 9))).toEqual(['b', 'd']);
   });
 });
 

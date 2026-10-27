@@ -25,8 +25,11 @@ import { batchPlan } from './batchUiState';
 import type { CollectionController } from './useCollection';
 import { OfferSheet } from './OfferSheet';
 import {
+  arrangeOffers,
   collectionsById,
+  offerLevels,
   offerTargets,
+  type OfferSort,
   offersStatus,
   selectionSummary,
   toOfferRow,
@@ -58,7 +61,10 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
   const [showDear, setShowDear] = useState(false);
   const dearCount = offers.result.overpriced.length;
 
-  const rows = useMemo(() => {
+  const [sort, setSort] = useState<OfferSort>('price');
+  const [levelFilter, setLevelFilter] = useState<number | null>(null);
+
+  const allRows = useMemo(() => {
     const pieces = new Map(targets.map((target) => [target.piece.key, target.piece]));
     const shown = showDear
       ? [...offers.result.offers, ...offers.result.overpriced]
@@ -68,6 +74,10 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
       return piece === undefined ? [] : [{ offer, piece, ui: toOfferRow(offer, piece) }];
     });
   }, [targets, offers.result.offers, offers.result.overpriced, showDear]);
+  const levels = useMemo(() => offerLevels(allRows), [allRows]);
+  // A level a new read no longer has is not a filter any more, rather than an empty list.
+  const level = levelFilter !== null && levels.includes(levelFilter) ? levelFilter : null;
+  const rows = useMemo(() => arrangeOffers(allRows, sort, level), [allRows, sort, level]);
   const open = openKey === null ? undefined : rows.find((row) => row.offer.key === openKey);
 
   // The offers picked for the total. Kept by key and read against the rows as they are now, so an
@@ -206,6 +216,45 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
               >
                 {status}
               </ArenaText>
+            )}
+            {allRows.length === 0 ? null : (
+              <View style={styles.actions}>
+                <SortChip
+                  label={words.offersSortPrice}
+                  accessibilityLabel={words.offersSortPriceA11y}
+                  selected={sort === 'price'}
+                  onPress={() => setSort('price')}
+                  testID="offers-sort-price"
+                />
+                <SortChip
+                  label={words.offersSortLevel}
+                  accessibilityLabel={words.offersSortLevelA11y}
+                  selected={sort === 'level'}
+                  onPress={() => setSort('level')}
+                  testID="offers-sort-level"
+                />
+              </View>
+            )}
+            {levels.length < 2 ? null : (
+              <View style={styles.actions}>
+                <SortChip
+                  label={words.offersLevelAll}
+                  accessibilityLabel={words.offersLevelAllA11y}
+                  selected={level === null}
+                  onPress={() => setLevelFilter(null)}
+                  testID="offers-level-all"
+                />
+                {levels.map((value) => (
+                  <SortChip
+                    key={value}
+                    label={words.offersLevelChip(value)}
+                    accessibilityLabel={words.offersLevelChipA11y(value)}
+                    selected={level === value}
+                    onPress={() => setLevelFilter(value)}
+                    testID={`offers-level-${value}`}
+                  />
+                ))}
+              </View>
             )}
             {dearCount === 0 ? null : (
               <View style={styles.actions}>

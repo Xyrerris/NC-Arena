@@ -17,7 +17,7 @@ import {
 } from '@/core/common/purchaseBatch';
 import { toPurchaseOffer } from '@/core/common/purchasePolicy';
 
-import { formatNcg, type MarketPiece } from './marketUiState';
+import { formatNcg, pieceAsListed, type MarketPiece } from './marketUiState';
 import { shortTransactionId } from './purchaseAttemptState';
 import { collectionStrings as words } from './strings';
 
@@ -46,7 +46,11 @@ export const batchPlan = (
       continue;
     }
     for (const listing of offer.picks) {
-      items.push({ key: listing.productId, shown: listing, label: piece.label });
+      items.push({
+        key: listing.productId,
+        shown: listing,
+        label: pieceAsListed(piece, listing).label,
+      });
     }
   }
   return { items, excluded, total: batchTotal(items) };

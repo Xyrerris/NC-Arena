@@ -171,7 +171,9 @@ export const collectionStrings = {
     `${units} units in ${lots} ${lots === 1 ? 'lot' : 'lots'}`,
   offersTotal: (price: string) => `${price} NCG`,
   offersRaise: (from: number, to: number, listed: string, ncg: string) =>
-    `listed +${from} at ${listed} NCG · +${ncg} NCG to raise it to +${to}`,
+    `bought as +${from} at ${listed} NCG · +${ncg} NCG to raise it to +${to}`,
+  offersRaiseNote: (to: number, ncg: string) =>
+    `Bought at this level; raising it to +${to} later costs about ${ncg} NCG more.`,
   offersVerdictGood: 'good price',
   offersVerdictFair: 'fair price',
   offersVerdictDear: 'above the standard price',
@@ -182,6 +184,14 @@ export const collectionStrings = {
   offersOverpricedShowA11y: 'Show the offers above the standard price',
   offersOverpricedHide: 'HIDE THEM',
   offersOverpricedHideA11y: 'Leave out the offers above the standard price',
+  offersSortPrice: 'PRICE',
+  offersSortPriceA11y: 'Sort the offers by what they cost, cheapest first',
+  offersSortLevel: 'LEVEL',
+  offersSortLevelA11y: 'Sort the offers by the level of the piece, highest first',
+  offersLevelAll: 'ALL LEVELS',
+  offersLevelAllA11y: 'Show the offers of every level',
+  offersLevelChip: (level: number) => `+${level}`,
+  offersLevelChipA11y: (level: number) => `Show only the pieces sold at level ${level}`,
   offersBarRaise: (ncg: string) =>
     `Plus ${ncg} NCG still to spend raising the pieces after buying them.`,
   offersSelect: 'SELECT',

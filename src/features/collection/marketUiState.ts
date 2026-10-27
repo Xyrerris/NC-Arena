@@ -29,6 +29,8 @@ export interface MarketPiece {
   readonly requirement: CollectionRequirement;
   readonly route: Extract<MarketRoute, { kind: 'route' | 'not-sold' }>;
   readonly label: string;
+  /** Equipment only: what `label` is made of, so it can be said again at another level. */
+  readonly equipment?: { readonly name: string; readonly element: string };
   /** Only equipment has a skill to carry: the sheet's flag means nothing for a costume or a material. */
   readonly needsSkill: boolean;
   /** Units the collection asks for: more than 1 only for materials and food, which are sold in lots. */
@@ -68,10 +70,28 @@ export const marketPieceFor = (
         : other !== undefined && other.name !== ''
           ? other.name
           : String(requirement.itemId),
+    ...(info === undefined ? {} : { equipment: { name: info.name, element: info.element } }),
     needsSkill: info !== undefined && requirement.skillContains,
     count: requirement.count,
   };
 };
+
+/**
+ * The piece as the listing sells it. A piece a few levels under the target is bought at its own
+ * level and raised afterwards, so the label has to say the level that is paid for, not the target.
+ */
+export const pieceAsListed = (
+  piece: MarketPiece,
+  listing: MarketListing | undefined,
+): MarketPiece =>
+  piece.equipment === undefined ||
+  listing === undefined ||
+  listing.level === piece.requirement.level
+    ? piece
+    : {
+        ...piece,
+        label: words.piece(piece.equipment.name, listing.level, piece.equipment.element),
+      };
 
 export const marketPieces = (
   collection: Collection,

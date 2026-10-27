@@ -16,7 +16,7 @@ import type { MarketListing } from '@/core/common';
 import type { Planet } from '@/core/model';
 import { ArenaButton, ArenaText, color, layout, radius, space } from '@/core/design-system';
 
-import { toListingUi, type MarketPiece } from './marketUiState';
+import { formatNcg, pieceAsListed, toListingUi, type MarketPiece } from './marketUiState';
 import { PurchaseCard } from './PurchaseCard';
 import { collectionStrings as words } from './strings';
 
@@ -33,7 +33,10 @@ export function OfferSheet({ planet, offer, piece, onClose }: OfferSheetProps) {
     single ? (offer.picks[0] ?? null) : null,
   );
   // The card says how many the collections ask for in all, which is the offer's, not one lot's.
-  const counted: MarketPiece = { ...piece, count: offer.need };
+  // Named at the level it is sold at, and where that is under the target, with the target after it.
+  const sold = pieceAsListed(piece, offer.picks[0]);
+  const counted: MarketPiece = { ...sold, count: offer.need };
+  const raised = offer.fromLevel !== null && offer.upgradeNcg > 0;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -75,8 +78,13 @@ export function OfferSheet({ planet, offer, piece, onClose }: OfferSheetProps) {
             ) : (
               <>
                 <ArenaText variant="bodyMedium" tone="primary">
-                  {piece.label}
+                  {sold.label}
                 </ArenaText>
+                {!raised ? null : (
+                  <ArenaText variant="bodySmall" tone="subtle" testID="offer-raise-note">
+                    {words.offersRaiseNote(piece.requirement.level, formatNcg(offer.upgradeNcg))}
+                  </ArenaText>
+                )}
                 <ArenaText variant="bodySmall" tone="body" testID="offer-picks-title">
                   {words.offersPicksTitle}
                 </ArenaText>
