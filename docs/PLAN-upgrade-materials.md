@@ -57,6 +57,12 @@ change the boundary rules in `eslint.config.js` for no gain).**
 ramp below). No I/O, no React. Test with real numbers: grade 8 +10 is 38.4 G, grade 9 +0 is 9.6 G,
 the grade 7 +3 at 5 NCG has R 1.07. The two gates (`check:rules`) need no change; run them anyway.
 
+**Status of phase 1 (2026-10-28):** done in `core/collection/upgradeRanking.ts` (`GRADE_RANGES`,
+`ceilingAt`, `rangeFor`, `scoreMaterial`, `rankMaterials`). The ranking returns `offers`, and counts
+`over` the ceiling, `leftOutAtZero` (for "N at +0 qualify") and `unvalued`. The ramp starts at
+`RAMP_START` (2026-10-28). Grade 7 +0 at 8.33 /G is over its final ceiling of 8: only pieces under
+about 0.96 NCG qualify at the end of the ramp, as asked.
+
 **2. Reading the market.**
 Candidate ids come from the sheet (grade >= 7, the five slots: 75 ids). Reuse `marketLibrary.scan`,
 three ids at a time on request as `OffersView` does; filter locally. The commonest grade 7 item is
