@@ -3,6 +3,7 @@
  * JSON from Mimir (one request, four sheets by alias), and the read is all of them or none.
  */
 
+import { bytesToHex, encodeBencodex } from '../common/bencodex';
 import {
   GameSheetSource,
   LIB9C_COLLECTION_SHEET_URL,
@@ -10,6 +11,19 @@ import {
 } from './gameSheetSource';
 
 const MIMIR = 'https://mimir.nine-chronicles.dev/heimdall/graphql/';
+const NODE = 'https://heimdall6.9capi.com/graphql';
+
+/** What the node answers for the two sheets: each as Bencodex text, in hex, under its alias. */
+const nodeAnswer = (equipment: string, enhancement: string): Response =>
+  new Response(
+    JSON.stringify({
+      data: {
+        s0: bytesToHex(encodeBencodex(equipment)),
+        s1: bytesToHex(encodeBencodex(enhancement)),
+      },
+    }),
+    { status: 200 },
+  );
 
 describe('GameSheetSource', () => {
   const originalFetch = global.fetch;
@@ -21,6 +35,8 @@ describe('GameSheetSource', () => {
     lib9c: Response | Error;
     mimir: Response | Error;
     enhancement?: Response | Error;
+    /** The node; by default it is down, which is the fallback path. */
+    node?: Response | Error;
   }): jest.Mock => {
     const fetchMock = jest.fn((url: string) => {
       const answer =
@@ -28,7 +44,9 @@ describe('GameSheetSource', () => {
           ? answers.lib9c
           : url === LIB9C_ENHANCEMENT_SHEET_URL
             ? (answers.enhancement ?? new Response('404: Not Found', { status: 404 }))
-            : answers.mimir;
+            : url === NODE
+              ? (answers.node ?? new Response('Bad Gateway', { status: 502 }))
+              : answers.mimir;
       return answer instanceof Error ? Promise.reject(answer) : Promise.resolve(answer.clone());
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -64,6 +82,7 @@ describe('GameSheetSource', () => {
         costumeCsv: 'id,_name,costume',
         materialCsv: 'id,_name,material',
         consumableCsv: 'id,_name,consumable',
+        onChain: false,
         source: 'lib9c+mimir',
       },
     });
@@ -105,6 +124,52 @@ describe('GameSheetSource', () => {
     });
     expect(without.ok).toBe(true);
     expect(without.ok && 'enhancementCsv' in without.value).toBe(false);
+  });
+
+  it("takes the equipment and enhancement sheets from the node when it has them, and lib9c's is not asked (ADR-0047)", async () => {
+    const fetchMock = route({
+      lib9c: csv('id,item_id1\r\n1,10110000'),
+      mimir: sheetsJson(),
+      node: nodeAnswer(
+        'id,_name,item_sub_type,grade\r\n10190000,Ultimate Sword,Weapon,9',
+        'id,exp',
+      ),
+    });
+
+    const result = await new GameSheetSource().read('heimdall');
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        equipmentCsv: 'id,_name,item_sub_type,grade\r\n10190000,Ultimate Sword,Weapon,9',
+        enhancementCsv: 'id,exp',
+        // The rest still comes from Mimir.
+        costumeCsv: 'id,_name,costume',
+        onChain: true,
+      },
+    });
+    const urls = fetchMock.mock.calls.map((call) => call[0] as string);
+    expect(urls).not.toContain(LIB9C_ENHANCEMENT_SHEET_URL);
+  });
+
+  it('falls back to Mimir and lib9c when the node cannot give both sheets', async () => {
+    route({
+      lib9c: csv('id'),
+      mimir: sheetsJson(),
+      enhancement: csv('id,cost'),
+      // Only the equipment sheet: half a pair is no pair.
+      node: new Response(
+        JSON.stringify({ data: { s0: bytesToHex(encodeBencodex('id')), s1: null } }),
+        { status: 200 },
+      ),
+    });
+
+    const result = await new GameSheetSource().read('heimdall');
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { equipmentCsv: 'id,_name,equipment', enhancementCsv: 'id,cost', onChain: false },
+    });
   });
 
   it('reads the item sheets from Heimdall for a planet Mimir does not serve', async () => {

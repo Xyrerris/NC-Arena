@@ -10,3 +10,4 @@ export * from './reconciliation';
 export * from './sampleSheet';
 export * from './unlockedState';
 export * from './upgradeCost';
+export * from './upgradeExp';

@@ -9,6 +9,10 @@
  *   `_name` and `elemental_type` the collection sheet does not carry, and the costume, material
  *   and consumable sheets for the rest of what a collection asks for.
  *
+ * - **The equipment and enhancement sheets come from a node when it has them** (ADR-0047): lib9c
+ *   and Mimir are behind the chain (no Ultimate gear, older experience). Both from the node or
+ *   both from the old sources, and `onChain` says which.
+ *
  * It is fetched when the screen opens, not bundled: lib9c is GPL-3.0 and shipping a copy in the
  * app is a licence decision that is still the owner's (ADR-0044, "Where item names are").
  *
@@ -31,6 +35,11 @@ import { networkFailure, postGraphql, type GraphqlEndpoints } from './chainGraph
 import type { NetworkError } from './errors';
 import { HttpClient } from './httpClient';
 import { MIMIR_ENDPOINTS } from './mimirCollectionSource';
+import { NODE_ENDPOINTS } from './nodeCollectionSource';
+import { readNodeSheets } from './nodeSheets';
+
+const EQUIPMENT_SHEET = 'EquipmentItemSheet';
+const ENHANCEMENT_SHEET = 'EnhancementCostSheetV3';
 
 export const LIB9C_COLLECTION_SHEET_URL =
   'https://raw.githubusercontent.com/planetarium/lib9c/development/Lib9c/TableCSV/CollectionSheet.csv';
@@ -75,18 +84,38 @@ export class GameSheetSource implements SheetSource {
     private readonly collectionSheetUrl: string = LIB9C_COLLECTION_SHEET_URL,
     private readonly endpoints: GraphqlEndpoints = MIMIR_ENDPOINTS,
     private readonly enhancementSheetUrl: string = LIB9C_ENHANCEMENT_SHEET_URL,
+    private readonly nodeEndpoints: GraphqlEndpoints = NODE_ENDPOINTS,
   ) {}
 
   async read(planet: Planet): Promise<Result<GameSheets, SheetError>> {
-    const [collection, items, enhancement] = await Promise.all([
+    const [collection, items, chain] = await Promise.all([
       new HttpClient(this.collectionSheetUrl, null).requestText(''),
       this.readItemSheets(planet),
-      new HttpClient(this.enhancementSheetUrl, null).requestText(''),
+      readNodeSheets(
+        this.nodeEndpoints,
+        this.nodeEndpoints[planet] === undefined ? FALLBACK_PLANET : planet,
+        [EQUIPMENT_SHEET, ENHANCEMENT_SHEET],
+        'node',
+      ),
     ]);
     if (!collection.ok) return err(this.failure(collection.error));
     if (!items.ok) return err(items.error);
     if (collection.value.trim() === '') return err(this.failed('the collection sheet was empty.'));
 
+    // The node's copy is the chain's own and newer than both Mimir's and lib9c's (ADR-0047); lib9c's
+    // enhancement sheet is only asked for when the node could not give it.
+    if (chain.ok) {
+      return ok({
+        collectionCsv: collection.value,
+        ...items.value,
+        equipmentCsv: chain.value[EQUIPMENT_SHEET] as string,
+        enhancementCsv: chain.value[ENHANCEMENT_SHEET] as string,
+        onChain: true,
+        source: this.name,
+      });
+    }
+
+    const enhancement = await new HttpClient(this.enhancementSheetUrl, null).requestText('');
     return ok({
       collectionCsv: collection.value,
       ...items.value,
@@ -94,6 +123,7 @@ export class GameSheetSource implements SheetSource {
       ...(enhancement.ok && enhancement.value.trim() !== ''
         ? { enhancementCsv: enhancement.value }
         : {}),
+      onChain: false,
       source: this.name,
     });
   }

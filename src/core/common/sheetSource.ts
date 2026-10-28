@@ -28,6 +28,12 @@ export interface GameSheets {
    * failure to fetch it does not fail the read.
    */
   readonly enhancementCsv?: string;
+  /**
+   * True when `equipmentCsv` and `enhancementCsv` are the chain's own, read from a node (ADR-0047):
+   * they then hold the newest grades and the experience the game uses today. False means Mimir's
+   * and lib9c's copies, which are behind — no Ultimate (grade 9) gear, older exp.
+   */
+  readonly onChain?: boolean;
   /** What answered, for the screen's "from" line. */
   readonly source: string;
 }

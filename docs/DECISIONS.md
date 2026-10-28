@@ -3056,3 +3056,47 @@ must land on the target level exactly. The reference is a ceiling for the NCG, n
 **Consequences.** The 130% line and the gap of 3 are judgement, not measured: they are constants
 (`FAIR_RATIO`, `MAX_UPGRADE_GAP`) to move once real listings have been looked at. The purchase card
 still buys the listing as listed; raising it afterwards is done in the game.
+
+**Amended by ADR-0047:** the costs are read from a node first; lib9c is the fallback.
+
+---
+
+## ADR-0047 — The equipment and enhancement sheets are read from a node, lib9c is the fallback
+
+**Status.** Accepted (2026-10-28). Amends the source in ADR-0044 (equipment sheet from Mimir) and
+ADR-0046 (enhancement sheet from lib9c).
+
+**Context.** The Upgrade section (docs/PLAN-upgrade-materials.md) prices equipment as enhancement
+material, which needs each item's base experience and each level's. Measured on Heimdall on
+2026-10-27:
+
+- lib9c `development` has **no Ultimate (grade 9) Weapon, Armor, Belt, Necklace or Ring** in
+  `EquipmentItemSheet` or `EnhancementCostSheetV3` — only Aura and Grimoire reach grade 9 — although
+  the market already lists them (ids `1019x000` and so on, +0, 99 NCG and up).
+- lib9c's base experience is **behind the chain**: grade 8 is 0.8 G there and 1.2 G on chain, grade 9
+  is 9.6 G, Aura grade 9 is 6.24 M against 4.16 M. The level curve is identical in the 1,411 rows both
+  have; the chain has 150 more.
+- Mimir's copy stopped at grade 7.
+- A node does have all of it, as raw state: `state(address, accountAddress)` with the address
+  `TableSheet.Derive(name)` in the legacy account `0x1000…0000`. `cachedSheet` answers null.
+
+**Decision.**
+
+- `EquipmentItemSheet` and `EnhancementCostSheetV3` are read **together** from a node
+  (`nodeSheets.ts`, the planet's nodes in order, Heimdall's for a planet with none). Both or neither:
+  half a pair is a pair from two different days.
+- When the node cannot give them, the read is what it was — the equipment sheet from Mimir and the
+  enhancement sheet from lib9c, the latter optional — and `GameSheets.onChain` is false, so a screen
+  can say the newest grade and today's experience are missing. lib9c's enhancement sheet is not
+  fetched at all when the node answered.
+- `Derive` is an HMAC-SHA1 with **the name as the key and the address as the message**. The
+  addresses `0x2b31…0682` (`EquipmentItemSheet`) and `0x1596…d70e` (`EnhancementCostSheetV3`) are
+  in the tests as the regression for it.
+- The experience is parsed in `core/collection/upgradeExp.ts`, not in a new module: a new `core/*`
+  module is a change to the boundary rules in `eslint.config.js`, which needs its own probe, and
+  this has no reason to be one.
+
+**Consequences.** One more request at the start of a sheet read (the node's), in parallel with the
+others. The costs ADR-0046 uses now come from the chain, so the standard price and the upgrade cost
+of grade 8 and 9 pieces exist where they did not. Mimir's `EquipmentItemSheet` is still asked for as
+the fallback and for nothing else.
