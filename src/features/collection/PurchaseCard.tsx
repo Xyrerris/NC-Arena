@@ -23,9 +23,11 @@ export interface PurchaseCardProps {
   piece: MarketPiece;
   listing: MarketListing;
   onBack: () => void;
+  /** Told once when the chain has confirmed the purchase of this listing. */
+  onBought?: (productId: string) => void;
 }
 
-export function PurchaseCard({ planet, piece, listing, onBack }: PurchaseCardProps) {
+export function PurchaseCard({ planet, piece, listing, onBack, onBought }: PurchaseCardProps) {
   const check = usePurchaseCheck(planet, listing);
   const ui = toPurchaseCardUi(check, piece);
 
@@ -91,7 +93,13 @@ export function PurchaseCard({ planet, piece, listing, onBack }: PurchaseCardPro
       )}
 
       {check.kind === 'ready' ? (
-        <PurchaseTry planet={planet} shown={listing} label={piece.label} check={check} />
+        <PurchaseTry
+          planet={planet}
+          shown={listing}
+          label={piece.label}
+          check={check}
+          onBought={onBought}
+        />
       ) : null}
 
       <ArenaText variant="bodyCaption" tone="subtle" testID="purchase-not-built">

@@ -21,7 +21,7 @@ import { ArenaButton, ArenaText, SortChip, color, layout, space } from '@/core/d
 import type { Planet } from '@/core/model';
 
 import { BatchSheet } from './BatchSheet';
-import { batchPlan } from './batchUiState';
+import { batchPlan, type BatchPlan } from './batchUiState';
 import type { CollectionController } from './useCollection';
 import { OfferSheet } from './OfferSheet';
 import {
@@ -51,12 +51,11 @@ export interface OffersViewProps {
 export function OffersView({ controller, sheet, catalog, others, costs, planet }: OffersViewProps) {
   const { offerIds, holdings } = controller;
   const offerCollections = useMemo(() => collectionsById(sheet, offerIds), [sheet, offerIds]);
-  const { targets, unsearchable } = useMemo(
+  const { targets, unsearchable, toRaise } = useMemo(
     () => offerTargets(offerCollections, holdings, catalog, others),
     [offerCollections, holdings, catalog, others],
   );
   const offers = useBestOffers(planet, targets, costs);
-  const [openKey, setOpenKey] = useState<string | null>(null);
   // The offers above the standard price are left out, counted, and shown at the end on request.
   const [showDear, setShowDear] = useState(false);
   const dearCount = offers.result.overpriced.length;
@@ -78,7 +77,9 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
   // A level a new read no longer has is not a filter any more, rather than an empty list.
   const level = levelFilter !== null && levels.includes(levelFilter) ? levelFilter : null;
   const rows = useMemo(() => arrangeOffers(allRows, sort, level), [allRows, sort, level]);
-  const open = openKey === null ? undefined : rows.find((row) => row.offer.key === openKey);
+  // The row is kept as it was opened: once its piece is bought it leaves the list, and the card
+  // that says it went through has to stay until the person closes it.
+  const [open, setOpen] = useState<(typeof allRows)[number] | null>(null);
 
   // The offers picked for the total. Kept by key and read against the rows as they are now, so an
   // offer that a new read took away leaves the selection with it. Not kept anywhere: prices age.
@@ -91,7 +92,24 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
     });
   };
   const chosen = rows.filter((row) => selected.has(row.offer.key));
-  const [buying, setBuying] = useState(false);
+  // The batch as it was when BUY was pressed: as its pieces are bought they leave `chosen`, and the
+  // sheet that is showing each piece's fate must not lose its lines under it.
+  const [buying, setBuying] = useState<BatchPlan | null>(null);
+
+  // A listing the chain confirmed is gone: out of the offers, and out of the selection, so the
+  // next-best offer that takes its place is not bought by a tick that was meant for the one before.
+  const bought = (productId: string): void => {
+    offers.markSold(productId);
+    const gone = allRows
+      .filter((row) => row.offer.picks.some((pick) => pick.productId === productId))
+      .map((row) => row.offer.key);
+    if (gone.length === 0) return;
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const key of gone) next.delete(key);
+      return next;
+    });
+  };
   const balance = useNcgBalance(planet, chosen.length > 0);
   const summary =
     chosen.length === 0
@@ -109,7 +127,7 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
     withoutOffer: offers.result.withoutOffer.length,
   });
 
-  if (targets.length === 0 && unsearchable === 0) {
+  if (targets.length === 0 && unsearchable === 0 && toRaise === 0) {
     return (
       <View style={styles.centred} testID="offers-empty">
         <ArenaText variant="titleMedium" tone="primary" align="center">
@@ -136,7 +154,7 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
                 style={styles.rowBody}
                 accessibilityRole="button"
                 accessibilityLabel={words.purchaseReviewA11y(item.ui.a11y)}
-                onPress={() => setOpenKey(item.offer.key)}
+                onPress={() => setOpen(item)}
                 testID={`offer-row-${item.offer.key}`}
               >
                 <View style={styles.rowTop}>
@@ -179,6 +197,11 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
                 {words.offersNoInventory}
               </ArenaText>
             ) : null}
+            {toRaise === 0 ? null : (
+              <ArenaText variant="bodyCaption" tone="accent" testID="offers-to-raise">
+                {words.offersToRaise(toRaise)}
+              </ArenaText>
+            )}
             {unsearchable === 0 ? null : (
               <ArenaText variant="bodyCaption" tone="subtle" testID="offers-unsearchable">
                 {words.offersUnsearchable(unsearchable)}
@@ -330,7 +353,7 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
             <ArenaButton
               label={words.offersBuySelection}
               accessibilityLabel={words.offersBuySelectionA11y}
-              onPress={() => setBuying(true)}
+              onPress={() => setBuying(batchPlan(chosen))}
               testID="offers-buy"
             />
             <ArenaButton
@@ -343,16 +366,22 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
           </View>
         </View>
       )}
-      {!buying ? null : (
-        <BatchSheet planet={planet} plan={batchPlan(chosen)} onClose={() => setBuying(false)} />
+      {buying === null ? null : (
+        <BatchSheet
+          planet={planet}
+          plan={buying}
+          onClose={() => setBuying(null)}
+          onBought={bought}
+        />
       )}
-      {open === undefined ? null : (
+      {open === null ? null : (
         <OfferSheet
           key={open.offer.key}
           planet={planet}
           offer={open.offer}
           piece={open.piece}
-          onClose={() => setOpenKey(null)}
+          onClose={() => setOpen(null)}
+          onBought={bought}
         />
       )}
     </View>

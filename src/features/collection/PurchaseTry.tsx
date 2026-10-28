@@ -12,7 +12,7 @@
  * After a purchase has gone through, or while one is in flight, no button offers to buy again.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { MarketListing } from '@/core/common';
@@ -42,10 +42,20 @@ export interface PurchaseTryProps {
   /** What the offer is called, for the confirmation. */
   label: string;
   check: PurchaseCheck;
+  /** Told once, when the chain has confirmed the purchase: the listing is gone from the market. */
+  onBought?: (productId: string) => void;
 }
 
-export function PurchaseTry({ planet, shown, label, check }: PurchaseTryProps) {
+export function PurchaseTry({ planet, shown, label, check, onBought }: PurchaseTryProps) {
   const attempt = usePurchaseAttempt(planet, shown, check);
+  const confirmed = attempt.state.kind === 'settled' && attempt.state.outcome.kind === 'confirmed';
+  const told = useRef(onBought);
+  useEffect(() => {
+    told.current = onBought;
+  }, [onBought]);
+  useEffect(() => {
+    if (confirmed) told.current?.(shown.productId);
+  }, [confirmed, shown.productId]);
   const [passphrase, setPassphrase] = useState('');
   const [confirming, setConfirming] = useState(false);
   const result = describeAttempt(attempt.state);
@@ -61,7 +71,7 @@ export function PurchaseTry({ planet, shown, label, check }: PurchaseTryProps) {
   }
 
   const inFlight = attempt.state.kind === 'working' || attempt.state.kind === 'waiting';
-  const bought = attempt.state.kind === 'settled' && attempt.state.outcome.kind === 'confirmed';
+  const bought = confirmed;
   const use = (): void => {
     const typed = passphrase;
     setPassphrase('');

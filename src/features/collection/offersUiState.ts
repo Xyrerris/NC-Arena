@@ -8,7 +8,7 @@
  */
 
 import {
-  missingPieces,
+  missingAfterRaising,
   type Collection,
   type EquipmentCatalog,
   type MissingPiece,
@@ -53,6 +53,8 @@ export interface OfferTargets {
   readonly targets: readonly OfferTarget[];
   /** Missing pieces with no market to look in (an item in no sheet, or one that is not sold). */
   readonly unsearchable: number;
+  /** Pieces the avatar holds below a target and can raise, so they are not looked for on the market. */
+  readonly toRaise: number;
 }
 
 /**
@@ -68,7 +70,8 @@ export const offerTargets = (
 ): OfferTargets => {
   const targets: OfferTarget[] = [];
   let unsearchable = 0;
-  for (const missing of missingPieces(collections, holdings ?? NO_HOLDINGS)) {
+  const left = missingAfterRaising(collections, holdings ?? NO_HOLDINGS);
+  for (const missing of left.missing) {
     const piece = marketPieceFor(missing.requirement, catalog, others);
     if (piece === null || piece.route.kind !== 'route') {
       unsearchable += 1;
@@ -76,7 +79,11 @@ export const offerTargets = (
     }
     targets.push({ missing, piece });
   }
-  return { targets, unsearchable };
+  return {
+    targets,
+    unsearchable,
+    toRaise: left.raised.reduce((sum, piece) => sum + piece.count, 0),
+  };
 };
 
 const VERDICT_WORDS: Readonly<Record<Verdict, string>> = {
@@ -102,7 +109,9 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   // What is bought, at the level it is sold at: a raised piece is not yet the target's level.
   const piece = pieceAsListed(target, first);
   const counted = offer.need > 1 || offer.picks.length > 1;
-  const raised = offer.upgradeNcg > 0 && offer.fromLevel !== null;
+  // Raised or not is a matter of the level, not of the price: up to +3 raising costs nothing, and
+  // such a piece must still say which level it is bought for.
+  const raised = offer.fromLevel !== null;
   // A raised piece shows what it costs in the end, so it sorts and reads like the rest.
   const price = raised
     ? words.offersTotal(formatNcg(offer.total))
@@ -115,12 +124,14 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   parts.push(words.offersHelps(offer.collectionIds.length));
   if (raised && offer.fromLevel !== null) {
     parts.push(
-      words.offersRaise(
-        offer.fromLevel,
-        offer.requirement.level,
-        formatNcg(offer.price),
-        formatNcg(offer.upgradeNcg),
-      ),
+      offer.upgradeNcg > 0
+        ? words.offersRaise(
+            offer.fromLevel,
+            offer.requirement.level,
+            formatNcg(offer.price),
+            formatNcg(offer.upgradeNcg),
+          )
+        : words.offersRaiseFree(offer.fromLevel, offer.requirement.level, formatNcg(offer.price)),
     );
   }
   if (counted) {

@@ -25,9 +25,11 @@ export interface OfferSheetProps {
   offer: Offer;
   piece: MarketPiece;
   onClose: () => void;
+  /** A lot of this offer was bought for real: it is no longer on the market. */
+  onBought?: (productId: string) => void;
 }
 
-export function OfferSheet({ planet, offer, piece, onClose }: OfferSheetProps) {
+export function OfferSheet({ planet, offer, piece, onClose, onBought }: OfferSheetProps) {
   const single = offer.picks.length === 1;
   const [reviewing, setReviewing] = useState<MarketListing | null>(
     single ? (offer.picks[0] ?? null) : null,
@@ -36,7 +38,7 @@ export function OfferSheet({ planet, offer, piece, onClose }: OfferSheetProps) {
   // Named at the level it is sold at, and where that is under the target, with the target after it.
   const sold = pieceAsListed(piece, offer.picks[0]);
   const counted: MarketPiece = { ...sold, count: offer.need };
-  const raised = offer.fromLevel !== null && offer.upgradeNcg > 0;
+  const raised = offer.fromLevel !== null;
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -74,6 +76,7 @@ export function OfferSheet({ planet, offer, piece, onClose }: OfferSheetProps) {
                 piece={counted}
                 listing={reviewing}
                 onBack={single ? onClose : () => setReviewing(null)}
+                onBought={onBought}
               />
             ) : (
               <>

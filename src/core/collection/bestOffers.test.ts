@@ -1,5 +1,11 @@
 import type { AvatarInventory, MarketListing } from '../common';
-import { bestOffers, cheapestLots, missingPieces, requirementKey } from './bestOffers';
+import {
+  bestOffers,
+  cheapestLots,
+  missingAfterRaising,
+  missingPieces,
+  requirementKey,
+} from './bestOffers';
 import type { Collection, CollectionRequirement } from './collectionSheet';
 import { parseEnhancementCosts } from './upgradeCost';
 
@@ -82,6 +88,44 @@ describe('missingPieces', () => {
   it('leaves out a piece that is fully held', () => {
     const sheet = [collection(1, req(201000, 0, false, 5))];
     expect(missingPieces(sheet, inventory([], [[201000, 5]]))).toEqual([]);
+  });
+});
+
+describe('missingAfterRaising', () => {
+  const held = (...levels: number[]) =>
+    inventory(levels.map((level) => ({ itemId: 10110000, level, hasSkill: false })));
+
+  it('counts a spare piece below a target towards it: A +0 and A +2 asked, two A +0 held', () => {
+    const sheet = [collection(1, req(10110000, 0)), collection(2, req(10110000, 2))];
+    const result = missingAfterRaising(sheet, held(0, 0));
+    expect(result.missing).toEqual([]);
+    expect(result.raised).toEqual([{ requirement: req(10110000, 2), fromLevel: 0, count: 1 }]);
+  });
+
+  it('spends a held piece on its own level first: one A +0 held is not spare', () => {
+    const sheet = [collection(1, req(10110000, 0)), collection(2, req(10110000, 2))];
+    const result = missingAfterRaising(sheet, held(0));
+    expect(result.missing.map((m) => m.requirement.level)).toEqual([2]);
+    expect(result.raised).toEqual([]);
+  });
+
+  it('serves the higher target first, from the nearest level under it, each piece once', () => {
+    const sheet = [collection(1, req(10110000, 2), req(10110000, 3))];
+    const result = missingAfterRaising(sheet, held(1));
+    expect(result.missing.map((m) => m.requirement.level)).toEqual([2]);
+    expect(result.raised).toEqual([{ requirement: req(10110000, 3), fromLevel: 1, count: 1 }]);
+  });
+
+  it('reaches no further than three levels, and keeps the skill state apart', () => {
+    expect(missingAfterRaising([collection(1, req(10110000, 9))], held(5)).missing).toHaveLength(1);
+    expect(
+      missingAfterRaising([collection(1, req(10110000, 2, true))], held(0)).missing,
+    ).toHaveLength(1);
+  });
+
+  it('is what missingPieces answers, so nothing else changes', () => {
+    const sheet = [collection(1, req(10110000, 2))];
+    expect(missingPieces(sheet, held(0))).toEqual([]);
   });
 });
 
@@ -236,6 +280,38 @@ describe('bestOffers with upgrade costs', () => {
     expect(dear.offers).toEqual([]);
     expect(dear.overpriced).toHaveLength(1);
     expect(dear.withoutOffer).toEqual([]);
+  });
+
+  it('offers a listing for one piece only: the cheaper offer takes it, the other gets its next best', () => {
+    const exact = req(10110000, 0);
+    const higher = req(10110000, 2);
+    const shared = legend({ level: 0, price: 4, productId: 'shared' });
+    const spare = legend({ level: 0, price: 9, productId: 'spare' });
+    const result = bestOffers(
+      [
+        { ...piece(exact), listings: [shared, spare] },
+        { ...piece(higher), listings: [shared, spare] },
+      ],
+      { costs },
+    );
+    // Same total (the raise to +2 is free): the higher requirement goes first and keeps the listing.
+    const byKey = new Map(result.offers.map((o) => [o.key, o.picks[0]?.productId]));
+    expect(byKey.get(requirementKey(higher))).toBe('shared');
+    expect(byKey.get(requirementKey(exact))).toBe('spare');
+    expect(new Set(result.offers.flatMap((o) => o.picks.map((p) => p.productId))).size).toBe(2);
+  });
+
+  it('leaves a piece without an offer when its only listing went to another piece', () => {
+    const only = legend({ level: 0, price: 4, productId: 'only' });
+    const result = bestOffers(
+      [
+        { ...piece(req(10110000, 0)), listings: [only] },
+        { ...piece(req(10110000, 2)), listings: [only] },
+      ],
+      { costs },
+    );
+    expect(result.offers).toHaveLength(1);
+    expect(result.withoutOffer).toHaveLength(1);
   });
 
   it('adds nothing without the costs: exact levels only, no verdict', () => {

@@ -84,7 +84,18 @@ describe('offerTargets', () => {
     expect(offerTargets([collection(1, SWORD)], held, catalog)).toEqual({
       targets: [],
       unsearchable: 0,
+      toRaise: 0,
     });
+  });
+
+  it('does not look for a piece the bag can raise: a spare +7 covers a +9', () => {
+    const held = {
+      equipment: [{ itemId: 10110000, level: 7, hasSkill: false }],
+      stackable: new Map<number, number>(),
+    };
+    const result = offerTargets([collection(1, SWORD)], held, catalog);
+    expect(result.targets).toEqual([]);
+    expect(result.toRaise).toBe(1);
   });
 });
 
@@ -122,6 +133,24 @@ describe('toOfferRow', () => {
     );
     expect(ui.title).toBe('Long Sword +3 · Normal');
     expect(ui.detail).toContain('bought as +3 at 5 NCG · +20 NCG to raise it to +9');
+  });
+
+  it('says a piece below the target is raised for free, when raising costs nothing', () => {
+    const equipment = { name: 'Long Sword', element: 'Normal' };
+    const target = { ...SWORD, level: 2 };
+    const ui = toOfferRow(
+      offer({
+        requirement: target,
+        picks: [listing({ level: 0, price: 5 })],
+        price: 5,
+        upgradeNcg: 0,
+        fromLevel: 0,
+        total: 5,
+      }),
+      { ...piece, requirement: target, equipment },
+    );
+    expect(ui.title).toBe('Long Sword +0 · Normal');
+    expect(ui.detail).toContain('bought as +0 at 5 NCG · raising it to +2 is free');
   });
 
   it('shows a counted piece by what all of it costs, and says how many lots', () => {

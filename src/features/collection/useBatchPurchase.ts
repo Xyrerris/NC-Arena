@@ -75,7 +75,16 @@ export interface BatchPurchase {
 const SCAN_FAILED =
   'The market could not be read to check the offer again, so the batch stops here.';
 
-export const useBatchPurchase = (planet: Planet, items: readonly BatchItem[]): BatchPurchase => {
+export const useBatchPurchase = (
+  planet: Planet,
+  items: readonly BatchItem[],
+  /** Told as each piece is confirmed by the chain, so the listing can leave the lists at once. */
+  onBought?: (productId: string) => void,
+): BatchPurchase => {
+  const told = useRef(onBought);
+  useEffect(() => {
+    told.current = onBought;
+  }, [onBought]);
   const { keystore, avatarSource, balance, market, transactions, purchases, sender } =
     useArenaData();
   const mode = resolveMode(purchases?.getMode() ?? null);
@@ -240,8 +249,9 @@ export const useBatchPurchase = (planet: Planet, items: readonly BatchItem[]): B
             items,
             balanceNcg: startNcg,
             buy,
-            onStep: (index, _item, outcome) => {
+            onStep: (index, item, outcome) => {
               rows[index] = outcome === null ? { kind: 'working' } : { kind: 'done', outcome };
+              if (outcome?.kind === 'confirmed') told.current?.(item.shown.productId);
               show();
             },
           });

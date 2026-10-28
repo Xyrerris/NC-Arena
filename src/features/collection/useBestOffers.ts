@@ -51,6 +51,8 @@ export interface OffersController {
   readonly start: () => void;
   readonly stop: () => void;
   readonly retryFailed: () => void;
+  /** A listing was bought: it is left out of every offer from now on, whatever a read still says. */
+  readonly markSold: (productId: string) => void;
 }
 
 const signatureOf = (targets: readonly OfferTarget[]): string =>
@@ -73,6 +75,12 @@ export const useBestOffers = (
 
   const [reading, setReading] = useState<Reading>({ signature, phase: 'idle', outcomes: {} });
   const [agent, setAgent] = useState<string | null>(null);
+  // Kept for as long as the view lives: the market's own copy can be up to a minute old, and a
+  // listing that was bought must not come back with it.
+  const [sold, setSold] = useState<ReadonlySet<string>>(new Set());
+  const markSold = useCallback((productId: string) => {
+    setSold((now) => (now.has(productId) ? now : new Set(now).add(productId)));
+  }, []);
   const run = useRef<AbortController | null>(null);
 
   // The answers of another set of pieces are not this set's.
@@ -168,7 +176,15 @@ export const useBestOffers = (
         targets.flatMap((target) => {
           const outcome = current.outcomes[target.piece.key];
           return outcome?.kind === 'ready'
-            ? [{ ...target.missing, listings: outcome.listings }]
+            ? [
+                {
+                  ...target.missing,
+                  listings:
+                    sold.size === 0
+                      ? outcome.listings
+                      : outcome.listings.filter((listing) => !sold.has(listing.productId)),
+                },
+              ]
             : [];
         }),
         {
@@ -176,7 +192,7 @@ export const useBestOffers = (
           ...(costs === null ? {} : { costs }),
         },
       ),
-    [targets, current.outcomes, agent, costs],
+    [targets, current.outcomes, agent, costs, sold],
   );
 
   const outcomes = Object.values(current.outcomes);
@@ -189,5 +205,6 @@ export const useBestOffers = (
     start,
     stop,
     retryFailed,
+    markSold,
   };
 };

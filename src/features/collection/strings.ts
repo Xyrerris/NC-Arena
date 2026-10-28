@@ -172,8 +172,15 @@ export const collectionStrings = {
   offersTotal: (price: string) => `${price} NCG`,
   offersRaise: (from: number, to: number, listed: string, ncg: string) =>
     `bought as +${from} at ${listed} NCG · +${ncg} NCG to raise it to +${to}`,
+  offersToRaise: (count: number) =>
+    `${count} ${count === 1 ? 'piece you hold is' : 'pieces you hold are'} a few levels under a ` +
+    'target and can be raised to it, so no offer is looked for. Materials for the raise are not counted.',
+  offersRaiseFree: (from: number, to: number, listed: string) =>
+    `bought as +${from} at ${listed} NCG · raising it to +${to} is free`,
   offersRaiseNote: (to: number, ncg: string) =>
-    `Bought at this level; raising it to +${to} later costs about ${ncg} NCG more.`,
+    ncg === '0'
+      ? `Bought at this level; raising it to +${to} later costs nothing.`
+      : `Bought at this level; raising it to +${to} later costs about ${ncg} NCG more.`,
   offersVerdictGood: 'good price',
   offersVerdictFair: 'fair price',
   offersVerdictDear: 'above the standard price',

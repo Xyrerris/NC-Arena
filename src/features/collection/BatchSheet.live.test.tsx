@@ -88,6 +88,7 @@ describe('BatchSheet, live', () => {
   let repository: RosterRepository;
   let node: FakeTransactionNode;
   let staged: Uint8Array[];
+  let bought: string[];
   let order: string[];
   let stageAnswer: 'accept' | 'refuse-first';
   let results: ('SUCCESS' | 'FAILURE')[];
@@ -197,6 +198,7 @@ describe('BatchSheet, live', () => {
     repository.setViewerAvatar(AVATAR);
     node = createFakeTransactionSource();
     staged = [];
+    bought = [];
     order = [];
     stageAnswer = 'accept';
     results = ['SUCCESS', 'SUCCESS'];
@@ -204,9 +206,15 @@ describe('BatchSheet, live', () => {
     purchaseLog = null;
     held = 50;
     batchLimit = 20;
-    await render(<BatchSheet planet="heimdall" plan={PLAN} onClose={() => {}} />, {
-      wrapper: wrapper(),
-    });
+    await render(
+      <BatchSheet
+        planet="heimdall"
+        plan={PLAN}
+        onClose={() => {}}
+        onBought={(productId) => bought.push(productId)}
+      />,
+      { wrapper: wrapper() },
+    );
   });
 
   afterEach(async () => {
@@ -267,12 +275,15 @@ describe('BatchSheet, live', () => {
     expect(records[0]?.transactionId).toBe(transactionId(staged[0] as Uint8Array));
     expect(records[1]?.transactionId).toBe(transactionId(staged[1] as Uint8Array));
     expect(screen.queryByTestId('batch-buy-button')).toBeNull();
+    // Each listing is reported the moment the chain confirms it, so the lists can drop it.
+    expect(bought).toEqual([A.productId, B.productId]);
   });
 
   it('stops when the chain refuses a piece, and leaves the rest untouched', async () => {
     results = ['FAILURE'];
     await confirmWith(PASSPHRASE);
     await waitFor(() => expect(screen.getByTestId('batch-result')).toBeTruthy());
+    expect(bought).toEqual([]);
 
     expect(staged).toHaveLength(1);
     expect(String(text(`batch-row-${A.productId}`))).toContain('The chain refused it');

@@ -54,6 +54,8 @@ export interface BatchSheetProps {
   planet: Planet;
   plan: BatchPlan;
   onClose: () => void;
+  /** A piece was confirmed by the chain: its listing is gone from the market. */
+  onBought?: (productId: string) => void;
 }
 
 const rowText = (
@@ -71,8 +73,8 @@ const rowText = (
   }
 };
 
-export function BatchSheet({ planet, plan, onClose }: BatchSheetProps) {
-  const batch = useBatchPurchase(planet, plan.items);
+export function BatchSheet({ planet, plan, onClose, onBought }: BatchSheetProps) {
+  const batch = useBatchPurchase(planet, plan.items, onBought);
   const [passphrase, setPassphrase] = useState('');
   const [confirming, setConfirming] = useState(false);
   const live = batch.mode === 'live';
