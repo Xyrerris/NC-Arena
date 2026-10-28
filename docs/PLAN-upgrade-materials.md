@@ -84,6 +84,14 @@ collection. **Boundary:** the purchase flow is in `features/collection` (`usePur
 `useBatchPurchase`) and a feature may not import another. Move the flow's hooks and card to `core`
 (or compose them in the route) before this phase; that move is its own commit.
 
+**Status of phase 3 (2026-10-28):** done in `features/upgrade` (`UpgradeScreen`, `useUpgradeSheets`,
+`useUpgradeMarket`, `upgradeUiState`) and `src/app/upgrade.tsx`, with an UPGRADE tab in `SectionTabs`.
+The move of the purchase flow came first (ADR-0048, `core/purchase`). Reading starts on FIND MATERIAL,
+grade 7 is off until switched on, "only raised" is on by default and says how many +0 pieces it hides,
+and a ceiling can be typed per grade. Rows are selected with a chip and bought through the shared
+`BatchSheet`, so phase 4 is already wired: the cart checks the batch limit, the balance and each
+listing again before it pays. Not done: a live run against the market from the app.
+
 **4. Buying.**
 `purchaseBatch` with the batch ceiling, one at a time, stop at the first doubt, the same passphrase
 per purchase. Nothing new in the policy except that the balance check must not count NCG that the

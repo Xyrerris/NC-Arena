@@ -1,5 +1,5 @@
 /**
- * The switch between the app's two sections, Arena and Collection (ADR-0044).
+ * The switch between the app's sections, Arena, Collection and Upgrade (ADR-0044).
  *
  * A feature of its own, rendered by both routes: the roster and the collection screen are two
  * features and may not import each other (ARCHITECTURE.md §4), and a switcher that lived in
@@ -13,17 +13,19 @@ import { useCallback } from 'react';
 
 import { SegmentedTabs } from '@/core/design-system';
 
-export type Section = 'arena' | 'collection';
+export type Section = 'arena' | 'collection' | 'upgrade';
 
 const sectionTabsStrings = {
   arena: 'ARENA',
   collection: 'COLLECTION',
-  a11y: 'Switch between the arena and your collection',
+  upgrade: 'UPGRADE',
+  a11y: 'Switch between the arena, your collection and the upgrade material',
 } as const;
 
 const TABS: readonly { value: Section; label: string }[] = [
   { value: 'arena', label: sectionTabsStrings.arena },
   { value: 'collection', label: sectionTabsStrings.collection },
+  { value: 'upgrade', label: sectionTabsStrings.upgrade },
 ];
 
 export interface SectionTabsProps {
@@ -35,7 +37,7 @@ export function SectionTabs({ current }: SectionTabsProps) {
   const select = useCallback(
     (next: Section) => {
       if (next === current) return;
-      router.replace(next === 'arena' ? '/' : '/collection');
+      router.replace(next === 'arena' ? '/' : next === 'collection' ? '/collection' : '/upgrade');
     },
     [current, router],
   );

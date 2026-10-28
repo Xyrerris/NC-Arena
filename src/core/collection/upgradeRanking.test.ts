@@ -10,6 +10,7 @@ import { parseBaseExp, parseEnhancementExp } from './upgradeExp';
 import {
   ceilingAt,
   GRADE_RANGES,
+  observedFloors,
   RAMP_START,
   rangeFor,
   rankMaterials,
@@ -220,5 +221,22 @@ describe('rankMaterials', () => {
     expect(without.unvalued).toBe(2);
     expect(priced.offers.map((offer) => offer.listing.productId)).toEqual(['ten']);
     expect(priced.unvalued).toBe(1);
+  });
+});
+
+describe('observedFloors', () => {
+  it('finds the cheapest price per Gexp of each grade that has no range, and ignores the others', () => {
+    const floors = observedFloors(
+      [
+        listing({ productId: 'a', itemId: 3, grade: 10, price: 30 }),
+        listing({ productId: 'b', itemId: 3, grade: 10, price: 20 }),
+        listing({ productId: 'c', price: 1 }),
+        listing({ productId: 'd', itemId: 999, grade: 11, price: 1 }),
+      ],
+      BASE,
+      LEVELS,
+    );
+
+    expect(floors).toEqual({ 10: 20 });
   });
 });

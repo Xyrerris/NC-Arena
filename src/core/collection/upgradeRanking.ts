@@ -182,3 +182,24 @@ export function rankMaterials(
   );
   return { offers, over, leftOutAtZero, unvalued };
 }
+
+/**
+ * The cheapest NCG per Gexp seen for each grade the table has no range for, from the listings read.
+ * It is what `rangeFor` opens a new grade at; the grades with a range are left out.
+ */
+export function observedFloors(
+  listings: readonly MarketListing[],
+  base: BaseExpByItem,
+  levels: EnhancementExp,
+): Record<number, number> {
+  const floors: Record<number, number> = {};
+  for (const listing of listings) {
+    if (GRADE_RANGES[listing.grade] !== undefined) continue;
+    const exp = materialExp(base, levels, listing.itemId, listing.level);
+    if (exp === null || exp <= 0) continue;
+    const ng = listing.price / (exp / 1e9);
+    const best = floors[listing.grade];
+    if (best === undefined || ng < best) floors[listing.grade] = ng;
+  }
+  return floors;
+}
