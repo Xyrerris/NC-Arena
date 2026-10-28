@@ -14,13 +14,10 @@
 
 import type { MarketListing } from '@/core/common';
 
-import { askingPrice, formatNcg, type MarketPiece } from './marketUiState';
-import { collectionStrings as words } from './strings';
+import { formatNcg, type BalanceState } from '@/core/purchase';
 
-export type BalanceState =
-  | { readonly kind: 'known'; readonly ncg: number }
-  /** `no-avatar`: no account to ask about. `offline` / `failed`: the node did not answer. */
-  | { readonly kind: 'unknown'; readonly why: 'no-avatar' | 'offline' | 'failed' };
+import { askingPrice, type MarketPiece } from './marketUiState';
+import { collectionStrings as words } from './strings';
 
 export type PurchaseCheck =
   | { readonly kind: 'checking' }

@@ -15,8 +15,9 @@ import type { Offer } from '@/core/collection';
 import type { MarketListing } from '@/core/common';
 import type { Planet } from '@/core/model';
 import { ArenaButton, ArenaText, color, layout, radius, space } from '@/core/design-system';
+import { formatNcg } from '@/core/purchase';
 
-import { formatNcg, pieceAsListed, toListingUi, type MarketPiece } from './marketUiState';
+import { pieceAsListed, toListingUi, type MarketPiece } from './marketUiState';
 import { PurchaseCard } from './PurchaseCard';
 import { collectionStrings as words } from './strings';
 

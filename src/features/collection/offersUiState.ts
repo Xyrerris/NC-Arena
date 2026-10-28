@@ -17,16 +17,16 @@ import {
   type Verdict,
 } from '@/core/collection';
 import { statFormatter, type AvatarInventory } from '@/core/common';
+import { formatNcg, type BalanceState } from '@/core/purchase';
 
 import {
   askingPrice,
-  formatNcg,
   marketPieceFor,
   pieceAsListed,
   shortSeller,
   type MarketPiece,
 } from './marketUiState';
-import { balanceMessage, type BalanceState } from './purchaseCardState';
+import { balanceMessage } from './purchaseCardState';
 import { collectionStrings as words } from './strings';
 
 type Holdings = Pick<AvatarInventory, 'equipment' | 'stackable'>;

@@ -17,6 +17,8 @@ import {
 } from '@/core/collection';
 import { statFormatter, type MarketListing } from '@/core/common';
 
+import { formatNcg } from '@/core/purchase';
+
 import { collectionStrings as words } from './strings';
 
 /** Listings drawn in the sheet. The rest are counted: the cheapest ones are what is asked for. */
@@ -119,22 +121,6 @@ export const marketPieces = (
 /** Whether the row gets a button: at least one of its pieces has a market to look in. */
 export const canSearchMarket = (offered: MarketPieces): boolean =>
   offered.pieces.some((piece) => piece.route.kind === 'route');
-
-/**
- * `142,5`, `1.250`, `0,25`: the app's punctuation (ADR-0025), two decimals at most and none when
- * the price is whole. Done in whole hundredths so no floating-point `toFixed` is involved
- * (ARCHITECTURE.md §2.2); a price under a hundredth is shown as such rather than as `0`.
- */
-export const formatNcg = (price: number): string => {
-  const hundredths = Math.round(price * 100);
-  if (hundredths === 0 && price > 0) return '<0,01';
-  const whole = Math.floor(hundredths / 100);
-  const fraction = hundredths % 100;
-  const grouped = statFormatter.exact(whole);
-  if (fraction === 0) return grouped;
-  const digits = String(fraction).padStart(2, '0').replace(/0$/, '');
-  return `${grouped},${digits}`;
-};
 
 /** `0xebb8…AA63`: enough to tell sellers apart, short enough to share a line with the price. */
 export const shortSeller = (address: string): string => {

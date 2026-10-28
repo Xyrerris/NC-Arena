@@ -6,7 +6,9 @@
 import type { MarketListing } from '@/core/common';
 
 import type { MarketPiece } from './marketUiState';
-import { toPurchaseCardUi, type BalanceState } from './purchaseCardState';
+import type { BalanceState } from '@/core/purchase';
+
+import { toPurchaseCardUi } from './purchaseCardState';
 
 const listing = (overrides: Partial<MarketListing> = {}): MarketListing => ({
   productId: '00000000-0000-0000-0000-000000000001',

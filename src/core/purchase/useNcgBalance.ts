@@ -13,7 +13,7 @@ import type { AvatarSource, BalanceSource } from '@/core/common';
 import { useArenaData, useViewerAvatar } from '@/core/data';
 import type { Planet, ViewerAvatar } from '@/core/model';
 
-import type { BalanceState } from './purchaseCardState';
+import type { BalanceState } from './balanceState';
 
 export const readNcgBalance = async (
   planet: Planet,

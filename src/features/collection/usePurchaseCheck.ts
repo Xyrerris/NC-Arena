@@ -19,7 +19,7 @@ import { useArenaData, useViewerAvatar } from '@/core/data';
 import type { Planet } from '@/core/model';
 
 import type { PurchaseCheck } from './purchaseCardState';
-import { readNcgBalance } from './useNcgBalance';
+import { readNcgBalance } from '@/core/purchase/useNcgBalance';
 
 export const usePurchaseCheck = (planet: Planet, listing: MarketListing): PurchaseCheck => {
   const { market, avatarSource, balance } = useArenaData();

@@ -28,7 +28,7 @@ import { resolveMode, type PurchaseMode } from '@/core/common/purchasePolicy';
 import { useArenaData, useViewerAvatar } from '@/core/data';
 import type { Planet } from '@/core/model';
 
-import { UNAVAILABLE_NOTE, type AttemptState } from './purchaseAttemptState';
+import { UNAVAILABLE_NOTE, type AttemptState } from '@/core/purchase';
 import type { PurchaseCheck } from './purchaseCardState';
 
 export interface PurchaseAttempt {

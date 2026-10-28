@@ -35,8 +35,8 @@ import {
 } from '@/core/testing';
 
 import { BatchSheet } from './BatchSheet';
-import type { BatchPlan } from './batchUiState';
-import { collectionStrings as words } from './strings';
+import type { BatchPlan } from './batchState';
+import { purchaseStrings as words } from './strings';
 
 jest.mock('@/core/common/purchasePolicy', () => {
   const actual = jest.requireActual('@/core/common/purchasePolicy');

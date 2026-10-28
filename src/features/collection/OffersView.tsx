@@ -19,9 +19,11 @@ import type {
 } from '@/core/collection';
 import { ArenaButton, ArenaText, SortChip, color, layout, space } from '@/core/design-system';
 import type { Planet } from '@/core/model';
+import { BatchSheet } from '@/core/purchase/BatchSheet';
+import { useNcgBalance } from '@/core/purchase/useNcgBalance';
+import type { BatchPlan } from '@/core/purchase';
 
-import { BatchSheet } from './BatchSheet';
-import { batchPlan, type BatchPlan } from './batchUiState';
+import { batchPlan } from './batchUiState';
 import type { CollectionController } from './useCollection';
 import { OfferSheet } from './OfferSheet';
 import {
@@ -36,7 +38,6 @@ import {
 } from './offersUiState';
 import { collectionStrings as words } from './strings';
 import { useBestOffers } from './useBestOffers';
-import { useNcgBalance } from './useNcgBalance';
 
 export interface OffersViewProps {
   controller: CollectionController;

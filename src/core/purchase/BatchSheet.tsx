@@ -35,8 +35,8 @@ import {
   limitLine,
   totalLine,
   type BatchPlan,
-} from './batchUiState';
-import { formatNcg } from './marketUiState';
+} from './batchState';
+import { formatNcg } from './formatNcg';
 import {
   CANCEL_LABEL,
   DRY_RUN_NOTE,
@@ -47,7 +47,7 @@ import {
   WORKING_NOTE,
   WRONG_NOTE,
 } from './purchaseAttemptState';
-import { collectionStrings as words } from './strings';
+import { purchaseStrings as words } from './strings';
 import { useBatchPurchase, type BatchRowState } from './useBatchPurchase';
 
 export interface BatchSheetProps {

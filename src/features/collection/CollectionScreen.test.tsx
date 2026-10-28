@@ -57,6 +57,8 @@ import {
   type TestDatabase,
 } from '@/core/testing';
 
+import { purchaseStrings } from '@/core/purchase';
+
 import { CollectionScreen } from './CollectionScreen';
 import { useCollection } from './useCollection';
 import { collectionStrings as words } from './strings';
@@ -751,7 +753,7 @@ describe('CollectionScreen', () => {
           await press('offers-buy');
 
           // The sword offer needs two and is two lots, 3 and 5: two purchases, 8 NCG in all.
-          expect(text('batch-total')).toBe(words.batchTotalLine(2, '8'));
+          expect(text('batch-total')).toBe(purchaseStrings.batchTotalLine(2, '8'));
           expect(
             screen.getByTestId('batch-line-00000000-0000-0000-0000-000000000003'),
           ).toBeTruthy();

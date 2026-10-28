@@ -30,8 +30,8 @@ import {
 } from '@/core/testing';
 
 import { BatchSheet } from './BatchSheet';
-import type { BatchPlan } from './batchUiState';
-import { collectionStrings as words } from './strings';
+import type { BatchPlan } from './batchState';
+import { purchaseStrings as words } from './strings';
 
 const METRICS = {
   frame: { x: 0, y: 0, width: 390, height: 844 },

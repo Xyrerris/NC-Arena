@@ -3100,3 +3100,31 @@ material, which needs each item's base experience and each level's. Measured on 
 others. The costs ADR-0046 uses now come from the chain, so the standard price and the upgrade cost
 of grade 8 and 9 pieces exist where they did not. Mimir's `EquipmentItemSheet` is still asked for as
 the fallback and for nothing else.
+
+---
+
+## ADR-0048 — The cart moves to `core/purchase`, so two features can buy through it
+
+**Status.** Accepted (2026-10-28).
+
+**Context.** The batch sheet that buys a selection (ADR-0044, the cart) lived in `features/collection`.
+The Upgrade section buys through the same sheet, and a feature may not import another. Copying the
+sheet would mean every correction to a purchase, which is where mistakes cost NCG, made twice.
+
+**Decision.**
+
+- A new `core/purchase` module holds what both buy through: `BatchSheet`, `useBatchPurchase`,
+  `useNcgBalance` and `readNcgBalance`, the state of an attempt (`purchaseAttemptState`), the batch
+  wording (`batchState`, `purchaseStrings`), `BalanceState` and `formatNcg`. What goes _into_ a batch
+  stays with the feature (`batchPlan` in the collection builds a `BatchPlan` from offers).
+- It may reach `core/model`, `core/common`, `core/design-system` and `core/data` (it reads the arena
+  context), and no more: never `core/db`, `core/network`, `core/collection` or a feature. Features
+  and the route layer may reach it. Probes in `scripts/check-boundaries.mjs` write the violations.
+- The barrel exports only what plain Node can load. The sheet and the hooks are imported by file
+  (`@/core/purchase/BatchSheet`), so a `.test.ts` can still import the rest. The three React files are
+  out of the Node coverage, like the hooks of `core/data`.
+- The single-offer `PurchaseCard` stays in the collection: nothing else buys that way.
+
+**Consequences.** `features/collection` keeps its offers view and its single card and imports the
+cart. The `batch*` words are in `purchaseStrings`, not in the collection's strings. No behaviour
+changed: the same tests, moved with the code, pass unmodified apart from their imports.

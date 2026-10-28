@@ -19,7 +19,6 @@ import type { MarketListing } from '@/core/common';
 import type { Planet } from '@/core/model';
 import { ArenaButton, ArenaText, FormField, space } from '@/core/design-system';
 
-import { formatNcg } from './marketUiState';
 import {
   BUY_LABEL,
   CANCEL_LABEL,
@@ -32,7 +31,8 @@ import {
   PASSPHRASE_LABEL,
   TRY_LABEL,
   describeAttempt,
-} from './purchaseAttemptState';
+  formatNcg,
+} from '@/core/purchase';
 import type { PurchaseCheck } from './purchaseCardState';
 import { usePurchaseAttempt } from './usePurchaseAttempt';
 
