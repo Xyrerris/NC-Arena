@@ -4,6 +4,7 @@ export * from './collectionSheet';
 export * from './equipmentCatalog';
 export * from './itemCategory';
 export * from './marketMatch';
+export * from './materialMarket';
 export * from './otherItems';
 export * from './ownership';
 export * from './reconciliation';

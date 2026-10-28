@@ -69,6 +69,13 @@ three ids at a time on request as `OffersView` does; filter locally. The commone
 4,646 listings (5 pages, about 8 s), so the read is a progress list, not one spinner, and each id is
 cached by `marketLibrary`. Grade 7 is read last and can be switched off.
 
+**Status of phase 2 (2026-10-28):** done as a React-free queue in `core/collection/materialMarket.ts`:
+`materialCandidates(base)` (grade >= 7, the five slots, highest grade first) and
+`readMaterialMarket(candidates, scan, {signal, onSettled})`, three at a time. The caller passes the
+scan (`market.scan` from `ArenaData`), so `features/upgrade` only wraps it in a hook (phase 3). Not
+yet done: the per-grade floor (`floors` of `rankMaterials`) for a grade with no range, which the
+screen computes from the listings it has read.
+
 **3. The screen (`features/upgrade`, new feature, `src/app/upgrade.tsx`).**
 List by the ranking above; filters for grade, slot and "only level > 0" (**on by default, as asked,
 but see the note under Ranges**); the ceiling is editable. Each row shows R, k, NCG/G and the band.

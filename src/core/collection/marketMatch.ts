@@ -84,6 +84,9 @@ const OTHER_ROUTES: Readonly<Record<string, number>> = {
   Title: 18,
 };
 
+/** The market route of an equipment slot as the sheets spell it, or undefined for one not sold. */
+export const equipmentRoute = (slot: string): number | undefined => ROUTES[slot];
+
 const NOT_SOLD: ReadonlySet<string> = new Set(['Aura', 'Grimoire']);
 
 const NO_OTHER_ITEMS: OtherItemCatalog = new Map();
