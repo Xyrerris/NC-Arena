@@ -15,11 +15,20 @@ import {
   type EquipmentCatalog,
   type ScoredMaterial,
 } from '@/core/collection';
-import { ArenaButton, ArenaText, color, layout, radius, space } from '@/core/design-system';
+import {
+  ArenaButton,
+  ArenaText,
+  SortChip,
+  color,
+  layout,
+  radius,
+  space,
+} from '@/core/design-system';
 
-import { clampTarget, pieceLine, planLines, plannablePieces } from './plannerUiState';
+import { clampTarget, pieceLine, piecesInSlot, planLines, plannablePieces } from './plannerUiState';
 import { upgradeStrings as words } from './strings';
 import { useOwnedEquipment } from './useOwnedEquipment';
+import { SLOTS } from './upgradeUiState';
 
 export interface PlannerSheetProps {
   base: BaseExpByItem;
@@ -49,8 +58,12 @@ export function PlannerSheet({
   );
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [wanted, setWanted] = useState<number | null>(null);
+  const [slot, setSlot] = useState<string | null>(null);
+  // Once a piece is chosen the list folds away; CHANGE brings it back.
+  const [listOpen, setListOpen] = useState(true);
 
   const chosen = pieces.find((candidate) => candidate.piece.tradableId === chosenId) ?? null;
+  const showList = chosen === null || listOpen;
   const to =
     chosen === null
       ? null
@@ -69,6 +82,7 @@ export function PlannerSheet({
           ),
     [chosen, to, offers, base, levels, costs],
   );
+  const shown = useMemo(() => piecesInSlot(pieces, slot), [pieces, slot]);
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
@@ -125,30 +139,77 @@ export function PlannerSheet({
               </ArenaText>
             ) : (
               <>
-                <ArenaText variant="bodySmall" tone="body">
-                  {words.plannerPick}
-                </ArenaText>
-                {pieces.map((candidate) => {
-                  const selected = candidate.piece.tradableId === chosenId;
-                  return (
-                    <Pressable
-                      key={candidate.piece.tradableId}
-                      style={[styles.piece, selected && styles.pieceSelected]}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={words.plannerPieceA11y(candidate.label)}
-                      onPress={() => {
-                        setChosenId(candidate.piece.tradableId);
-                        setWanted(null);
-                      }}
-                      testID={`planner-piece-${candidate.piece.tradableId}`}
-                    >
-                      <ArenaText variant="bodyMedium" tone={selected ? 'accent' : 'primary'}>
-                        {pieceLine(candidate)}
+                {showList ? (
+                  <>
+                    <ArenaText variant="bodySmall" tone="body">
+                      {words.plannerPick}
+                    </ArenaText>
+                    <View style={styles.chips}>
+                      <SortChip
+                        label={words.slotAll}
+                        accessibilityLabel={words.slotAllA11y}
+                        selected={slot === null}
+                        onPress={() => setSlot(null)}
+                        testID="planner-slot-all"
+                      />
+                      {SLOTS.map((value) => (
+                        <SortChip
+                          key={value}
+                          label={words.slotChip(value)}
+                          accessibilityLabel={words.slotChipA11y(value)}
+                          selected={slot === value}
+                          onPress={() => setSlot(value)}
+                          testID={`planner-slot-${value}`}
+                        />
+                      ))}
+                    </View>
+                    {shown.length === 0 ? (
+                      <ArenaText variant="bodySmall" tone="subtle" testID="planner-none-in-slot">
+                        {words.plannerNoneInSlot}
                       </ArenaText>
-                    </Pressable>
-                  );
-                })}
+                    ) : null}
+                    {shown.map((candidate) => {
+                      const selected = candidate.piece.tradableId === chosenId;
+                      return (
+                        <Pressable
+                          key={candidate.piece.tradableId}
+                          style={[styles.piece, selected && styles.pieceSelected]}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          accessibilityLabel={words.plannerPieceA11y(candidate.label)}
+                          onPress={() => {
+                            setChosenId(candidate.piece.tradableId);
+                            setWanted(null);
+                            setListOpen(false);
+                          }}
+                          testID={`planner-piece-${candidate.piece.tradableId}`}
+                        >
+                          <ArenaText variant="bodyMedium" tone={selected ? 'accent' : 'primary'}>
+                            {pieceLine(candidate)}
+                          </ArenaText>
+                        </Pressable>
+                      );
+                    })}
+                  </>
+                ) : chosen === null ? null : (
+                  <View style={styles.chosen}>
+                    <ArenaText
+                      variant="bodyMedium"
+                      tone="accent"
+                      style={styles.title}
+                      testID="planner-chosen"
+                    >
+                      {pieceLine(chosen)}
+                    </ArenaText>
+                    <ArenaButton
+                      label={words.plannerChange}
+                      accessibilityLabel={words.plannerChangeA11y}
+                      variant="secondary"
+                      onPress={() => setListOpen(true)}
+                      testID="planner-change"
+                    />
+                  </View>
+                )}
 
                 {chosen === null || to === null ? null : (
                   <View style={styles.block}>
@@ -236,6 +297,8 @@ const styles = StyleSheet.create({
     gap: space[8],
   },
   block: { gap: space[8], paddingTop: space[8] },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
+  chosen: { flexDirection: 'row', alignItems: 'center', gap: space[12] },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: space[12] },
   piece: {
     minHeight: layout.minTouchTarget,

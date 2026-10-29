@@ -82,8 +82,11 @@ export const upgradeStrings = {
   plannerNone: 'No piece of grade 7 or more in your bag can be raised any further.',
   plannerRetry: 'READ AGAIN',
   plannerPick: 'Choose the piece to raise:',
-  plannerPiece: (label: string, exp: string, equipped: boolean) =>
-    `${label} · ${exp} Gexp${equipped ? ' · worn' : ''}`,
+  plannerPiece: (label: string, exp: string, hasSkill: boolean, equipped: boolean) =>
+    `${label} · ${exp} Gexp${hasSkill ? ' · ★ skill' : ''}${equipped ? ' · worn' : ''}`,
+  plannerChange: 'CHANGE',
+  plannerChangeA11y: 'Choose another piece',
+  plannerNoneInSlot: 'No piece of this slot can be raised.',
   plannerPieceA11y: (label: string) => `Raise ${label}`,
   plannerTarget: (level: number) => `Target level: +${level}`,
   plannerLower: '−',

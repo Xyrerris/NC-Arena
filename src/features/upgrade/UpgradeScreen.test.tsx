@@ -277,6 +277,42 @@ describe('UpgradeScreen', () => {
       expect(text('upgrade-bar-title')).toBe('1 piece selected · 10 NCG');
     });
 
+    it('folds the list once a piece is chosen, and CHANGE opens it again', async () => {
+      withAvatar();
+      inventory = bag([SWORD, { ...SWORD, tradableId: 'other', hasSkill: true }]);
+      await mount();
+      await press('upgrade-find');
+      await press('upgrade-plan');
+      await act(async () => {});
+
+      await press('planner-piece-my-sword');
+
+      expect(screen.queryByTestId('planner-piece-other')).toBeNull();
+      expect(screen.getByTestId('planner-chosen')).toBeTruthy();
+
+      await press('planner-change');
+
+      expect(screen.getByTestId('planner-piece-other')).toBeTruthy();
+    });
+
+    it('filters the pieces by slot', async () => {
+      withAvatar();
+      inventory = bag([SWORD]);
+      await mount();
+      await press('upgrade-find');
+      await press('upgrade-plan');
+      await act(async () => {});
+
+      await press('planner-slot-Ring');
+
+      expect(screen.queryByTestId('planner-piece-my-sword')).toBeNull();
+      expect(screen.getByTestId('planner-none-in-slot')).toBeTruthy();
+
+      await press('planner-slot-Weapon');
+
+      expect(screen.getByTestId('planner-piece-my-sword')).toBeTruthy();
+    });
+
     it('says why the bag cannot be read when there is no avatar', async () => {
       await mount();
       await press('upgrade-find');

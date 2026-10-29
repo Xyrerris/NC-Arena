@@ -21,6 +21,7 @@ export interface PlannablePiece {
   readonly piece: HeldEquipment;
   readonly label: string;
   readonly grade: number;
+  readonly slot: string;
   /** The highest level the sheet knows for it. */
   readonly max: number;
 }
@@ -54,7 +55,7 @@ export const plannablePieces = (
         piece.level,
         info?.element ?? '',
       );
-      return [{ piece, label, grade: item.grade, max }];
+      return [{ piece, label, grade: item.grade, slot: item.slot, max }];
     })
     .sort(
       (a, b) =>
@@ -64,10 +65,18 @@ export const plannablePieces = (
         a.piece.tradableId.localeCompare(b.piece.tradableId),
     );
 
+/** The pieces of one slot, or all of them when no slot is chosen. */
+export const piecesInSlot = (
+  pieces: readonly PlannablePiece[],
+  slot: string | null,
+): readonly PlannablePiece[] =>
+  slot === null ? pieces : pieces.filter((candidate) => candidate.slot === slot);
+
 export const pieceLine = (candidate: PlannablePiece): string =>
   words.plannerPiece(
     candidate.label,
     formatNcg(candidate.piece.exp / 1e9),
+    candidate.piece.hasSkill,
     candidate.piece.equipped,
   );
 

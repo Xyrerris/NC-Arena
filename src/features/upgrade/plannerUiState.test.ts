@@ -6,7 +6,7 @@ import {
 } from '@/core/collection';
 import type { HeldEquipment } from '@/core/common';
 
-import { clampTarget, pieceLine, planLines, plannablePieces } from './plannerUiState';
+import { clampTarget, pieceLine, piecesInSlot, planLines, plannablePieces } from './plannerUiState';
 
 const EQUIPMENT = [
   'id,_name,item_sub_type,grade,elemental_type,exp',
@@ -85,6 +85,25 @@ describe('pieceLine and clampTarget', () => {
     );
 
     expect(pieceLine(piece!)).toBe('Transcendent Sword +0 · Fire · 1,2 Gexp · worn');
+  });
+
+  it('marks a piece that carries a skill', () => {
+    const [piece] = plannablePieces(
+      [{ ...held('x', 10181000, 0, 1_200_000_000), hasSkill: true }],
+      BASE,
+      LEVELS,
+      CATALOG,
+    );
+
+    expect(pieceLine(piece!)).toBe('Transcendent Sword +0 · Fire · 1,2 Gexp · ★ skill');
+  });
+
+  it('narrows the pieces to one slot, or none', () => {
+    const pieces = plannablePieces([held('a', 10181000, 0, 1_200_000_000)], BASE, LEVELS, CATALOG);
+
+    expect(piecesInSlot(pieces, null)).toHaveLength(1);
+    expect(piecesInSlot(pieces, 'Weapon')).toHaveLength(1);
+    expect(piecesInSlot(pieces, 'Ring')).toHaveLength(0);
   });
 
   it('keeps the target above the piece and inside the sheet', () => {
