@@ -1,4 +1,4 @@
-import type { AvatarInventory, MarketListing } from '../common';
+import type { Holdings, MarketListing } from '../common';
 import {
   bestOffers,
   cheapestLots,
@@ -10,9 +10,9 @@ import type { Collection, CollectionRequirement } from './collectionSheet';
 import { parseEnhancementCosts } from './upgradeCost';
 
 const inventory = (
-  equipment: AvatarInventory['equipment'] = [],
+  equipment: Holdings['equipment'] = [],
   stackable: [number, number][] = [],
-): AvatarInventory => ({ equipment, stackable: new Map(stackable), source: 'node', readAt: 0 });
+): Holdings => ({ equipment, stackable: new Map(stackable) });
 
 const req = (
   itemId: number,

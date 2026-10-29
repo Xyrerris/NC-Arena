@@ -19,6 +19,7 @@ import {
   observedFloors,
   rankMaterials,
   type BaseExpByItem,
+  type EnhancementCosts,
   type EnhancementExp,
   type EquipmentCatalog,
 } from '@/core/collection';
@@ -37,6 +38,7 @@ import type { Planet } from '@/core/model';
 import { formatNcg, type BatchPlan } from '@/core/purchase';
 import { BatchSheet } from '@/core/purchase/BatchSheet';
 
+import { PlannerSheet } from './PlannerSheet';
 import { upgradeStrings as words } from './strings';
 import {
   SLOTS,
@@ -67,6 +69,7 @@ export function UpgradeScreen({ sectionTabs }: UpgradeScreenProps) {
         base={loaded.base}
         levels={loaded.levels}
         catalog={loaded.catalog}
+        costs={loaded.costs}
         onChain={loaded.onChain}
         sectionTabs={sectionTabs}
       />
@@ -114,13 +117,22 @@ interface UpgradeBodyProps {
   base: BaseExpByItem;
   levels: EnhancementExp;
   catalog: EquipmentCatalog;
+  costs: EnhancementCosts;
   onChain: boolean;
   sectionTabs?: ReactNode;
 }
 
 const CEILING_GRADES = [9, 8, 7] as const;
 
-function UpgradeBody({ planet, base, levels, catalog, onChain, sectionTabs }: UpgradeBodyProps) {
+function UpgradeBody({
+  planet,
+  base,
+  levels,
+  catalog,
+  costs,
+  onChain,
+  sectionTabs,
+}: UpgradeBodyProps) {
   const [withValkyrie, setWithValkyrie] = useState(false);
   const candidates = useMemo(
     () => materialCandidates(base, { minGrade: withValkyrie ? 7 : 8 }),
@@ -168,6 +180,19 @@ function UpgradeBody({ planet, base, levels, catalog, onChain, sectionTabs }: Up
     () => ranking.offers.map((scored) => ({ scored, ui: toMaterialRow(scored, catalog) })),
     [ranking.offers, catalog],
   );
+
+  // What the planner buys from: everything in range, whatever the list's grade, slot and level filters.
+  const plannerOffers = useMemo(
+    () =>
+      rankMaterials(market.listings, base, levels, {
+        now: new Date(),
+        ceilings,
+        floors,
+        ...(market.ownAgent === null ? {} : { ownAgentAddress: market.ownAgent }),
+      }).offers,
+    [market.listings, base, levels, ceilings, floors, market.ownAgent],
+  );
+  const [planning, setPlanning] = useState(false);
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const toggle = (key: string): void => {
@@ -278,6 +303,14 @@ function UpgradeBody({ planet, base, levels, catalog, onChain, sectionTabs }: Up
                     testID="upgrade-find"
                   />
                 )}
+                <ArenaButton
+                  label={words.plan}
+                  accessibilityLabel={words.planA11y}
+                  variant="secondary"
+                  disabled={market.listings.length === 0}
+                  onPress={() => setPlanning(true)}
+                  testID="upgrade-plan"
+                />
                 <SortChip
                   label={withValkyrie ? words.withValkyrie : words.withoutValkyrie}
                   accessibilityLabel={words.valkyrieA11y}
@@ -435,6 +468,17 @@ function UpgradeBody({ planet, base, levels, catalog, onChain, sectionTabs }: Up
             </View>
           </View>
         )}
+        {planning ? (
+          <PlannerSheet
+            base={base}
+            levels={levels}
+            catalog={catalog}
+            costs={costs}
+            offers={plannerOffers}
+            onSelect={(ids) => setSelected(new Set(ids))}
+            onClose={() => setPlanning(false)}
+          />
+        ) : null}
         {buying === null ? null : (
           <BatchSheet
             planet={planet}

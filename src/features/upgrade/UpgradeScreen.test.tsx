@@ -8,7 +8,14 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react-
 import type { ReactNode } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { err, ok, type GameSheets, type MarketListing } from '@/core/common';
+import {
+  err,
+  ok,
+  type GameSheets,
+  type HeldEquipment,
+  type InventorySource,
+  type MarketListing,
+} from '@/core/common';
 import {
   ArenaDataProvider,
   createSheetLibrary,
@@ -68,6 +75,19 @@ const listing = (productId: string, over: Partial<MarketListing>): MarketListing
 // A grade 9 +0 at 100 NCG (10.4 per Gexp, in range) and a grade 8 +1 at 10 NCG (7.8, in range).
 const ULTIMATE = listing('ult', { itemId: 10191000, grade: 9, level: 0, price: 100 });
 const RAISED = listing('raised', { itemId: 10181000, grade: 8, level: 1, price: 10 });
+const AVATAR = {
+  planet: 'heimdall',
+  address: '0x1023d8f22c6f5a8701e56a95e18fb2dbe436b41f',
+} as const;
+// A +0 grade 8 sword holding its base, 1.2 G.
+const SWORD: HeldEquipment = {
+  itemId: 10181000,
+  level: 0,
+  hasSkill: false,
+  exp: 1_200_000_000,
+  tradableId: 'my-sword',
+  equipped: false,
+};
 
 describe('UpgradeScreen', () => {
   let handle: TestDatabase;
@@ -75,13 +95,14 @@ describe('UpgradeScreen', () => {
   let sheets: SheetLibrary;
   let scan: jest.Mock;
   let market: MarketLibrary;
+  let inventory: InventorySource | undefined;
 
   const wrapper = () =>
     function Harness({ children }: { children: ReactNode }) {
       return (
         <SafeAreaProvider initialMetrics={METRICS}>
           <ArenaDataProvider
-            value={{ repository, useLiveData: createStubLiveData(), sheets, market }}
+            value={{ repository, useLiveData: createStubLiveData(), sheets, market, inventory }}
           >
             {children}
           </ArenaDataProvider>
@@ -116,6 +137,7 @@ describe('UpgradeScreen', () => {
       ),
     );
     market = { scan } as unknown as MarketLibrary;
+    inventory = undefined;
   });
 
   afterEach(async () => {
@@ -202,5 +224,66 @@ describe('UpgradeScreen', () => {
     await mount();
 
     expect(text('upgrade-not-on-chain')).toBe(words.notOnChain);
+  });
+
+  describe('the planner', () => {
+    const withAvatar = (): void => {
+      const me = repository.createPlayer({
+        name: 'Xyrerris',
+        level: 400,
+        gameCode: '',
+        combatPower: 900,
+        score: 10,
+        hp: 9,
+        atk: 1,
+        def: 2,
+        critPercent: 3,
+        hit: 4,
+        spd: 5,
+      });
+      if (!me.ok) throw new Error('fixture: the player was refused');
+      expect(repository.setViewerId(me.value.id).ok).toBe(true);
+      expect(repository.setViewerAvatar(AVATAR).ok).toBe(true);
+    };
+    const bag = (equipment: HeldEquipment[]): InventorySource => ({
+      name: 'test',
+      readInventory: () =>
+        Promise.resolve(ok({ equipment, stackable: new Map(), source: 'test', readAt: 0 })),
+    });
+
+    it('is out of reach until the market has been read', async () => {
+      await mount();
+
+      expect(screen.getByTestId('upgrade-plan').props.accessibilityState?.disabled).toBe(true);
+    });
+
+    it('plans the cheapest material for a piece of the bag and selects it for the cart', async () => {
+      withAvatar();
+      inventory = bag([SWORD]);
+      await mount();
+      await press('upgrade-find');
+      await press('upgrade-plan');
+      await act(async () => {});
+
+      await press('planner-piece-my-sword');
+
+      expect(text('planner-target')).toBe(words.plannerTarget(1));
+      // +0 to +1 takes 0.08 G more; the raised piece (1.28 G, 10 NCG) is the cheapest per Gexp.
+      expect(screen.getByText(words.planBuy(1, '10'))).toBeTruthy();
+
+      await press('planner-select');
+
+      expect(screen.queryByTestId('planner-sheet')).toBeNull();
+      expect(text('upgrade-bar-title')).toBe('1 piece selected · 10 NCG');
+    });
+
+    it('says why the bag cannot be read when there is no avatar', async () => {
+      await mount();
+      await press('upgrade-find');
+      await press('upgrade-plan');
+      await act(async () => {});
+
+      expect(text('planner-no-avatar')).toBe(words.plannerNoAvatar);
+    });
   });
 });

@@ -4,7 +4,8 @@
  *
  * Observed on Heimdall 2026-10-18 for a real avatar: 2295 equipment pieces, and `items` listing
  * every stack with its count and `itemType` (`EQUIPMENT`, `COSTUME`, `MATERIAL`, `CONSUMABLE`).
- * Equipment is read from `equipments` because only there are the level and the skills; everything
+ * Equipment is read from `equipments` because only there are the level, the skills and the
+ * stored experience (a JSON number, 566 G for a +13 belt, so well inside 2^53); everything
  * else comes from `items`, whose `EQUIPMENT` entries are skipped so a piece is never counted twice.
  * The answer is about 300 kB for an avatar with a full bag.
  *
@@ -37,6 +38,9 @@ const dataSchema = z.object({
             z.object({
               id: idSchema,
               level: z.number().int().safe(),
+              exp: z.number().int().safe(),
+              itemId: z.string(),
+              equipped: z.boolean(),
               skills: z.array(z.object({ id: idSchema })),
               buffSkills: z.array(z.object({ id: idSchema })),
             }),
@@ -71,7 +75,7 @@ export class NodeInventorySource implements InventorySource {
     const response = await postGraphql(
       endpoint,
       `{ stateQuery { avatar(avatarAddress: "${address}") { inventory { ` +
-        'equipments { id level skills { id } buffSkills { id } } ' +
+        'equipments { id level exp itemId equipped skills { id } buffSkills { id } } ' +
         'items { id count itemType } } } } }',
     );
     if (!response.ok) return err(networkFailure(this.name, response.error));
@@ -98,6 +102,9 @@ export class NodeInventorySource implements InventorySource {
         itemId: piece.id,
         level: piece.level,
         hasSkill: piece.skills.length > 0 || piece.buffSkills.length > 0,
+        exp: piece.exp,
+        tradableId: piece.itemId,
+        equipped: piece.equipped,
       })),
       stackable,
       source: this.name,

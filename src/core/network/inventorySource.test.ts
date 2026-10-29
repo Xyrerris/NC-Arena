@@ -39,9 +39,33 @@ describe('NodeInventorySource', () => {
       jsonResponse(
         inventoryBody({
           equipments: [
-            { id: 10690003, level: 6, skills: [{ id: 110008 }], buffSkills: [] },
-            { id: 10690000, level: 0, skills: [], buffSkills: [{ id: 1 }] },
-            { id: 10180000, level: 23, skills: [], buffSkills: [] },
+            {
+              id: 10690003,
+              level: 6,
+              exp: 5000,
+              itemId: 'g1',
+              equipped: false,
+              skills: [{ id: 110008 }],
+              buffSkills: [],
+            },
+            {
+              id: 10690000,
+              level: 0,
+              exp: 6240000,
+              itemId: 'g2',
+              equipped: true,
+              skills: [],
+              buffSkills: [{ id: 1 }],
+            },
+            {
+              id: 10180000,
+              level: 23,
+              exp: 99,
+              itemId: 'g3',
+              equipped: false,
+              skills: [],
+              buffSkills: [],
+            },
           ],
           items: [
             { id: 10690003, count: 1, itemType: 'EQUIPMENT' },
@@ -59,9 +83,30 @@ describe('NodeInventorySource', () => {
       ok: true,
       value: {
         equipment: [
-          { itemId: 10690003, level: 6, hasSkill: true },
-          { itemId: 10690000, level: 0, hasSkill: true },
-          { itemId: 10180000, level: 23, hasSkill: false },
+          {
+            itemId: 10690003,
+            level: 6,
+            hasSkill: true,
+            exp: 5000,
+            tradableId: 'g1',
+            equipped: false,
+          },
+          {
+            itemId: 10690000,
+            level: 0,
+            hasSkill: true,
+            exp: 6240000,
+            tradableId: 'g2',
+            equipped: true,
+          },
+          {
+            itemId: 10180000,
+            level: 23,
+            hasSkill: false,
+            exp: 99,
+            tradableId: 'g3',
+            equipped: false,
+          },
         ],
         stackable: new Map([
           [383002, 4500],

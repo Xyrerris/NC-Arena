@@ -16,7 +16,7 @@ import {
   type OtherItemCatalog,
   type Verdict,
 } from '@/core/collection';
-import { statFormatter, type AvatarInventory } from '@/core/common';
+import { statFormatter, type Holdings } from '@/core/common';
 import { formatNcg, type BalanceState } from '@/core/purchase';
 
 import {
@@ -28,8 +28,6 @@ import {
 } from './marketUiState';
 import { balanceMessage } from './purchaseCardState';
 import { collectionStrings as words } from './strings';
-
-type Holdings = Pick<AvatarInventory, 'equipment' | 'stackable'>;
 
 const NO_HOLDINGS: Holdings = { equipment: [], stackable: new Map() };
 const NO_OTHERS: OtherItemCatalog = new Map();

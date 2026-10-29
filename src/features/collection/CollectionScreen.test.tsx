@@ -67,6 +67,14 @@ const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ useRouter: () => ({ push: mockPush }) }));
 
 const SHEET = parseCollectionSheet(SAMPLE_SHEET_CSV);
+const OWNED_SWORD = {
+  itemId: 10110000,
+  level: 0,
+  hasSkill: true,
+  exp: 0,
+  tradableId: 'sword',
+  equipped: false,
+};
 const AVATAR = {
   planet: 'heimdall',
   address: '0x1023d8f22c6f5a8701e56a95e18fb2dbe436b41f',
@@ -412,7 +420,7 @@ describe('CollectionScreen', () => {
       readInventory: jest.fn(() =>
         Promise.resolve(
           ok({
-            equipment: [{ itemId: 10110000, level: 0, hasSkill: true }],
+            equipment: [OWNED_SWORD],
             stackable: new Map<number, number>(),
             source: 'node',
             readAt: NOW,
@@ -786,10 +794,7 @@ describe('CollectionScreen', () => {
           readInventory: jest.fn(() =>
             Promise.resolve(
               ok({
-                equipment: [
-                  { itemId: 10110000, level: 0, hasSkill: true },
-                  { itemId: 10110000, level: 0, hasSkill: true },
-                ],
+                equipment: [OWNED_SWORD, OWNED_SWORD],
                 stackable: new Map<number, number>(),
                 source: 'node',
                 readAt: NOW,

@@ -10,9 +10,11 @@ import { useCallback, useEffect, useState } from 'react';
 
 import {
   parseBaseExp,
+  parseEnhancementCosts,
   parseEnhancementExp,
   parseEquipmentCatalog,
   type BaseExpByItem,
+  type EnhancementCosts,
   type EnhancementExp,
   type EquipmentCatalog,
 } from '@/core/collection';
@@ -30,6 +32,8 @@ export type UpgradeSheetsState =
       readonly base: BaseExpByItem;
       readonly levels: EnhancementExp;
       readonly catalog: EquipmentCatalog;
+      /** What raising a piece costs in NCG, for the planner. */
+      readonly costs: EnhancementCosts;
       /** False when the node could not be read: no grade 9 gear and older experience values. */
       readonly onChain: boolean;
     };
@@ -64,6 +68,7 @@ export const useUpgradeSheets = (planet: Planet): UpgradeSheetsState & { retry: 
           base: parseBaseExp(result.value.equipmentCsv),
           levels: parseEnhancementExp(result.value.enhancementCsv),
           catalog: parseEquipmentCatalog(result.value.equipmentCsv),
+          costs: parseEnhancementCosts(result.value.enhancementCsv),
           onChain: result.value.onChain === true,
         });
       } catch {

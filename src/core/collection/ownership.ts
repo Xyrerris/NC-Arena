@@ -10,10 +10,8 @@
  * requirement is met when the avatar holds at least the `count` it asks for.
  */
 
-import type { AvatarInventory } from '../common';
+import type { Holdings } from '../common';
 import type { Collection, CollectionRequirement } from './collectionSheet';
-
-type Holdings = Pick<AvatarInventory, 'equipment' | 'stackable'>;
 
 /** How many of the piece the avatar holds: 0 means it still has to be found. */
 export const ownedCount = (requirement: CollectionRequirement, inventory: Holdings): number =>

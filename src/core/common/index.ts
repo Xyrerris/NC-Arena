@@ -23,6 +23,8 @@ export type {
 } from './collectionSource';
 export type {
   AvatarInventory,
+  HeldEquipment,
+  Holdings,
   InventoryError,
   InventoryFailure,
   InventorySource,

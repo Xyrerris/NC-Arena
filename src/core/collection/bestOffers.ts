@@ -26,7 +26,7 @@
  * by total price only, which bounds the work and is exact for every size seen on the market.
  */
 
-import type { AvatarInventory, MarketListing } from '../common';
+import type { Holdings, MarketListing } from '../common';
 import type { Collection, CollectionRequirement } from './collectionSheet';
 import { matchingListings } from './marketMatch';
 import { ownedCount } from './ownership';
@@ -38,8 +38,6 @@ import {
   type EnhancementCosts,
   type Verdict,
 } from './upgradeCost';
-
-type Holdings = Pick<AvatarInventory, 'equipment' | 'stackable'>;
 
 /** Item, level and skill state: two requirements of one item at different levels are two pieces. */
 export const requirementKey = (requirement: CollectionRequirement): string =>

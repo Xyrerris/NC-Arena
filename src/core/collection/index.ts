@@ -12,4 +12,5 @@ export * from './sampleSheet';
 export * from './unlockedState';
 export * from './upgradeCost';
 export * from './upgradeExp';
+export * from './upgradePlan';
 export * from './upgradeRanking';

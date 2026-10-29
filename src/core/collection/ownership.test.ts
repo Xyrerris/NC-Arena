@@ -1,15 +1,13 @@
-import type { AvatarInventory } from '../common';
+import type { Holdings } from '../common';
 import type { Collection } from './collectionSheet';
 import { ownedCount, ownedPieces } from './ownership';
 
 const inventory = (
-  equipment: AvatarInventory['equipment'],
+  equipment: Holdings['equipment'],
   stackable: [number, number][] = [],
-): AvatarInventory => ({
+): Holdings => ({
   equipment,
   stackable: new Map(stackable),
-  source: 'node',
-  readAt: 0,
 });
 
 const piece = (itemId: number, level: number, skillContains: boolean, count = 1) => ({

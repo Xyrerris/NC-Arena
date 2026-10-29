@@ -20,9 +20,30 @@ export interface OwnedEquipment {
   readonly hasSkill: boolean;
 }
 
+/** A piece in the bag as the Upgrade planner needs it: with what it holds and which one it is. */
+export interface HeldEquipment extends OwnedEquipment {
+  /**
+   * The experience the piece holds, in total and from +0: a piece at +0 already holds its base (a
+   * grade 9 ring 9.6 G), and a +13 belt 566 G. It is what raising the piece adds to, and what the
+   * piece gives as material. The Upgrade planner reads it; a collection does not.
+   */
+  readonly exp: number;
+  /** The piece's own id (a GUID): the same as `MarketListing.tradableId`. */
+  readonly tradableId: string;
+  readonly equipped: boolean;
+}
+
+/**
+ * What a collection asks about the bag: each piece's id, level and skill, and the stacks. A whole
+ * `AvatarInventory` is one, and so is a bag built from just these.
+ */
+export type Holdings = Pick<AvatarInventory, 'stackable'> & {
+  readonly equipment: readonly OwnedEquipment[];
+};
+
 /** What a complete read returned. */
 export interface AvatarInventory {
-  readonly equipment: readonly OwnedEquipment[];
+  readonly equipment: readonly HeldEquipment[];
   /** Costumes, materials and consumables: item id to how many are held. Equipment is not here. */
   readonly stackable: ReadonlyMap<number, number>;
   readonly source: string;

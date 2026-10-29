@@ -102,6 +102,16 @@ Pick the piece and its target level: exp still to gain, materials needed in orde
 actions at 50 per action, NCG for the upgrade from the cost sheet, exp left over. The stored `Exp` of
 the target piece comes from the inventory read, not from the level.
 
+**Status of phase 5 (2026-10-29):** done. `core/collection/upgradePlan.ts` (`planUpgrade`: the
+experience still needed, the cheapest offers that reach it, the upgrade NCG, the actions at 50 a
+piece) and, in `features/upgrade`, `PlannerSheet` behind a PLAN AN UPGRADE button, which selects the
+plan's pieces for the cart. The node does expose the stored `Exp` of a piece (measured 2026-10-29 on
+the test avatar: a +0 grade 9 ring holds 9.6 G, a +13 belt 566 G), so the inventory read now carries
+`exp`, `tradableId` and `equipped` (`HeldEquipment`); the collection's own logic still asks only for
+`Holdings`. What the plan assumes and phase 6 must check on a real upgrade: that the piece reaches a
+level when its stored `Exp` reaches the sheet's figure for it, and that a raised material gives its
+stored `Exp` (the plan uses the floor from its level).
+
 **6. Verify on a live arena, not in tests.**
 Raise a real grade 7 or 8 piece with the bought material and compare its stored `Exp` after with the
 planned one. If the stored `Exp` of a listing is higher than the floor (it will be, for upgraded

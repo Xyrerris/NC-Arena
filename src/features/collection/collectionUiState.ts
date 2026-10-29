@@ -23,7 +23,7 @@ import {
   type RowFilter,
   type RowSort,
 } from '@/core/collection';
-import { timeSince, type AvatarInventory } from '@/core/common';
+import { timeSince, type AvatarInventory, type Holdings } from '@/core/common';
 import type { StoredChainRead } from '@/core/data';
 import type { Tone } from '@/core/design-system';
 
@@ -140,7 +140,7 @@ export const requirementLabel = (
 };
 
 /** What the avatar holds, as far as the collection view-models need it. */
-export type Holdings = Pick<AvatarInventory, 'equipment' | 'stackable'>;
+export type { Holdings };
 
 /**
  * Whether a requirement is already in the bag, as a tag. `null` when no inventory was read: the
