@@ -123,6 +123,27 @@ describe('UpgradeScreen', () => {
 
   beforeEach(() => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    // The ceilings fall with the calendar and the screen reads the clock, so the prices above only
+    // mean "in range" on a fixed day: the day the ramp opens. Only Date is faked; timers stay real.
+    jest.useFakeTimers({
+      now: new Date('2026-10-28T00:00:00Z'),
+      doNotFake: [
+        'hrtime',
+        'nextTick',
+        'performance',
+        'queueMicrotask',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+        'requestIdleCallback',
+        'cancelIdleCallback',
+        'setImmediate',
+        'clearImmediate',
+        'setInterval',
+        'clearInterval',
+        'setTimeout',
+        'clearTimeout',
+      ],
+    });
     handle = createTestDatabase();
     repository = createTestRepository(handle.db).repository;
     sheets = createSheetLibrary({
@@ -143,6 +164,7 @@ describe('UpgradeScreen', () => {
   afterEach(async () => {
     await cleanup();
     handle.close();
+    jest.useRealTimers();
   });
 
   it('reads nothing until asked, then lists what is in range, best share of the ceiling first', async () => {
