@@ -17,8 +17,8 @@ import {
   type AvatarSource,
   type Result,
 } from '../common';
-import { normaliseAvatarAddress, type Planet, type ViewerAvatar } from '../model';
-import { networkFailure, postGraphql } from './chainGraphql';
+import { normaliseAvatarAddress, type ViewerAvatar } from '../model';
+import { networkFailure, postGraphql, type GraphqlEndpoints } from './chainGraphql';
 import { MIMIR_ENDPOINTS } from './mimirCollectionSource';
 
 const dataSchema = z.object({
@@ -30,7 +30,7 @@ const dataSchema = z.object({
 export class MimirAvatarSource implements AvatarSource {
   readonly name = 'mimir';
 
-  constructor(private readonly endpoints: Partial<Record<Planet, string>> = MIMIR_ENDPOINTS) {}
+  constructor(private readonly endpoints: GraphqlEndpoints = MIMIR_ENDPOINTS) {}
 
   async readAvatar(avatar: ViewerAvatar): Promise<Result<AvatarIdentity | null, AvatarError>> {
     const endpoint = this.endpoints[avatar.planet];

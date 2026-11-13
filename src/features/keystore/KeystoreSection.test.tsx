@@ -1,0 +1,492 @@
+/**
+ * ADR-0044, step B, from the screen: a keystore is pasted, kept as the locked file it is, opened
+ * with a passphrase that is never kept, and compared with the account of the avatar the person
+ * plays. Nothing buys.
+ *
+ * The keystore is written here with Node's crypto (a few PBKDF2 rounds), not by the code under
+ * test. jest-expo runs at fontScale 2, so every render here is also a 200 % font-scale render.
+ */
+
+import { keccak_256 } from '@noble/hashes/sha3.js';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { createCipheriv, pbkdf2Sync, randomBytes } from 'node:crypto';
+import type { ReactNode } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { err, ok, type AvatarSource } from '@/core/common';
+import {
+  ArenaDataProvider,
+  type KeystoreStore,
+  type PurchaseStore,
+  type RosterRepository,
+} from '@/core/data';
+import type { PlayerDraft } from '@/core/model';
+import {
+  createStubLiveData,
+  createTestDatabase,
+  createTestRepository,
+  type TestDatabase,
+} from '@/core/testing';
+
+import { KeystoreSection } from './KeystoreSection';
+import { WRONG_NOTE } from './keystoreUiState';
+
+const PRIVATE_KEY = '7a28b5ba57c53603b0b07b56bba752f7784bf506fa95edc395f5cf6c7514fe9d';
+const ADDRESS = '008aeeda4d805471df9b2a5b0f38a0c3bcba786b';
+const AVATAR = {
+  planet: 'heimdall',
+  address: '0x1023d8f22c6f5a8701e56a95e18fb2dbe436b41f',
+} as const;
+
+const METRICS = {
+  frame: { x: 0, y: 0, width: 390, height: 844 },
+  insets: { top: 24, left: 0, right: 0, bottom: 16 },
+};
+
+const draft = (name: string): PlayerDraft => ({
+  name,
+  level: 400,
+  gameCode: '',
+  combatPower: 900,
+  score: 10,
+  hp: 9,
+  atk: 1,
+  def: 2,
+  critPercent: 3,
+  hit: 4,
+  spd: 5,
+});
+
+const writeKeystore = (passphrase: string, claimed = ADDRESS): string => {
+  const salt = randomBytes(32);
+  const iv = randomBytes(16);
+  const derived = pbkdf2Sync(passphrase, salt, 10, 32, 'sha256');
+  const cipher = createCipheriv('aes-128-ctr', derived.subarray(0, 16), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(Buffer.from(PRIVATE_KEY, 'hex')),
+    cipher.final(),
+  ]);
+  const mac = keccak_256(Buffer.concat([derived.subarray(16, 32), ciphertext]));
+  return JSON.stringify({
+    version: 3,
+    address: claimed,
+    crypto: {
+      cipher: 'aes-128-ctr',
+      cipherparams: { iv: iv.toString('hex') },
+      ciphertext: ciphertext.toString('hex'),
+      kdf: 'pbkdf2',
+      kdfparams: { c: 10, dklen: 32, prf: 'hmac-sha256', salt: salt.toString('hex') },
+      mac: Buffer.from(mac).toString('hex'),
+    },
+  });
+};
+
+describe('KeystoreSection', () => {
+  let handle: TestDatabase;
+  let repository: RosterRepository;
+  let kept: string | null;
+  let store: KeystoreStore;
+  let avatarSource: AvatarSource | undefined;
+  let limit: number | null;
+  let batchLimit: number | null;
+  let log: string | null;
+  let mode: string | null;
+  let withPurchases: boolean;
+  const purchases: PurchaseStore = {
+    getLimit: () => limit,
+    setLimit: (ncg) => {
+      limit = ncg;
+    },
+    getBatchLimit: () => batchLimit,
+    setBatchLimit: (ncg) => {
+      batchLimit = ncg;
+    },
+    getLog: () => log,
+    setLog: (json) => {
+      log = json;
+    },
+    getMode: () => mode,
+    setMode: (next) => {
+      mode = next;
+    },
+  };
+
+  const agent = (agentAddress: string): AvatarSource => ({
+    name: 'test',
+    readAvatar: jest.fn(() => Promise.resolve(ok({ name: 'Xyrerris', level: 400, agentAddress }))),
+  });
+
+  const wrapper = () =>
+    function Harness({ children }: { children: ReactNode }) {
+      return (
+        <SafeAreaProvider initialMetrics={METRICS}>
+          <ArenaDataProvider
+            value={{
+              repository,
+              useLiveData: createStubLiveData(),
+              avatarSource,
+              keystore: store,
+              purchases: withPurchases ? purchases : undefined,
+            }}
+          >
+            {children}
+          </ArenaDataProvider>
+        </SafeAreaProvider>
+      );
+    };
+
+  beforeEach(() => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    handle = createTestDatabase();
+    repository = createTestRepository(handle.db).repository;
+    kept = null;
+    store = {
+      get: () => kept,
+      set: (json) => {
+        kept = json;
+      },
+      clear: () => {
+        kept = null;
+      },
+    };
+    avatarSource = undefined;
+    limit = null;
+    batchLimit = null;
+    log = null;
+    mode = null;
+    withPurchases = true;
+  });
+
+  afterEach(async () => {
+    await cleanup();
+    handle.close();
+  });
+
+  const withAvatar = (agentAddress: string): void => {
+    const me = repository.createPlayer(draft('Xyrerris'));
+    if (!me.ok) throw new Error('fixture: the player was refused');
+    expect(repository.setViewerId(me.value.id).ok).toBe(true);
+    expect(repository.setViewerAvatar(AVATAR).ok).toBe(true);
+    avatarSource = agent(agentAddress);
+  };
+
+  const type = async (testID: string, value: string): Promise<void> => {
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId(testID), value);
+    });
+  };
+  const press = async (testID: string): Promise<void> => {
+    await act(async () => {
+      fireEvent.press(screen.getByTestId(testID));
+    });
+  };
+  const text = (testID: string): unknown => screen.getByTestId(testID).props.children;
+  const importIt = async (pasted: string): Promise<void> => {
+    await type('keystore-text', pasted);
+    await press('keystore-save');
+  };
+  const test = async (passphrase: string): Promise<void> => {
+    await type('keystore-passphrase', passphrase);
+    await press('keystore-test');
+  };
+
+  it('refuses text that is not a keystore, says why, and keeps nothing', async () => {
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await importIt('this is not json');
+
+    expect(text('keystore-text-error')).toBe('This is not JSON. A keystore is a JSON file.');
+    expect(kept).toBeNull();
+    expect(screen.queryByTestId('keystore-stored')).toBeNull();
+  });
+
+  it('keeps a pasted keystore as it came, clears the box, and asks for the passphrase', async () => {
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+    const pasted = writeKeystore('hunter2');
+
+    await importIt(`  ${pasted}\n`);
+
+    expect(kept).toBe(pasted);
+    expect(text('keystore-stored')).toBe('Saved keystore · 0x008a…786b');
+    expect(screen.queryByTestId('keystore-text')).toBeNull();
+    expect(screen.getByTestId('keystore-passphrase').props.secureTextEntry).toBe(true);
+  });
+
+  it('shows a keystore already on the device without importing again', async () => {
+    kept = writeKeystore('hunter2');
+
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    expect(screen.getByTestId('keystore-stored')).toBeTruthy();
+    expect(screen.queryByTestId('keystore-save')).toBeNull();
+  });
+
+  it('says a wrong passphrase is wrong, and empties the field either way', async () => {
+    kept = writeKeystore('hunter2');
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await test('hunter3');
+
+    await waitFor(() => expect(text('keystore-wrong')).toBe(WRONG_NOTE));
+    expect(screen.getByTestId('keystore-passphrase').props.value).toBe('');
+  });
+
+  it("tells that it opens and is the avatar's account, whatever the spelling of the address", async () => {
+    kept = writeKeystore('hunter2');
+    withAvatar(`0x${ADDRESS.toUpperCase()}`);
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await test('hunter2');
+
+    await waitFor(() =>
+      expect(text('keystore-opened')).toBe(
+        'The passphrase opens it. The key is 0x008a…786b, the account of your avatar.',
+      ),
+    );
+    expect(screen.getByTestId('keystore-passphrase').props.value).toBe('');
+  });
+
+  it("says plainly when it opens but is another account than the avatar's", async () => {
+    kept = writeKeystore('hunter2');
+    withAvatar('0xD7E4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1f2e');
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await test('hunter2');
+
+    await waitFor(() => expect(String(text('keystore-opened'))).toContain('not the account'));
+  });
+
+  it('opens it without an avatar to compare, and says the comparison was not made', async () => {
+    kept = writeKeystore('hunter2');
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await test('hunter2');
+
+    await waitFor(() => expect(String(text('keystore-opened'))).toContain('Say which avatar'));
+  });
+
+  it('says so when the account of the avatar cannot be read', async () => {
+    kept = writeKeystore('hunter2');
+    withAvatar('0x0');
+    avatarSource = {
+      name: 'test',
+      readAvatar: jest.fn(() => Promise.resolve(err({ reason: 'OFFLINE' as const, message: 'x' }))),
+    };
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await test('hunter2');
+
+    await waitFor(() => expect(String(text('keystore-opened'))).toContain('could not be reached'));
+  });
+
+  it('notes when the file names another address than the key inside it', async () => {
+    kept = writeKeystore('hunter2', 'ffffffffffffffffffffffffffffffffffffffff');
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await test('hunter2');
+
+    await waitFor(() => expect(screen.getByTestId('keystore-claimed')).toBeTruthy());
+  });
+
+  describe('the limit for a whole batch', () => {
+    it('says no selection can be bought without one', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('batch-limit-line')).toBe('No batch limit set: no selection can be bought.');
+      expect(screen.queryByTestId('batch-limit-remove')).toBeNull();
+    });
+
+    it('saves an amount, keeps it apart from the limit per purchase, and removes it again', async () => {
+      limit = 50;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('batch-limit-input', '120,5');
+      await press('batch-limit-save');
+
+      expect(batchLimit).toBe(120.5);
+      expect(limit).toBe(50);
+      expect(text('batch-limit-line')).toBe('Batch limit: 120,5 NCG for all together');
+      expect(screen.getByTestId('batch-limit-input').props.value).toBe('');
+
+      await press('batch-limit-remove');
+      expect(batchLimit).toBeNull();
+      expect(text('batch-limit-line')).toBe('No batch limit set: no selection can be bought.');
+    });
+
+    it('refuses an amount that is not above zero with two decimals, and keeps what was there', async () => {
+      batchLimit = 80;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('batch-limit-input', '0');
+      await press('batch-limit-save');
+
+      expect(batchLimit).toBe(80);
+      expect(text('batch-limit-input-error')).toBe(
+        'Enter an amount above 0, with at most two decimals.',
+      );
+    });
+  });
+
+  describe('purchases not settled', () => {
+    const record = (id: string, status: string, mode = 'live') => ({
+      id,
+      productId: `product-${id}`,
+      planet: 'heimdall',
+      itemId: 10110000,
+      price: 12.5,
+      mode,
+      status,
+      at: 1_700_000_000_000,
+      transactionId: null,
+      note: 'no answer to the send',
+    });
+
+    it('shows nothing when every purchase is settled, or was only a dry run', async () => {
+      log = JSON.stringify([
+        record('a', 'confirmed'),
+        record('b', 'failed'),
+        record('c', 'dry-run', 'dry-run'),
+      ]);
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(screen.queryByTestId('unsettled')).toBeNull();
+    });
+
+    it('lists a real purchase whose end is not known, and clears it only when asked', async () => {
+      log = JSON.stringify([record('a', 'sent'), record('b', 'confirmed')]);
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('unsettled-a')).toBe('10110000 · 12,5 NCG · sent · no answer to the send');
+      expect(screen.queryByTestId('unsettled-b')).toBeNull();
+
+      await press('unsettled-clear-a');
+
+      expect(screen.queryByTestId('unsettled')).toBeNull();
+      const stored = JSON.parse(log ?? '[]') as { id: string; status: string; note: string }[];
+      // It is freed (failed is what frees an offer), with a note that says how; the settled one is untouched.
+      expect(stored.find((r) => r.id === 'a')).toMatchObject({
+        status: 'failed',
+        note: 'cleared by hand after checking the inventory and the balance',
+      });
+      expect(stored.find((r) => r.id === 'b')?.status).toBe('confirmed');
+    });
+
+    it('does not touch a record it cannot read', async () => {
+      log = '{not json';
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(screen.queryByTestId('unsettled')).toBeNull();
+      expect(log).toBe('{not json');
+    });
+  });
+
+  describe('the limit per purchase', () => {
+    it('says nothing can be bought without one, and that the mode is a dry run', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('purchase-limit-line')).toBe('No limit set: nothing can be bought.');
+      expect(text('purchase-mode')).toContain('dry run');
+      expect(screen.queryByTestId('purchase-limit-remove')).toBeNull();
+    });
+
+    it('saves an amount typed with a comma, shows it, and empties the field', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('purchase-limit-input', '12,5');
+      await press('purchase-limit-save');
+
+      expect(limit).toBe(12.5);
+      expect(text('purchase-limit-line')).toBe('Limit: 12,5 NCG per purchase');
+      expect(screen.getByTestId('purchase-limit-input').props.value).toBe('');
+    });
+
+    it('refuses an amount that is not above zero with two decimals, and keeps what was there', async () => {
+      limit = 50;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      await type('purchase-limit-input', '1,234');
+      await press('purchase-limit-save');
+
+      expect(limit).toBe(50);
+      expect(text('purchase-limit-input-error')).toBe(
+        'Enter an amount above 0, with at most two decimals.',
+      );
+    });
+
+    it('removes the limit, which means nothing can be bought again', async () => {
+      limit = 50;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+      expect(text('purchase-limit-line')).toBe('Limit: 50 NCG per purchase');
+
+      await press('purchase-limit-remove');
+
+      expect(limit).toBeNull();
+      expect(text('purchase-limit-line')).toBe('No limit set: nothing can be bought.');
+    });
+
+    it('cannot be switched to real purchases in a build that cannot send, and says so', async () => {
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('purchase-mode')).toContain('switched off in this build');
+      expect(screen.queryByTestId('purchase-mode-on')).toBeNull();
+      expect(mode).toBeNull();
+    });
+
+    it('a stored "live" in a build that cannot send changes nothing: it is still a dry run', async () => {
+      mode = 'live';
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(text('purchase-mode')).toContain('switched off in this build');
+    });
+
+    describe('in a build that can send', () => {
+      it('starts off, and turning real purchases on asks first, with a warning', async () => {
+        await render(<KeystoreSection liveBuilt />, { wrapper: wrapper() });
+        expect(text('purchase-mode')).toBe(
+          'Real purchases: OFF. A purchase is a dry run and nothing is sent.',
+        );
+
+        await press('purchase-mode-on');
+
+        expect(screen.getByTestId('purchase-mode-confirm')).toBeTruthy();
+        expect(mode).toBeNull();
+
+        await press('purchase-mode-cancel');
+        expect(mode).toBeNull();
+        expect(screen.queryByTestId('purchase-mode-confirm')).toBeNull();
+      });
+
+      it('turns them on only after the confirmation, and off again at once', async () => {
+        await render(<KeystoreSection liveBuilt />, { wrapper: wrapper() });
+
+        await press('purchase-mode-on');
+        await press('purchase-mode-yes');
+
+        expect(mode).toBe('live');
+        expect(text('purchase-mode')).toContain('Real purchases: ON');
+
+        await press('purchase-mode-off');
+        expect(mode).toBe('dry-run');
+        expect(text('purchase-mode')).toContain('Real purchases: OFF');
+      });
+    });
+
+    it('is not shown where the app supplies no purchase store', async () => {
+      withPurchases = false;
+      await render(<KeystoreSection />, { wrapper: wrapper() });
+
+      expect(screen.queryByTestId('purchase-limit')).toBeNull();
+    });
+  });
+
+  it('removes the keystore and says nothing of it is left', async () => {
+    kept = writeKeystore('hunter2');
+    await render(<KeystoreSection />, { wrapper: wrapper() });
+
+    await press('keystore-remove');
+
+    expect(kept).toBeNull();
+    expect(screen.getByTestId('keystore-removed')).toBeTruthy();
+    expect(screen.getByTestId('keystore-text')).toBeTruthy();
+  });
+});

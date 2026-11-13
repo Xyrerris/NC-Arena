@@ -17,9 +17,11 @@ import { SkillMark } from './SkillMark';
 export interface CollectionRowProps {
   row: CollectionRowUi;
   onAction: (collectionId: number, ticked: boolean) => void;
+  /** Opens the market sheet for the collection. Absent, the row has no market button. */
+  onMarket?: (collectionId: number) => void;
 }
 
-function CollectionRowView({ row, onAction }: CollectionRowProps) {
+function CollectionRowView({ row, onAction, onMarket }: CollectionRowProps) {
   return (
     <View style={styles.row} testID={`collection-row-${row.collectionId}`}>
       <View style={styles.titleLine}>
@@ -42,6 +44,15 @@ function CollectionRowView({ row, onAction }: CollectionRowProps) {
       <ArenaText variant="bodyCaption" tone="subtle">
         {row.bonusText}
       </ArenaText>
+      {row.ownedSummary === null ? null : (
+        <ArenaText
+          variant="bodySmall"
+          tone="accent"
+          testID={`collection-owned-summary-${row.collectionId}`}
+        >
+          {row.ownedSummary}
+        </ArenaText>
+      )}
       <View style={styles.items}>
         {row.items.map((item) => (
           <View
@@ -55,9 +66,38 @@ function CollectionRowView({ row, onAction }: CollectionRowProps) {
             <ArenaText variant="numericMicro" tone="subtle" style={styles.itemText}>
               {item.label}
             </ArenaText>
+            {item.ownedText === null ? null : (
+              <ArenaText
+                variant="numericMicro"
+                tone={item.owned ? 'accent' : 'subtle'}
+                testID={`collection-owned-${row.collectionId}-${item.key}`}
+              >
+                {item.ownedText}
+              </ArenaText>
+            )}
           </View>
         ))}
       </View>
+
+      {row.marketNote === null ? null : (
+        <ArenaText
+          variant="bodyCaption"
+          tone="subtle"
+          testID={`collection-market-note-${row.collectionId}`}
+        >
+          {row.marketNote}
+        </ArenaText>
+      )}
+
+      {row.market === null || onMarket === undefined ? null : (
+        <ArenaButton
+          label={row.market.label}
+          accessibilityLabel={row.market.a11y}
+          variant="secondary"
+          onPress={() => onMarket(row.collectionId)}
+          testID={`collection-market-${row.collectionId}`}
+        />
+      )}
 
       {row.action === null ? null : (
         <ArenaButton

@@ -53,6 +53,9 @@ module.exports = {
     '!src/core/data/useCanLinkAccount.ts',
     '!src/core/data/useNeedsAccount.ts',
     '!src/core/data/useViewerId.ts',
+    '!src/core/purchase/BatchSheet.tsx',
+    '!src/core/purchase/useBatchPurchase.ts',
+    '!src/core/purchase/useNcgBalance.ts',
     '!src/core/prefs/mmkvPreferences.ts',
     '!src/core/ocr/expoImageSource.ts',
     '!src/core/ocr/mlKitTextRecogniser.ts',
@@ -85,10 +88,18 @@ module.exports = {
       // backslashes into slashes *except* before a regex character, so a checkout under a
       // dot-directory (`.claude\worktrees\…`) became the glob `…\.claude/…`, which matches
       // nothing and every run ended in "No tests found". `node_modules` is ignored by default.
-      testMatch: ['**/src/core/**/*.test.ts'],
+      // `core/`, `features/` and `app/` alike: the extension is the split, not the folder. This
+      // used to say `core/` alone, so a `.test.ts` under `features/` matched no project and never
+      // ran — `collectionUiState.test.ts` carried a stale expectation for weeks without anyone
+      // seeing it fail. `scripts/check-test-projects.mjs` now proves a `.test.ts` in each is run.
+      testMatch: ['**/src/{core,features,app}/**/*.test.ts'],
       transform: {
-        '^.+\\.tsx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
+        // `.js` too, for `@noble/*` below: it is ES-module-only, and Jest runs CommonJS.
+        '^.+\\.[jt]sx?$': ['babel-jest', { presets: ['babel-preset-expo'] }],
       },
+      // `node_modules` is not transformed by default; the keystore's crypto (`@noble/ciphers`,
+      // `@noble/curves`, `@noble/hashes`) ships only as ES modules, so it is the one exception.
+      transformIgnorePatterns: ['/node_modules/(?!@noble/)'],
       moduleNameMapper: {
         '^@/(.*)$': '<rootDir>/src/$1',
       },
@@ -113,7 +124,7 @@ module.exports = {
       // The list is copied rather than extended because Jest replaces the preset's array
       // instead of merging it: drop an entry here and that package stops being transformed.
       transformIgnorePatterns: [
-        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list))',
+        '/node_modules/(?!(.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|@sentry/react-native|native-base|standard-navigation|@shopify/flash-list|@noble))',
         '/node_modules/react-native-reanimated/plugin/',
         '/node_modules/@react-native/babel-preset/',
       ],

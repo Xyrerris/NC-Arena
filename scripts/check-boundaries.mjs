@@ -95,6 +95,42 @@ const CASES = [
     expect: 'allow',
   },
   {
+    name: 'core/purchase may not reach the database',
+    file: 'src/core/purchase/__boundary_probe.ts',
+    source: "import { DATABASE_NAME } from '@/core/db';\nexport const probe = DATABASE_NAME;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'core/purchase may not reach the network',
+    file: 'src/core/purchase/__boundary_probe.ts',
+    source: "import * as net from '@/core/network';\nexport const probe = net;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'core/purchase may not reach a feature',
+    file: 'src/core/purchase/__boundary_probe.ts',
+    source: "import * as roster from '@/features/roster';\nexport const probe = roster;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'core/purchase may reach the arena data it reads the balance from',
+    file: 'src/core/purchase/__boundary_probe.ts',
+    source: "import { useArenaData } from '@/core/data';\nexport const probe = useArenaData;\n",
+    expect: 'allow',
+  },
+  {
+    name: 'core/collection may not reach the purchase flow',
+    file: 'src/core/collection/__boundary_probe.ts',
+    source: "import { formatNcg } from '@/core/purchase';\nexport const probe = formatNcg;\n",
+    expect: 'reject',
+  },
+  {
+    name: 'features/roster may reach the purchase flow',
+    file: 'src/features/roster/__boundary_probe.ts',
+    source: "import { formatNcg } from '@/core/purchase';\nexport const probe = formatNcg;\n",
+    expect: 'allow',
+  },
+  {
     name: 'a test file may reach the test fakes',
     file: 'src/features/roster/__boundary_probe.test.ts',
     source:

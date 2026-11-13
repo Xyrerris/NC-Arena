@@ -12,8 +12,16 @@ import {
   arenaQueryClient,
   arenaRepository,
   avatarSource,
+  balanceSource,
   collectionRepository,
+  inventorySource,
+  keystoreStore,
+  marketLibrary,
+  purchaseStore,
+  refreshEndpoints,
   sheetLibrary,
+  transactionSender,
+  transactionSource,
 } from '@/core/data/arenaRepository';
 import { scheduleBackgroundSync } from '@/core/data/backgroundSync';
 import { useExpoLiveData } from '@/core/data/expoLiveData';
@@ -61,6 +69,13 @@ const ARENA_DATA: ArenaData = {
   avatarSource,
   collections: collectionRepository,
   sheets: sheetLibrary,
+  market: marketLibrary,
+  inventory: inventorySource,
+  balance: balanceSource,
+  keystore: keystoreStore,
+  purchases: purchaseStore,
+  transactions: transactionSource,
+  sender: transactionSender,
 };
 
 export default function RootLayout() {
@@ -85,6 +100,14 @@ export default function RootLayout() {
     scheduleBackgroundSync().catch((cause: unknown) => {
       if (__DEV__) console.warn('The periodic sync could not be scheduled.', cause);
     });
+  }, [booted]);
+
+  // Where the chain services are (ADR-0045): read the planet registry if the cached one is old, and
+  // order the nodes by latency. Not awaited and not tied to any screen — the lists it improves are
+  // read live — and it cannot throw, so a refusal is a list that stays as it was.
+  useEffect(() => {
+    if (!booted) return;
+    void refreshEndpoints();
   }, [booted]);
 
   // Splash stays up. Returning null rather than a spinner is deliberate: a spinner behind a

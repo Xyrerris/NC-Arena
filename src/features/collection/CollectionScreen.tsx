@@ -12,7 +12,7 @@
 
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { useCallback, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -26,13 +26,20 @@ import {
   radius,
   space,
 } from '@/core/design-system';
-import type { Collection, EquipmentCatalog } from '@/core/collection';
+import type {
+  Collection,
+  EnhancementCosts,
+  EquipmentCatalog,
+  OtherItemCatalog,
+} from '@/core/collection';
 import { useViewerAvatar } from '@/core/data';
 
 import { CollectionRowItem } from './CollectionRow';
+import { FilterPanel } from './FilterPanel';
+import { MarketSheet } from './MarketSheet';
+import { OffersView } from './OffersView';
 import { SkillMark } from './SkillMark';
 import {
-  FILTER_OPTIONS,
   SORT_OPTIONS,
   VIEW_TABS,
   type CollectionHeaderUi,
@@ -42,6 +49,10 @@ import {
 import { collectionStrings as words } from './strings';
 import { useCollection, type CollectionController } from './useCollection';
 import { useGameSheets } from './useGameSheets';
+
+/** No equipment is known: no piece has a market. Held once so the sheet's memo keeps its identity. */
+const NO_CATALOG: EquipmentCatalog = new Map();
+const NO_OTHERS: OtherItemCatalog = new Map();
 
 export interface CollectionScreenProps {
   /**
@@ -81,6 +92,8 @@ function SheetGate({ sectionTabs }: { sectionTabs?: ReactNode }) {
       <CollectionBody
         sheet={loaded.sheet}
         catalog={loaded.catalog}
+        others={loaded.others}
+        costs={loaded.costs}
         sectionTabs={sectionTabs}
         sampleData={false}
       />
@@ -124,17 +137,27 @@ function SheetGate({ sectionTabs }: { sectionTabs?: ReactNode }) {
 function CollectionBody({
   sheet,
   catalog,
+  others,
+  costs,
   sectionTabs,
   sampleData,
 }: {
   sheet: readonly Collection[];
   catalog?: EquipmentCatalog;
+  others?: OtherItemCatalog;
+  costs?: EnhancementCosts | null;
   sectionTabs?: ReactNode;
   sampleData: boolean;
 }) {
-  const controller = useCollection(sheet, catalog);
+  const controller = useCollection(sheet, catalog, others);
   const router = useRouter();
   const openViewer = useCallback(() => router.push('/me'), [router]);
+  // Which collection's market sheet is open, if any. Held here and not in the controller: it is
+  // a screen's own modal state, and the sheet reads the market by itself.
+  const [marketId, setMarketId] = useState<number | null>(null);
+  const closeMarket = useCallback(() => setMarketId(null), []);
+  const marketCollection =
+    marketId === null ? undefined : sheet.find((collection) => collection.id === marketId);
 
   return (
     <ScreenScaffold applyBottomInset={false}>
@@ -163,9 +186,28 @@ function CollectionBody({
         <>
           <CollectionHeader controller={controller} sampleData={sampleData} />
           {controller.view === 'COLLECTIONS' ? (
-            <CollectionList controller={controller} />
-          ) : (
+            <CollectionList controller={controller} onMarket={setMarketId} />
+          ) : controller.view === 'ITEMS' ? (
             <ItemList controller={controller} />
+          ) : (
+            <OffersView
+              controller={controller}
+              sheet={sheet}
+              catalog={catalog ?? NO_CATALOG}
+              others={others ?? NO_OTHERS}
+              costs={costs ?? null}
+              planet={controller.avatar.planet}
+            />
+          )}
+          {marketCollection === undefined ? null : (
+            <MarketSheet
+              key={marketCollection.id}
+              collection={marketCollection}
+              catalog={catalog ?? NO_CATALOG}
+              others={others ?? NO_OTHERS}
+              planet={controller.avatar.planet}
+              onClose={closeMarket}
+            />
           )}
         </>
       )}
@@ -199,6 +241,16 @@ function CollectionHeader({
         </ArenaText>
       )}
       <RefreshLine refresh={refresh} onRetry={controller.onRefresh} />
+      {controller.inventoryNote === null ? null : (
+        <ArenaText
+          variant="bodyCaption"
+          tone={controller.inventoryNote.tone}
+          accessibilityLiveRegion="polite"
+          testID="collection-inventory-note"
+        >
+          {controller.inventoryNote.text}
+        </ArenaText>
+      )}
 
       <SegmentedTabs
         tabs={VIEW_TABS}
@@ -208,38 +260,10 @@ function CollectionHeader({
         testID="collection-views"
       />
 
-      {controller.statOptions.length === 0 ? null : (
-        <View style={styles.statFilter}>
-          <ArenaText variant="bodyCaption" tone="subtle">
-            {words.statsLabel}
-          </ArenaText>
-          <View style={styles.chips}>
-            {controller.statOptions.map((stat) => (
-              <SortChip
-                key={stat}
-                label={stat}
-                selected={controller.stats.has(stat)}
-                onPress={() => controller.onStat(stat)}
-                testID={`collection-stat-${stat}`}
-              />
-            ))}
-          </View>
-        </View>
-      )}
+      <FilterPanel controller={controller} />
 
       {controller.view === 'COLLECTIONS' ? (
         <>
-          <View style={styles.chips}>
-            {FILTER_OPTIONS.map((option) => (
-              <SortChip
-                key={option.filter}
-                label={option.label}
-                selected={controller.filter === option.filter}
-                onPress={() => controller.onFilter(option.filter)}
-                testID={`collection-filter-${option.filter}`}
-              />
-            ))}
-          </View>
           <View style={styles.chips}>
             {SORT_OPTIONS.map((option) => (
               <SortChip
@@ -336,16 +360,24 @@ function RefreshLine({ refresh, onRetry }: { refresh: RefreshUi; onRetry: () => 
   );
 }
 
-function CollectionList({ controller }: { controller: CollectionController }) {
+function CollectionList({
+  controller,
+  onMarket,
+}: {
+  controller: CollectionController;
+  onMarket: (collectionId: number) => void;
+}) {
   return (
     <FlashList
       data={controller.rows}
-      extraData={`${controller.filter}-${controller.sort}`}
+      extraData={`${controller.filter}-${controller.sort}-${controller.filtersChanged}`}
       // Pull-to-refresh reads the chain again, as it syncs the roster.
       refreshing={controller.refresh.kind === 'running'}
       onRefresh={controller.onRefresh}
       keyExtractor={(row) => row.key}
-      renderItem={({ item }) => <CollectionRowItem row={item} onAction={controller.onTick} />}
+      renderItem={({ item }) => (
+        <CollectionRowItem row={item} onAction={controller.onTick} onMarket={onMarket} />
+      )}
       ListEmptyComponent={
         <View style={styles.centred} testID="collection-empty">
           <ArenaText variant="titleMedium" tone="primary" align="center">
@@ -431,7 +463,6 @@ const styles = StyleSheet.create({
   },
   barDone: { backgroundColor: color.accent },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space[8] },
-  statFilter: { gap: space[6] },
   legend: { flexDirection: 'row', alignItems: 'center', gap: space[6] },
   legendText: { flex: 1 },
   failure: {

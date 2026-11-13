@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 
 import { AccountConnectPrompt } from '@/features/accountSetup';
 import { ViewerScreen } from '@/features/playerForm';
+import { KeystoreSection } from '@/features/keystore';
 import { RosterBackupControls } from '@/features/rosterBackup';
 import { ViewerAvatarSection } from '@/features/viewerAvatar';
 
@@ -34,6 +35,7 @@ export default function ViewerRoute() {
       footer={
         <>
           <ViewerAvatarSection />
+          <KeystoreSection />
           <AccountConnectPrompt onConnect={connect} />
           <RosterBackupControls />
         </>

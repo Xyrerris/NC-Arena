@@ -115,6 +115,7 @@ module.exports = defineConfig([
         { type: 'core-prefs', pattern: 'src/core/prefs' },
         { type: 'core-ocr', pattern: 'src/core/ocr' },
         { type: 'core-collection', pattern: 'src/core/collection' },
+        { type: 'core-purchase', pattern: 'src/core/purchase' },
         { type: 'core-testing', pattern: 'src/core/testing' },
         { type: 'app', pattern: 'src/app' },
       ],
@@ -158,6 +159,14 @@ module.exports = defineConfig([
             // (ADR-0044). It depends on nothing, so it stays testable in plain Node.
             { from: { element: { type: 'core-collection' } }, allow: to('core-common') },
 
+            // core/purchase is the cart shared by the features that buy: the sheet, its words and
+            // the balance. It reads the arena context, so it may reach core/data, and never the
+            // database or the network directly, nor a feature (it is under them, ADR-0048).
+            {
+              from: { element: { type: 'core-purchase' } },
+              allow: to('core-model', 'core-common', 'core-design-system', 'core-data'),
+            },
+
             // core/data is the only place that knows both the database and the network
             // exist.
             {
@@ -175,6 +184,7 @@ module.exports = defineConfig([
                 'core-data',
                 'core-ocr',
                 'core-collection',
+                'core-purchase',
               ),
             },
             // ...and may not reach *each other*. Matching the captured folder name to the
@@ -204,6 +214,7 @@ module.exports = defineConfig([
                 'core-ocr',
                 'core-collection',
                 'core-prefs',
+                'core-purchase',
               ),
             },
 

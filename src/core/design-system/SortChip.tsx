@@ -14,15 +14,18 @@ import { color, layout, radius, space } from './tokens';
 
 export interface SortChipProps {
   label: string;
+  /** Said instead of `label` when the visible word alone does not say what it acts on. */
+  accessibilityLabel?: string;
   selected: boolean;
   onPress: () => void;
   testID?: string;
 }
 
-export function SortChip({ label, selected, onPress, testID }: SortChipProps) {
+export function SortChip({ label, accessibilityLabel, selected, onPress, testID }: SortChipProps) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       accessibilityState={{ selected }}
       hitSlop={{ left: space[8], right: space[8] }}
       onPress={onPress}

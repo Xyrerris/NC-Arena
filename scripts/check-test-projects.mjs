@@ -85,13 +85,18 @@ console.log('\nTest projects and the coverage gate (ROADMAP.md 4.10.4)');
 
 // 1 & 2 — the widened testMatch. `core/data` because it is the directory the old pattern
 // missed, and the one 4.10.3 put new code in.
-for (const [project, file] of [
-  ['native', 'src/core/data/__project_probe.test.tsx'],
-  ['node', 'src/core/data/__project_probe.test.ts'],
+// The `.test.ts` rows for `features/` and `app/` exist because the node project once listed
+// `core/` alone: a `.test.ts` under `features/` matched nothing and never ran, so a stale
+// expectation in `collectionUiState.test.ts` sat there unseen.
+for (const [project, file, directory] of [
+  ['native', 'src/core/data/__project_probe.test.tsx', 'core/data'],
+  ['node', 'src/core/data/__project_probe.test.ts', 'core/data'],
+  ['node', 'src/features/collection/__project_probe.test.ts', 'features/collection'],
+  ['node', 'src/app/__project_probe.test.ts', 'app'],
 ]) {
   const probe = runsAndFails(file, FAILING_TEST, project);
   check(
-    `a deliberately failing ${file.endsWith('tsx') ? '.test.tsx' : '.test.ts'} in core/data fails the ${project} run`,
+    `a deliberately failing ${file.endsWith('tsx') ? '.test.tsx' : '.test.ts'} in ${directory} fails the ${project} run`,
     probe.ran && probe.failed,
     probe.ran ? 'the file ran but the run passed' : 'the file matched no project and never ran',
   );

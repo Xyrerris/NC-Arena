@@ -6,8 +6,8 @@
  * `core/collection`'s, which `core/data` may not import, and a feature that may import both
  * does the parse where a malformed sheet can be reported to the user.
  *
- * **Both sheets or neither.** A collection list with no names is still a list, but a list of
- * names for the wrong collections is not, so a read that got only one of the two is a failure.
+ * **All the sheets or none.** A collection list with no names is still a list, but a list of
+ * names for the wrong collections is not, so a read that got only some of them is a failure.
  */
 
 import type { Planet } from '../model';
@@ -18,6 +18,22 @@ export interface GameSheets {
   readonly collectionCsv: string;
   /** The chain's `EquipmentItemSheet`: `_name`, `item_sub_type`, `elemental_type` per item id. */
   readonly equipmentCsv: string;
+  /** The chain's `CostumeItemSheet`, `MaterialItemSheet` and `ConsumableItemSheet`: what the rest of a collection is called. */
+  readonly costumeCsv: string;
+  readonly materialCsv: string;
+  readonly consumableCsv: string;
+  /**
+   * lib9c's `EnhancementCostSheetV3`: what raising a piece costs. Optional on purpose — without it
+   * the offers view still works, it just offers no upgradable pieces and gives no verdict — so a
+   * failure to fetch it does not fail the read.
+   */
+  readonly enhancementCsv?: string;
+  /**
+   * True when `equipmentCsv` and `enhancementCsv` are the chain's own, read from a node (ADR-0047):
+   * they then hold the newest grades and the experience the game uses today. False means Mimir's
+   * and lib9c's copies, which are behind — no Ultimate (grade 9) gear, older exp.
+   */
+  readonly onChain?: boolean;
   /** What answered, for the screen's "from" line. */
   readonly source: string;
 }

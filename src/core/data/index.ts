@@ -7,7 +7,13 @@
  * wrong.
  */
 
-export { ArenaDataProvider, useArenaData, type ArenaData } from './arenaContext';
+export {
+  ArenaDataProvider,
+  useArenaData,
+  type ArenaData,
+  type KeystoreStore,
+  type PurchaseStore,
+} from './arenaContext';
 export type { BackupFile } from './backupFile';
 export {
   createCollectionRepository,
@@ -15,6 +21,13 @@ export {
   type CollectionRepositoryDeps,
   type StoredChainRead,
 } from './collectionRepository';
+export {
+  DEFAULT_MARKET_TTL_MS,
+  createMarketLibrary,
+  type MarketLibrary,
+  type MarketLibraryDeps,
+  type MarketScan,
+} from './marketLibrary';
 export { createSheetLibrary, type SheetLibrary } from './sheetLibrary';
 export type { LiveData, UseLiveData } from './liveData';
 /**

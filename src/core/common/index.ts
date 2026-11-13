@@ -14,13 +14,42 @@ export type {
   LinkedAccount,
 } from './accountGateway';
 export type { AvatarError, AvatarIdentity, AvatarSource } from './avatarSource';
+export type { BalanceError, BalanceSource } from './balanceSource';
 export type {
   CollectionError,
   CollectionFailure,
   CollectionSource,
   UnlockedCollections,
 } from './collectionSource';
+export type {
+  AvatarInventory,
+  HeldEquipment,
+  Holdings,
+  InventoryError,
+  InventoryFailure,
+  InventorySource,
+  OwnedEquipment,
+} from './inventorySource';
+export type {
+  MarketError,
+  MarketFailure,
+  MarketListing,
+  MarketSource,
+  ScanOptions,
+} from './marketSource';
 export type { GameSheets, SheetError, SheetFailure, SheetSource } from './sheetSource';
+export type {
+  StageError,
+  TransactionResult,
+  TransactionSender,
+  TransactionStatus,
+} from './transactionSender';
+export type {
+  GoldCurrency,
+  TransactionSource,
+  TransactionSourceError,
+  UnsignedRequest,
+} from './transactionSource';
 export { err, isOk, ok, type Result } from './result';
 export { UnsupportedByUpstream } from './rosterSource';
 export type {

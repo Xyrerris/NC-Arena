@@ -216,6 +216,9 @@ src/
                             (the photo library, text recognition) + their device
                             adapters. May not reach core/data: a scan is a suggestion the
                             user still has to accept.
+  core/purchase/            The cart shared by the features that buy (ADR-0048): the batch
+                            sheet, its words, the balance, the state of an attempt. Reads
+                            the arena context; never core/db or core/network.
   core/testing/             Fakes, in-memory db factory, render helpers.
 
   features/roster/          RosterScreen, useRoster, roster UI types.
@@ -231,7 +234,7 @@ assets/fonts/               Cinzel, Barlow, JetBrains Mono (OFL) + licences
 **Dependency rule, enforced in CI** by `eslint-plugin-boundaries` (or
 `import/no-restricted-paths`), failing the lint job exactly as the Gradle task failed the build:
 `features/*` may import from `core/model`, `core/common`, `core/design-system`, `core/data`,
-`core/ocr`. A feature may **never** import `core/db`, `core/network`, or another feature.
+`core/ocr`, `core/collection`, `core/purchase`. A feature may **never** import `core/db`, `core/network`, or another feature.
 `core/model` imports nothing, and `core/ocr` imports only `core/model` and `core/common`.
 
 This is the same boundary as the Kotlin proposal and it exists for the same reason: it is what

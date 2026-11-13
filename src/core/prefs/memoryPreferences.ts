@@ -26,6 +26,12 @@ export const createMemoryPreferences = (
   let season: number | null = initial.season ?? null;
   let lastSyncedAt: number | null = initial.lastSyncedAt ?? null;
   let apiKey: string | null = initial.apiKey ?? null;
+  let keystore: string | null = null;
+  let purchaseLimit: number | null = null;
+  let purchaseBatchLimit: number | null = null;
+  let purchaseLog: string | null = null;
+  let purchaseMode: string | null = null;
+  let endpointRegistry: string | null = null;
   let setupSkipped = false;
 
   return {
@@ -82,6 +88,39 @@ export const createMemoryPreferences = (
     },
     clearApiKey: () => {
       apiKey = null;
+    },
+    getKeystore: () => keystore,
+    setKeystore: (json) => {
+      keystore = json;
+    },
+    clearKeystore: () => {
+      keystore = null;
+    },
+    getPurchaseLimit: () => purchaseLimit,
+    setPurchaseLimit: (ncg) => {
+      purchaseLimit = ncg;
+    },
+    clearPurchaseLimit: () => {
+      purchaseLimit = null;
+    },
+    getPurchaseBatchLimit: () => purchaseBatchLimit,
+    setPurchaseBatchLimit: (ncg) => {
+      purchaseBatchLimit = ncg;
+    },
+    clearPurchaseBatchLimit: () => {
+      purchaseBatchLimit = null;
+    },
+    getPurchaseMode: () => purchaseMode,
+    setPurchaseMode: (mode) => {
+      purchaseMode = mode;
+    },
+    getPurchaseLog: () => purchaseLog,
+    setPurchaseLog: (json) => {
+      purchaseLog = json;
+    },
+    getEndpointRegistry: () => endpointRegistry,
+    setEndpointRegistry: (json) => {
+      endpointRegistry = json;
     },
     getSetupSkipped: () => setupSkipped,
     setSetupSkipped: () => {

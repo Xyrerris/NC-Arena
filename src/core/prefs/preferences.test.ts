@@ -22,6 +22,55 @@ describe('createMemoryPreferences', () => {
     expect(prefs.getApiKey()).toBe('paired');
   });
 
+  it('keeps an imported keystore as the text it came in, and forgets it back to absent', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getKeystore()).toBeNull();
+
+    prefs.setKeystore('{"version":3}');
+    expect(prefs.getKeystore()).toBe('{"version":3}');
+
+    prefs.clearKeystore();
+    expect(prefs.getKeystore()).toBeNull();
+  });
+
+  it('keeps a purchase limit and the purchase record, and forgets the limit back to none', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getPurchaseLimit()).toBeNull();
+    expect(prefs.getPurchaseLog()).toBeNull();
+
+    prefs.setPurchaseLimit(250.5);
+    prefs.setPurchaseLog('[]');
+    expect(prefs.getPurchaseLimit()).toBe(250.5);
+    expect(prefs.getPurchaseLog()).toBe('[]');
+
+    prefs.clearPurchaseLimit();
+    expect(prefs.getPurchaseLimit()).toBeNull();
+  });
+
+  it('keeps the limit for a whole batch apart from the limit per purchase, and forgets it back to none', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getPurchaseBatchLimit()).toBeNull();
+
+    prefs.setPurchaseLimit(10);
+    prefs.setPurchaseBatchLimit(75.25);
+    expect(prefs.getPurchaseBatchLimit()).toBe(75.25);
+    expect(prefs.getPurchaseLimit()).toBe(10);
+
+    prefs.clearPurchaseBatchLimit();
+    expect(prefs.getPurchaseBatchLimit()).toBeNull();
+    expect(prefs.getPurchaseLimit()).toBe(10);
+  });
+
+  it('has no purchase mode until one is chosen, and keeps the one that is', () => {
+    const prefs = createMemoryPreferences();
+    expect(prefs.getPurchaseMode()).toBeNull();
+
+    prefs.setPurchaseMode('live');
+    expect(prefs.getPurchaseMode()).toBe('live');
+    prefs.setPurchaseMode('dry-run');
+    expect(prefs.getPurchaseMode()).toBe('dry-run');
+  });
+
   it('clears the key back to absent, not to an empty string', () => {
     const prefs = createMemoryPreferences({ apiKey: 'paired' });
     prefs.clearApiKey();

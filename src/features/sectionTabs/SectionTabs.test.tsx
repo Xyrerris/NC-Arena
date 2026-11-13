@@ -51,6 +51,14 @@ describe('SectionTabs', () => {
     expect(mockReplace).toHaveBeenCalledWith('/');
   });
 
+  it('goes to the upgrade section by replacing the route', async () => {
+    await render(<SectionTabs current="collection" />);
+
+    await press('UPGRADE');
+
+    expect(mockReplace).toHaveBeenCalledWith('/upgrade');
+  });
+
   it('does nothing when the current section is pressed again', async () => {
     await render(<SectionTabs current="arena" />);
 
