@@ -20,9 +20,9 @@ import {
   type AvatarSource,
   type Result,
 } from '../common';
-import { normaliseAvatarAddress, type Planet, type ViewerAvatar } from '../model';
+import { normaliseAvatarAddress, type ViewerAvatar } from '../model';
 import { networkFailure, postGraphql } from './chainGraphql';
-import { NODE_ENDPOINTS } from './nodeCollectionSource';
+import { NODE_ENDPOINTS, type NodeEndpoints } from './nodeCollectionSource';
 
 const dataSchema = z.object({
   stateQuery: z.object({
@@ -35,7 +35,7 @@ const dataSchema = z.object({
 export class NodeAvatarSource implements AvatarSource {
   readonly name = 'node';
 
-  constructor(private readonly endpoints: Partial<Record<Planet, string>> = NODE_ENDPOINTS) {}
+  constructor(private readonly endpoints: NodeEndpoints = NODE_ENDPOINTS) {}
 
   async readAvatar(avatar: ViewerAvatar): Promise<Result<AvatarIdentity | null, AvatarError>> {
     const endpoint = this.endpoints[avatar.planet];

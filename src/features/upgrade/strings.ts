@@ -1,0 +1,111 @@
+/** The words of the Upgrade section (the upgrade plan, phase 3). */
+
+export const upgradeStrings = {
+  title: 'Upgrade',
+  intro:
+    'Equipment bought as material for raising another piece, ranked by NCG per billion experience ' +
+    '(Gexp) against a ceiling for its grade. Nothing is read until you ask.',
+  sheetLoading: 'Reading the equipment sheets…',
+  sheetFailedOffline: 'Could not reach the sheets. Check the connection.',
+  sheetFailedOther: 'The equipment sheets could not be read.',
+  sheetMalformed: 'The equipment sheets came back in a form this app cannot read.',
+  sheetNoExp: 'The experience sheet is missing, so nothing can be valued.',
+  sheetRetry: 'TRY AGAIN',
+  notOnChain:
+    'The newest grade and today’s experience values are missing: the node could not be reached, ' +
+    'so these sheets are older than the chain.',
+  find: 'FIND MATERIAL',
+  findA11y: 'Read the market for equipment worth buying as material',
+  again: 'READ AGAIN',
+  againA11y: 'Read the market again',
+  stop: 'STOP',
+  stopA11y: 'Stop reading the market',
+  retryFailed: 'RETRY FAILED',
+  retryFailedA11y: 'Read again only the items that failed',
+  failed: (count: number) => `${count} ${count === 1 ? 'item' : 'items'} could not be read.`,
+  status: (done: number, total: number, running: boolean) =>
+    running ? `Reading the market: ${done} of ${total} items…` : `Read ${done} of ${total} items.`,
+  withValkyrie: 'GRADE 7 ON',
+  withoutValkyrie: 'GRADE 7 OFF',
+  valkyrieA11y: 'Include grade 7 in the reading: it is the slowest and the least valuable',
+  gradeAll: 'ALL GRADES',
+  gradeAllA11y: 'Show every grade',
+  gradeChip: (grade: number) => `GRADE ${grade}`,
+  gradeChipA11y: (grade: number) => `Show only grade ${grade}`,
+  slotAll: 'ALL SLOTS',
+  slotAllA11y: 'Show every slot',
+  slotChip: (slot: string) => slot.toUpperCase(),
+  slotChipA11y: (slot: string) => `Show only ${slot}`,
+  onlyRaised: 'ONLY RAISED',
+  allLevels: 'ALL LEVELS',
+  levelsA11y: 'Switch between only pieces raised above +0 and every piece',
+  ceilings: 'CEILINGS',
+  ceilingsA11y: 'Show or hide the ceilings in NCG per Gexp',
+  ceilingLabel: (grade: number) => `Grade ${grade} ceiling, NCG per Gexp`,
+  ceilingHint: (current: string) => `Now ${current}. Leave empty for the default.`,
+  overCeiling: (count: number) =>
+    `${count} ${count === 1 ? 'offer is' : 'offers are'} over the ceiling and not listed.`,
+  leftOutAtZero: (count: number) =>
+    `${count} ${count === 1 ? 'piece' : 'pieces'} at +0 qualify but are hidden by ONLY RAISED.`,
+  nothingYet: 'Nothing is in range yet. Read the market, or raise a ceiling.',
+  nothingInRange: 'Nothing on the market is under the ceilings right now.',
+  select: 'SELECT',
+  selected: 'SELECTED',
+  selectA11y: (label: string) => `Select ${label} to buy`,
+  unselectA11y: (label: string) => `Remove ${label} from the selection`,
+  rowA11y: (label: string, price: string) => `${label}, ${price} NCG`,
+  piece: (name: string, level: number, element: string) =>
+    `${name} +${level}${element === '' ? '' : ` · ${element}`}`,
+  price: (price: string) => `${price} NCG`,
+  detail: (r: string, ng: string, gexp: string) =>
+    `${ng} NCG per Gexp · ${gexp} Gexp · ${r} NCG per +0 piece`,
+  bandOptimum: 'bargain',
+  bandWithin: 'in range',
+  barTitle: (count: number, total: string) =>
+    `${count} ${count === 1 ? 'piece' : 'pieces'} selected · ${total} NCG`,
+  barNote:
+    'Asking prices, read a little while ago. Each piece is checked again before it is bought. ' +
+    'Buy for the upgrade you have planned, not for a stock.',
+  buy: 'BUY THE SELECTION',
+  buyA11y: 'Review and buy the selected pieces',
+  clear: 'CLEAR',
+  clearA11y: 'Clear the selection',
+  plan: 'PLAN AN UPGRADE',
+  planA11y: 'Choose one of your pieces and a level, and see what to buy to reach it',
+  plannerTitle: 'Plan an upgrade',
+  plannerClose: 'CLOSE',
+  plannerCloseA11y: 'Close the planner',
+  plannerReading: 'Reading your bag…',
+  plannerNoAvatar: 'No avatar is set, so your pieces cannot be read.',
+  plannerOffline: 'Could not reach the node to read your bag. Check the connection.',
+  plannerFailed: 'Your bag could not be read.',
+  plannerNone: 'No piece of grade 7 or more in your bag can be raised any further.',
+  plannerRetry: 'READ AGAIN',
+  plannerPick: 'Choose the piece to raise:',
+  plannerPiece: (label: string, exp: string, hasSkill: boolean, equipped: boolean) =>
+    `${label} · ${exp} Gexp${hasSkill ? ' · ★ skill' : ''}${equipped ? ' · worn' : ''}`,
+  plannerChange: 'CHANGE',
+  plannerChangeA11y: 'Choose another piece',
+  plannerNoneInSlot: 'No piece of this slot can be raised.',
+  plannerPieceA11y: (label: string) => `Raise ${label}`,
+  plannerTarget: (level: number) => `Target level: +${level}`,
+  plannerLower: '−',
+  plannerLowerA11y: 'One level lower',
+  plannerHigher: '+',
+  plannerHigherA11y: 'One level higher',
+  planNeed: (gexp: string, from: number, to: number) =>
+    `+${from} to +${to} takes ${gexp} Gexp more.`,
+  planNothingToBuy: 'The piece already holds enough experience: no material is needed.',
+  planBuy: (count: number, ncg: string) =>
+    `${count} ${count === 1 ? 'piece' : 'pieces'} of material for ${ncg} NCG.`,
+  planUpgradeCost: (ncg: string) => `The upgrade itself costs ${ncg} NCG.`,
+  planUpgradeUnknown: 'The cost of the upgrade itself is not in the sheet.',
+  planTotal: (ncg: string) => `About ${ncg} NCG in all.`,
+  planActions: (count: number) =>
+    `${count} ${count === 1 ? 'upgrade action' : 'upgrade actions'} (50 pieces at most each).`,
+  planSurplus: (gexp: string) => `${gexp} Gexp would be left over.`,
+  planShortfall: (gexp: string) =>
+    `The offers in range fall ${gexp} Gexp short of this level: raise a ceiling or read grade 7.`,
+  planSelect: 'SELECT THESE PIECES',
+  planSelectA11y: 'Select the pieces of this plan in the list to buy them',
+} as const;

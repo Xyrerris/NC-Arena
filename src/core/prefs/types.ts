@@ -107,6 +107,51 @@ export interface ArenaPreferences {
   clearApiKey(): void;
 
   /**
+   * The Nine Chronicles keystore the person imported (ADR-0044, step B), as the JSON text it came
+   * in, or null. It is **already encrypted** with a passphrase this app never keeps, so what is
+   * stored is no more than a locked file; a phone backup that carried it would carry no key. It is
+   * not validated here: whoever reads it parses it (`parseKeystore`) and treats a failure as "none".
+   */
+  getKeystore(): string | null;
+  setKeystore(json: string): void;
+  clearKeystore(): void;
+
+  /**
+   * The most, in NCG, one purchase may cost (ADR-0044, step D), or null for none. **None means no
+   * purchase**: the cautious default, so a limit is something the person chooses.
+   */
+  getPurchaseLimit(): number | null;
+  setPurchaseLimit(ncg: number): void;
+  clearPurchaseLimit(): void;
+  /**
+   * The most, in NCG, a whole *batch* of purchases may cost together, or null for none. Separate from
+   * the per-purchase limit and with the same default: **none means no batch**.
+   */
+  getPurchaseBatchLimit(): number | null;
+  setPurchaseBatchLimit(ncg: number): void;
+  clearPurchaseBatchLimit(): void;
+  /**
+   * The record of purchases as JSON text (`core/common/purchaseLog`), or null. Kept as text and
+   * validated by whoever reads it: a record that cannot be read is refused over, not replaced.
+   */
+  getPurchaseLog(): string | null;
+  setPurchaseLog(json: string): void;
+  /**
+   * `live` when the person has turned real purchases on, or null. **Anything but the word `live` is a
+   * dry run** (`resolveMode`), so a missing, mistyped or old value can only ever mean "do not send".
+   */
+  getPurchaseMode(): string | null;
+  setPurchaseMode(mode: 'dry-run' | 'live'): void;
+
+  /**
+   * The last good answer of the planet registry (ADR-0045) as JSON text, or null. Kept as text and
+   * validated by whoever reads it (`decodeRegistryCache`): a shape this code no longer knows is a
+   * cache miss, not an error. It is only where to find nodes, never anything personal.
+   */
+  getEndpointRegistry(): string | null;
+  setEndpointRegistry(json: string): void;
+
+  /**
    * The user chose to keep this ladder on this device only, and to skip the setup gate
    * (ADR-0038). It does not stop them pairing later from the "You" screen; it only stops the
    * gate standing in front of the roster on every launch.
@@ -128,5 +173,11 @@ export const PREF_KEYS = {
   season: 'pref.season',
   lastSyncedAt: 'pref.lastSyncedAt',
   apiKey: 'pref.apiKey',
+  keystore: 'pref.keystore',
+  purchaseLimit: 'pref.purchaseLimit',
+  purchaseBatchLimit: 'pref.purchaseBatchLimit',
+  purchaseLog: 'pref.purchaseLog',
+  purchaseMode: 'pref.purchaseMode',
+  endpointRegistry: 'pref.endpointRegistry',
   setupSkipped: 'pref.setupSkipped',
 } as const;

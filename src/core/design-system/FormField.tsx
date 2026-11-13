@@ -39,6 +39,13 @@ export interface FormFieldProps {
   maxLength?: number;
   /** True renders the value in the tabular numeric face, so digit columns line up. */
   numeric?: boolean;
+  /**
+   * A secret (a passphrase): the characters are hidden, nothing is capitalised or suggested, and
+   * the keyboard is told not to learn it. Not for anything that is merely long.
+   */
+  secret?: boolean;
+  /** Several lines, for pasting text. Never capitalised or corrected. */
+  multiline?: boolean;
   testID?: string;
 }
 
@@ -56,6 +63,8 @@ export function FormField({
   autoFocus,
   maxLength,
   numeric = false,
+  secret = false,
+  multiline = false,
   testID,
 }: FormFieldProps) {
   const invalid = error !== null && error !== '';
@@ -77,15 +86,26 @@ export function FormField({
       <TextInput
         accessibilityLabelledBy={labelId}
         aria-invalid={invalid}
-        autoCapitalize={numeric ? 'none' : 'words'}
+        autoCapitalize={numeric || secret || multiline ? 'none' : 'words'}
+        autoComplete={secret ? 'off' : undefined}
         autoCorrect={false}
+        contextMenuHidden={secret}
+        importantForAutofill={secret ? 'no' : undefined}
+        multiline={multiline}
+        secureTextEntry={secret}
+        spellCheck={secret || multiline ? false : undefined}
         autoFocus={autoFocus}
         keyboardType={keyboardType}
         maxLength={maxLength}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={color.text.subtle}
-        style={[styles.input, numeric && styles.numeric, invalid && styles.inputInvalid]}
+        style={[
+          styles.input,
+          numeric && styles.numeric,
+          multiline && styles.multiline,
+          invalid && styles.inputInvalid,
+        ]}
         testID={testID}
         value={value}
       />
@@ -125,5 +145,6 @@ const styles = StyleSheet.create({
     fontSize: numericSpec.fontSize,
     ...(FONTS_BUNDLED ? { fontFamily: fontAssetName(numericSpec) } : null),
   },
+  multiline: { minHeight: layout.minTouchTarget * 2, textAlignVertical: 'top' },
   inputInvalid: { borderColor: color.negative },
 });

@@ -97,6 +97,50 @@ export const mmkvPreferences: ArenaPreferences = {
     storage.remove(PREF_KEYS.apiKey);
   },
 
+  getKeystore: () => {
+    const stored = storage.getString(PREF_KEYS.keystore);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setKeystore: (json) => storage.set(PREF_KEYS.keystore, json),
+  clearKeystore: () => {
+    storage.remove(PREF_KEYS.keystore);
+  },
+
+  // Validated on the way out: a limit written by code that no longer exists, or a non-positive
+  // one, reads as "none" — and none means no purchase, the cautious reading.
+  getPurchaseLimit: () => {
+    const stored = storage.getNumber(PREF_KEYS.purchaseLimit);
+    return stored === undefined || !Number.isFinite(stored) || stored <= 0 ? null : stored;
+  },
+  setPurchaseLimit: (ncg) => storage.set(PREF_KEYS.purchaseLimit, ncg),
+  clearPurchaseLimit: () => {
+    storage.remove(PREF_KEYS.purchaseLimit);
+  },
+  getPurchaseBatchLimit: () => {
+    const stored = storage.getNumber(PREF_KEYS.purchaseBatchLimit);
+    return stored === undefined || !Number.isFinite(stored) || stored <= 0 ? null : stored;
+  },
+  setPurchaseBatchLimit: (ncg) => storage.set(PREF_KEYS.purchaseBatchLimit, ncg),
+  clearPurchaseBatchLimit: () => {
+    storage.remove(PREF_KEYS.purchaseBatchLimit);
+  },
+  getPurchaseMode: () => {
+    const stored = storage.getString(PREF_KEYS.purchaseMode);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setPurchaseMode: (mode) => storage.set(PREF_KEYS.purchaseMode, mode),
+  getPurchaseLog: () => {
+    const stored = storage.getString(PREF_KEYS.purchaseLog);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setPurchaseLog: (json) => storage.set(PREF_KEYS.purchaseLog, json),
+
+  getEndpointRegistry: () => {
+    const stored = storage.getString(PREF_KEYS.endpointRegistry);
+    return stored === undefined || stored === '' ? null : stored;
+  },
+  setEndpointRegistry: (json) => storage.set(PREF_KEYS.endpointRegistry, json),
+
   getSetupSkipped: () => storage.getBoolean(PREF_KEYS.setupSkipped) === true,
   setSetupSkipped: () => storage.set(PREF_KEYS.setupSkipped, true),
 };

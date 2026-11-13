@@ -2724,14 +2724,193 @@ level (`+0`, `+4`…), an element and — "if it is easy" — how many collectio
   `HP,Percentage,2` is `HP +2%`. The earlier wording existed only because the unit had not been
   checked. A percentage still cannot be ranked against a flat amount, so sorting by bonus stays open.
 
-**Next step (not started): costumes and materials in the same list.** Do this **once the above works
-on a device and the numbers have been checked against the game** — not before. The 217 open slots that
-are not equipment are in `CostumeItemSheet` and `MaterialItemSheet` (served by Mimir the same way) and
-in the consumable sheet, with `_name` columns and no element or level (a material slot has a count
-instead, and its level is blank). The work: a catalog per sheet, a `kind` on the missing-piece entry
-(equipment / costume / material), the count of units needed rather than collections helped for
-materials, and the "N slots not in this list yet" note dropped. About 70 of the 424 items have no name
-in any sheet, so family and id remain the fallback there (see "Where item names are").
+**Next: buying the missing pieces (2026-10-15). Step 1 built: the market source.** A button per
+collection opens a sheet listing what is on sale for its pieces; a multi-item collection lets the
+person choose the piece. Buying comes after, and not from this step.
+
+- **The source is Planetarium's market service, not Mimir and not a backend of ours.** The route is
+  `https://b.9capi.com/marketProvider{Odin,Heimdall}/Market/products/items/{itemSubType}?itemIds={id}`:
+  the **sub type is the path and the item id is a filter**. An earlier probe of this decision
+  (`api.9capi.com`, the id in the path) answered empty and was wrongly read as "9CAPI is down";
+  it was the wrong route. Mimir's `products` was measured and rejected: no filter by item id, more
+  than half of its pages of 100 failed with deserialization errors, and a full read of the market
+  took minutes. NC-Market (a sibling project, not modified) had already found the route and its
+  traps, and its README is the reference for them.
+- **A scan is of one item, complete, with a running count** (`MarketSource.scanItem`,
+  `MarketServiceSource`). Level and skill are not filters of the service, so they are decided on
+  what comes back; a skill means `skillModels` is not empty, which is lib9c's `SkillContains`.
+  Measured on Heimdall: 84 listings in 1 page (~1.6 s), 1,358 in 2 (~3 s), 4,646 in 5 (~8 s) for the
+  commonest weapon. The service gives no total, so progress is a count, never a fraction.
+- **Complete or failed, never partial.** A page that does not parse, a listing of _another_ item
+  (the service ignored the filter: `itemIds[]=1` answers 200 with the whole sub type), a scan that
+  ran out of pages, and a stopped scan are failures. Only 5xx and 429 are retried (three tries);
+  an unreachable service is `OFFLINE` at once and left to the person's retry.
+- **Order is `cp_desc`, with de-duplication by `productId`.** An order with many ties (`price`)
+  shuffles between requests, so pages overlap and listings are skipped (502 repeats of 4,228 with
+  `price`, 84 of 4,646 with `cp_desc`). Pages of 1,000; a pause of 250 ms between them.
+- **What the market does not have.** Aura (sub type 19) and Grimoire (20) answered nothing for any
+  item tried: the sheet will say "not sold on the market" for them rather than scan. Thor is not in
+  the registry, so it has no market source and answers `FAILED`.
+- **Step 2 built: matching and routing** (`core/collection/marketMatch.ts`). A listing satisfies a
+  requirement when the item id, the level and the skill state agree (lib9c's `Requirement.Validate`;
+  the element is part of the id), cheapest first with combat point and listing id as tie-breakers.
+  `marketRouteFor` maps the catalog's sub type to the route number (Weapon 6, Armor 7, Belt 8,
+  Necklace 9, Ring 10) and answers `not-sold` for Aura and Grimoire and `unknown` for what the
+  catalog lacks. Of the sheet's 1,381 requirement slots on 2026-10-15: 704 have a route, 152 are
+  `not-sold`, 525 are `unknown` (costumes and materials, the next step after this one). Checked
+  against the live market: collection 1's Long Sword +0 with a skill has 368 matching listings among
+  4,646, from 1 NCG.
+- **Step 3 built: the cache** (`core/data/marketLibrary.ts`, `ArenaData.market`). A complete scan is
+  kept for 60 s with when it was read; a failure and a stopped scan are not kept, so a retry asks
+  again. Two askers of one item share one scan, and a late one is told how far it already is. Each
+  asker leaves with its own `AbortSignal`; the last one leaving stops the scan, so a sheet closed
+  halfway through eight seconds of pages stops reading them. In memory only, because a price kept
+  for the night is wrong. Live: two simultaneous asks for the same 1,358-listing item made one scan
+  (4.1 s) and a third ask answered from memory in 0 ms.
+- **Step 4 built: the button and the sheet** (`features/collection`: `MarketSheet`,
+  `useMarketPieces`, `marketUiState`). Every open collection that has at least one piece with a
+  market gets a `FIND ON MARKET` button; one whose pieces are all Aura or Grimoire says "Not sold on
+  the market" instead; an unlocked one, or one on a sheet without names, gets neither. The button
+  opens a bottom sheet: the collection's pieces as chips (when there are several) with how many
+  listings each has, then the chosen piece's cheapest offers — price in NCG, combat point, a short
+  seller — capped at 50 with the total said. The first piece is read at once and the others one
+  after another in the background, so a public service is never asked for six scans together;
+  choosing a piece that has not had its turn starts it now. Progress is a count ("1,000 listings
+  read"), never a bar; a failure has a retry; the sheet says the prices are what is **asked** and
+  how long ago they were read. Closing the sheet stops the scans nobody else waits for. Costumes
+  and materials in a collection are counted ("cannot be searched yet"), not hidden. No dimming
+  scrim, because the design system has no overlay colour and a raw one is not allowed outside it.
+  Nothing buys yet.
+- **A hole found while testing it: `.test.ts` files under `features/` never ran.** The node project's
+  `testMatch` listed `src/core` alone, against its own comment that the extension is the split, so
+  `collectionUiState.test.ts` (and the first tests of this sheet) matched no project. It had a stale
+  expectation, `Updated 10m ago` against the `10 min ago` that `timeSince` writes, which nobody saw
+  fail because nothing ran it. The project now matches `core`, `features` and `app`;
+  `scripts/check-test-projects.mjs` has a probe for each, and the probe was mutation-checked: with
+  the old pattern the `features` and `app` rows fail with "matched no project and never ran".
+- **Still open:** buying (see the signing note below); costumes and materials in the sheet, which
+  is the next-step note further down; a market for Thor, which the planet registry does not list.
+  The listing already carries what a purchase needs to find it again
+  (`productId`, sub type, item id, seller), because the service has no lookup by product. Signing
+  a purchase needs a key held by the process, which NC-Market does in a server-side bot; whether a
+  phone app does it, hands off to something that does, or only lists, is decided separately.
+
+**Built (2026-10-21): buying a selection — the cart, step 2b.** The offers view's bar has BUY THE SELECTION,
+which opens a sheet that lists exactly what will be bought and runs it. The decisions that matter:
+
+- **A batch is N purchases, not one bigger one.** Each piece is its own transaction through the same
+  `runPurchase` and `awaitPurchase` as a single purchase, so every guarantee of step D holds per piece: the
+  rules, the record written first, the signature, "doubt keeps the offer blocked". One transaction with
+  several products was considered and rejected: one piece sold meanwhile would very likely fail them all,
+  and the lib9c behaviour for that is not verified. N transactions cost more Mead and are slower, and are
+  predictable.
+- **One at a time, each settled before the next.** The next piece is not begun until the chain has decided
+  the one before (so the node's next nonce is right, and the balance handed to each piece is what the earlier
+  ones left). In a dry run there is nothing to wait for.
+- **It stops at doubt.** A piece sold meanwhile, whose price moved, already in the record, the buyer's own or
+  over the per-purchase limit moves no money and is skipped. Anything else — a chain failure, a send with no
+  verdict, a node that said no, a signature that failed, a balance or account problem — ends the batch there
+  and the pieces after it are **not attempted** (`core/common/purchaseBatch`, `continuesAfter`).
+- **A ceiling on the whole batch, and none means no batch.** A new setting, apart from the limit per
+  purchase (`pref.purchaseBatchLimit`, set on the You tab). `checkBatch` refuses before anything is written
+  if there is no ceiling, the total is above it, the balance is unknown or below the total, an offer is
+  twice in it, or a piece is not single equipment.
+- **Only single equipment, for now.** `toPurchaseOffer` covers the five equipment sub types with quantity 1.
+  Costumes, materials and food are lots/fungibles whose `buy_product3` layout has never been checked against
+  the chain, and the real purchase made on 2026-10-20 was a piece of equipment. Offers that are not single
+  equipment are left out of the batch, whole, and the sheet says how many.
+- **The key is held for the length of the batch** (it signs every piece) and cleared in a `finally`; the
+  passphrase is typed once, at the confirmation, and never stored. The balance is read when the batch starts,
+  not taken from the bar.
+- **Purchases not settled are visible and clearable** on the You tab. A live purchase whose end is not known
+  blocks its offer; before this there was no way out from the app. Clearing one marks it `failed` with a note
+  saying it was cleared by hand after checking the inventory and the balance — the person's word, which the
+  app cannot verify — and it only touches an unsettled live purchase.
+- **Tested with the flag off.** `LIVE_SENDING_BUILT` is still `false` and the suites run that way: the live
+  sheet is exercised in `BatchSheet.live.test.tsx` the way `PurchaseCard.live.test.tsx` does, by replacing
+  `resolveMode` in that file, with a fake sender. **The batch has never been run live against the real
+  chain.** The first one should be two cheap pieces, a low batch limit, by the owner.
+
+**Built (2026-10-20): an Offers view with a total, and the first real purchase is done.**
+
+- **The real purchase was made (owner, 2026-10-20).** One piece was bought through the app with the send
+  switched on, on the owner's machine: the item arrived and the NCG deducted was the price shown. That settles
+  what the entry below left open — the chain accepts this signature (DER, low-S) and this `buy_product3`
+  layout. It does **not** change what the repository ships: `LIVE_SENDING_BUILT` is still `false` in the
+  committed code, and the tests keep running with it `false` (the build with the switch on was local and was
+  not committed). Turning it on in a release remains a one-line, deliberate change of the owner's. Still not
+  seen: the shape of a `FAILURE` for an offer sold meanwhile, and a lot of several units.
+- **Food has a market route.** Sub type 0 answered with real listings (checked live); `marketItemsUrl` refused
+  it (`<= 0`), so every food piece read as "the market could not be read". The guard is now `< 0`.
+- **Offers view** (`OFFERS`, third tab of the collections screen). For the open collections the filters leave,
+  the pieces still missing (`missingPieces`: what the open collections ask for in all, less what the bag holds,
+  one copy per collection) and, for each, the cheapest offer (`bestOffers`, `core/collection`). Order: total
+  price, then the **requirement's** level descending (a collection accepts one exact level, so a listing of
+  another level is never an offer — "highest level" can only mean the required one), then combat point.
+  **It reads only when asked** (FIND OFFERS), three scans at a time: measured on 2026-10-20, 273 distinct
+  items across the 942 collections of the sheet, and three in parallel were four to five times faster than
+  one after another with no failure. The buyer's own listings are left out.
+- **Counted pieces are priced.** The 2026-10-15 entry declined to price "N units" from several lots because a
+  greedy answer would be wrong without showing it. `cheapestLots` is the exact answer instead: a knapsack in
+  whole hundredths over the 40 cheapest lots by unit price and the 40 cheapest by total price, which may
+  overshoot the count when that is cheaper. Each lot is still its own purchase, reviewed on its own card.
+- **Selection and total (step 2a of the cart).** Each offer has a SELECT toggle; the bar under the list adds the
+  asking prices in whole hundredths and sets them against the account's NCG (`useNcgBalance`, shared with the
+  purchase card). A balance that cannot be read is never "short". The selection is held in memory only —
+  prices age in a minute — and **nothing is bought from the bar**: an offer is still bought on its own card,
+  which re-reads it. Buying a selection (2b) waits on: a cap on the total, one passphrase for the batch, a
+  record per purchase, and a way to see and clear the purchase record.
+
+**Built (2026-10-16): the send, step D of buying — switched off.** A signed purchase can now be staged
+(`TransactionSender`, `runPurchase`'s live branch) and watched to its end (`awaitPurchase`); the card has a
+confirmation that names the price, and the wallet block a switch with its own confirmation. The decisions that
+matter: the sender is a **separate port** from the one that cannot send; the record is written **before** the
+key is touched and moves `sent` → `confirmed`/`failed`; **doubt never frees an offer** (no answer to the send, an id
+the node stops knowing, a wait that times out all stay `sent`, because freeing one on a guess is how a piece is
+bought twice); a refusal by the node, or a failure the chain reports, does. Everything is verified with fakes; the
+real `stageTransaction` was never called. **`LIVE_SENDING_BUILT` stays `false`** — the one switch to real
+sending is the owner's, by hand (the assistant's attempt to flip it was refused by the permission layer, and was not
+retried). See HANDOFF-market.md, step D. _Update 2026-10-20: the owner has since made a real purchase with it on
+(see the entry above); the committed value stays `false`._
+
+**Built (2026-10-16): a purchase up to the signature, step C of buying.** `dryRunPurchase` builds the
+`buy_product3` action, has a public node assemble the transaction, verifies it field by field before signing,
+signs, and stops. It was run against Heimdall with a throwaway key; the node's unsigned transaction passed every
+check and Node's own crypto verified the signature. The port it uses (`TransactionSource`) has **no method that
+sends**, so a dry run cannot send by mistake. Not proven: that the chain accepts the signature and the action
+layout (the node has no validate call; only a send tests that), which is why step D is the owner's, with a few
+NCG. New code: `core/common/{bencodex,transaction,transactionSource,purchaseDryRun}.ts`,
+`core/network/nodeTransactionSource.ts`. See HANDOFF-market.md, step C.
+
+**Built (2026-10-16): the keystore, step B of buying.** The owner can paste a Nine Chronicles keystore on
+`/me`, test its passphrase and see whether the key inside is the account of the avatar they play. Nothing
+signs or sends. The module is `core/common/keystore.ts` (Web3 Secret Storage v3 over `@noble/*`, verified against
+the spec's own vectors), the storage is the MMKV preferences, the screen is `features/keystore`. The passphrase
+is never stored and the key is cleared as soon as its address is read. Open: `allowBackup` is on, a file picker
+and secure storage are the upgrades, and the KDF has not been timed on a device. See HANDOFF-market.md, step B.
+
+**Built (2026-10-15): costumes and materials in the market sheet.** The owner ran the equipment sheet
+on a device and asked for this next ("point 3"). Probed against Heimdall before any code:
+
+- Costumes (`FullCostume`) answer at route 1, titles at 18, food at 0, equipment material at 11, hourglass
+  at 15 and AP stone at 16. `FoodMaterial` and `NormalMaterial` answered on no route tried, so they stay
+  `unknown` and are counted, not called "not sold" on one probe. `fungibleAssetValueProducts` was empty on
+  every call; nothing reads it.
+- A material or food listing is a **lot**: `quantity` and `unitPrice` come with `price` (the whole lot, what a
+  buyer pays). Equipment and costumes are single (`quantity` 1). So `MarketListing` gained both, required, and
+  lots are ordered and shown by **unit price**, with the lot's total in the detail line. The sheet shows
+  "needs N" for a counted piece.
+- The sheet's `skill` flag is FALSE for every non-equipment slot, and the `level` blank, so the existing
+  match (same id, level and skill state) needs no special case. Counts run from 1 to 100,000 (e.g. 20,
+  100, 1,000): the sheet does not try to price "N units" from several lots, because the cheapest way to
+  reach a count from lots is a packing problem and a greedy answer would be wrong in a way nothing shows.
+- The three extra sheets come in the **same** Mimir request as the equipment one (aliased), and the read is
+  all four or none. `CostumeItemSheet` has `_item_sub_type,…` rows that describe columns; they have no numeric
+  id and are skipped. A material's `_name` can be Korean; it is shown as it is.
+- Done in `core/collection/otherItems.ts` (a separate catalog, so "is this equipment" in `requirementUi` keeps
+  its meaning) and `marketRouteFor(requirement, catalog, others)`.
+- **Still open:** the items view still lists equipment only (a costume or material there is the
+  "N slots not in this list" count); a name for the ~70 ids in no sheet; pricing a count across lots.
 
 **Consequences.** `core/collection` is a new element in `eslint.config.js` that depends on
 `core-common` only, with two probes in `scripts/check-boundaries.mjs`. `core/network` may now read it
@@ -2739,3 +2918,213 @@ too — the node's state is Bencodex hex and the decoder is already there — wi
 it cannot read instead of skipping it, because a shorter list reads as more progress than there
 is. A backend change (an address column and its migration) will deploy on push to the backend
 branch (HANDOFF.md, Operational) and is deliberately left out of the spike.
+
+## ADR-0045 — Chain nodes come in ordered lists, and the app falls over between them
+
+**Status:** built, 2026-10-21 (`feat/node-failover`). Part 1 is the ordered lists with fallback; part 2
+reads the list at start-up (see "Built: part 2" at the end, which settles the open questions of
+"Next step").
+
+**Context.** Every plain-node read and the transaction sender went to one URL per planet,
+`heimdall-rpc-1.nine-chronicles.com`. On 2026-10-21 it timed out and then answered `502 Bad Gateway`
+while the official client worked: the collection screen showed "Your inventory could not be read
+right now" (a non-2xx is `FAILED`, not `OFFLINE`). The client does not have one node. Its log
+(`%APPDATA%\Nine Chronicles\logs\main.log`) shows it reading the **planet registry**
+(`https://planets.nine-chronicles.com/planets/`), picking a node by round-trip time among 18 clients,
+and landing on `heimdall6.9capi.com` (170 ms). Measured the same day with the inventory query for
+the owner's avatar: `heimdall6.9capi.com` 200 in 0.4 s (296 kB), `heimdall-rpc-1` timeout, then 502.
+The registry lists, per planet, `headless.gql` (nodes), `mimir.gql`, `market.rest`, `arena.gql` and
+more. For Heimdall `headless.gql` is `heimdall6.9capi.com` alone; for Odin it is `odin-rpc-1`,
+`odin5.9capi.com`, `odin6.9capi.com`.
+
+**Decision (part 1, built).**
+
+1. `NODE_ENDPOINTS` is `Partial<Record<Planet, string | readonly string[]>>` (`NodeEndpoints`): a
+   planet has a node or **an ordered list** of them. The default is the registry's `headless.gql`
+   order as read on 2026-10-21. `heimdall-rpc-1` is no longer in it.
+2. `postGraphql` takes one URL or a list and tries them **in order**. Only a **transport** failure
+   moves on: unreachable, out of time, a non-2xx, a body that is not GraphQL. A GraphQL `errors`
+   array is the query's own answer and is returned as it is — another node would say the same.
+   When every node fails, the **last** failure is returned.
+3. With more than one node each attempt has a **10 s** deadline (`FAILOVER_TIMEOUT_MS`) instead of
+   20 s, so a dead node costs seconds. A single endpoint keeps the 20 s.
+4. Every source behind `NODE_ENDPOINTS` gets this — avatar, inventory, balance, collection,
+   transaction reads and the sender. For the sender a retry on the next node re-posts the **same
+   signed transaction**, whose hash is its identity, so it cannot buy twice.
+5. Thor still has no entry: the registry gives it nothing this app has verified.
+6. No ordering by speed yet. The client measures round-trip time; here the order is the registry's.
+
+**Next step (part 2, as designed before it was built): read the registry at start-up.** The list above is a snapshot, so a
+change on Planetarium's side (a node retired, one added) still needs a release. To remove that:
+
+- **A `PlanetRegistrySource` in `core/network`**: `GET https://planets.nine-chronicles.com/planets/`
+  through `HttpClient`, parsed with Zod (`name`, `rpcEndpoints['headless.gql']`; the other keys are
+  ignored). A planet whose list is missing, empty or not `https://` URLs is **dropped**, not
+  half-used. The result is a `NodeEndpoints`. Planets are matched by `name` (`odin`, `heimdall`),
+  never by position.
+- **A cache in `core/prefs`** (MMKV): the last good registry answer and when it was read. The
+  boundaries decide the split: `core/network` may not import `core/prefs`, and only `core/data`
+  knows both, so **`core/data` owns the refresh and the cache** and hands the sources a provider.
+- **The sources read a provider, not a constant.** They already read `this.endpoints[planet]` on every
+  call, so the change is the constructor taking `() => NodeEndpoints` (tests keep passing a plain
+  object through a one-line adapter). Resolution order per call: fresh registry answer, else cached
+  answer, else the static `NODE_ENDPOINTS`. **The static list stays**: it is what a cold start with
+  no network, and a registry that is down, fall back to.
+- **When:** one non-blocking refresh at start-up, not awaited by any screen. A cached answer younger
+  than a day is not refetched. Nothing waits on it: the first read of the session uses whatever
+  the provider has at that moment.
+- **Merge, don't replace:** the registry's nodes first, in its order, then any node of the static list
+  that it did not mention, so a registry that shrinks to one dead node does not leave the app with
+  nothing.
+- **Open, for the owner:** (a) whether to order by measured round-trip time as the client does (a
+  probe per start-up, and a place to keep the winner) or keep the registry order; (b) whether the
+  Mimir endpoint (`mimir.gql`) and the market (`market.rest`) should come from the same answer —
+  the market URL already equals the registry's, Mimir's differs (`mimir.nine-chronicles.dev` here,
+  `heimdall-mimir.9c.gg` in the client, 0.7 s against 2.2 s); (c) whether Thor is added once the
+  registry names a node for it that has been probed.
+- **Tests to write with it:** a registry answer that is malformed, empty for one planet, or has an
+  unknown planet; the cache used when the fetch fails; the static list used when both are missing;
+  a probe in `scripts/check-boundaries.mjs` if `core/network` ever needs to reach prefs (it should
+  not).
+
+**Built: part 2 (2026-10-21).** The owner decided the three open questions: order by **measured latency**
+as the client does; take **Mimir and the market from the registry** too; **no Thor** for now.
+
+- `core/network/planetRegistry.ts`: `PlanetRegistrySource` (GET, 8 s) and `parsePlanetRegistry`. It reads
+  `headless.gql`, `mimir.gql` and `market.rest` of **`odin` and `heimdall` only** (`SERVED_PLANETS`: Thor is
+  left out even if the registry grows an entry for it — add it there once it has been probed). A URL must be
+  `https` (the registry lists an `http` world-boss service). An entry that does not parse, or a planet with no
+  node, is dropped on its own. The cache (`encodeRegistryCache`/`decodeRegistryCache`) is
+  `{ version: 1, readAt, registry }`; any other shape is a miss.
+- `core/network/nodeRanking.ts`: `rankByLatency` probes every candidate **together** with `{ __typename }`
+  (4 s deadline each) and orders them fastest first. A node that does not answer is **kept, last**, in its
+  given order. The ranking is **not** cached: latency is a fact about this network now.
+- `core/network/endpointBook.ts`: `EndpointBook` holds the built-in lists, the registry layer and the
+  ranking, and hands the sources `nodes`, `mimir` and `market` tables whose entries are **read live** (getters),
+  so no source changed shape and none is rebuilt when a list changes. Candidates are the registry's, in its
+  order, then the built-in ones it did not mention. The market is the first candidate only: a scan is paged
+  against one host, and the registry gives one.
+- `core/data/endpointRefresh.ts`: `loadCached()` applies the cached registry synchronously at module load;
+  `refresh()` (called once from `_layout` after boot, never awaited) reads the registry if the cache is more
+  than a day old, absent or dated in the future, keeps it in preferences (`pref.endpointRegistry`), then ranks
+  nodes and Mimir for each planet. It cannot throw: a failure leaves the list as it was. Outcome: `FETCHED`,
+  `CACHED` or `BUILT_IN`.
+- Every source behind a table now takes `GraphqlEndpoints` (Mimir sources and the item-sheet source included),
+  so Mimir fails over too. `NODE_ENDPOINTS`, `MIMIR_ENDPOINTS` and `MARKET_SERVICE_ENDPOINTS` stay as the
+  built-in lists — what a cold start with no network and no cache uses.
+- Checked live the same day: the registry parses to the two planets above; for Heimdall the ranking puts
+  `heimdall6.9capi.com` first and `heimdall-mimir.9c.gg` before `mimir.nine-chronicles.dev` (0.7 s against
+  2.2 s earlier).
+- **Not done:** the built-in market and Mimir URLs are still the old ones, used only behind the registry's;
+  the background task (`backgroundSync`) loads the cache but never refreshes it; there is no UI that says
+  which node answered. None of those blocked anything.
+
+**Consequences.** One dead node no longer takes the inventory, the balance, the avatar lookup and
+the sender down together. The default list is data that goes stale; part 2 exists to stop
+that being a release.
+
+## ADR-0046 — Offers can be raised: a few levels under the target, judged against the standard price
+
+**Status.** Accepted (2026-10-27).
+
+**Context.** A collection accepts one exact level, so a Legend +9 piece was only ever an offer
+when something was listed at +9. A +8 at a good price, raised for the NCG the game charges, is
+often cheaper, and nothing told the owner whether a listed +9 was fair.
+
+**Decision.**
+
+- **The cost is lib9c's.** `EnhancementCostSheetV3.csv` gives a cumulative `cost` in NCG per slot,
+  grade and level; the step from +A to +B is `cost[B] - cost[A]` (the amount `ItemEnhancement`
+  charges). Legend (grade 5): +4 20, +5 40, +9 640, +10 1280, doubling after. Grades 1-4 are
+  half of that; grades 6-8 use a much lower scale up to +30/+40 (grade 6 differs by slot). It is
+  **fetched** with the collection sheet (`GameSheetSource`), never bundled (GPL, as ADR-0044), and
+  its failure does not fail the read: without it the offers view is what it was.
+- **Raisable offers.** With the costs, a single piece (quantity 1) of the same item and skill
+  state, 1 to `MAX_UPGRADE_GAP` (3) levels under the requirement, is an offer priced at the listing
+  plus the upgrade and sorted by that total. `Offer.price` stays what the purchase pays; the
+  upgrade is `upgradeNcg`, the sum `total`, so the batch ceiling and the balance check never count
+  NCG that is spent later in the game.
+- **Verdict.** Every offer is set against the standard price of its level (the cumulative cost
+  from +0): `good` at or under it, `fair` up to 130%, `dear` beyond. Where the standard price is 0
+  (+1 to +3) there is no verdict. `dear` offers leave `offers` for `overpriced`; the view says how
+  many there are and shows them at the end on request.
+
+**Not priced.** The materials an upgrade takes (hammers or equipment, by the sheet's `exp`) are not
+in the total, the standard price ignores the +0 piece's own value, and the exp of the materials
+must land on the target level exactly. The reference is a ceiling for the NCG, not a quote.
+
+**Consequences.** The 130% line and the gap of 3 are judgement, not measured: they are constants
+(`FAIR_RATIO`, `MAX_UPGRADE_GAP`) to move once real listings have been looked at. The purchase card
+still buys the listing as listed; raising it afterwards is done in the game.
+
+**Amended by ADR-0047:** the costs are read from a node first; lib9c is the fallback.
+
+---
+
+## ADR-0047 — The equipment and enhancement sheets are read from a node, lib9c is the fallback
+
+**Status.** Accepted (2026-10-28). Amends the source in ADR-0044 (equipment sheet from Mimir) and
+ADR-0046 (enhancement sheet from lib9c).
+
+**Context.** The Upgrade section (docs/PLAN-upgrade-materials.md) prices equipment as enhancement
+material, which needs each item's base experience and each level's. Measured on Heimdall on
+2026-10-27:
+
+- lib9c `development` has **no Ultimate (grade 9) Weapon, Armor, Belt, Necklace or Ring** in
+  `EquipmentItemSheet` or `EnhancementCostSheetV3` — only Aura and Grimoire reach grade 9 — although
+  the market already lists them (ids `1019x000` and so on, +0, 99 NCG and up).
+- lib9c's base experience is **behind the chain**: grade 8 is 0.8 G there and 1.2 G on chain, grade 9
+  is 9.6 G, Aura grade 9 is 6.24 M against 4.16 M. The level curve is identical in the 1,411 rows both
+  have; the chain has 150 more.
+- Mimir's copy stopped at grade 7.
+- A node does have all of it, as raw state: `state(address, accountAddress)` with the address
+  `TableSheet.Derive(name)` in the legacy account `0x1000…0000`. `cachedSheet` answers null.
+
+**Decision.**
+
+- `EquipmentItemSheet` and `EnhancementCostSheetV3` are read **together** from a node
+  (`nodeSheets.ts`, the planet's nodes in order, Heimdall's for a planet with none). Both or neither:
+  half a pair is a pair from two different days.
+- When the node cannot give them, the read is what it was — the equipment sheet from Mimir and the
+  enhancement sheet from lib9c, the latter optional — and `GameSheets.onChain` is false, so a screen
+  can say the newest grade and today's experience are missing. lib9c's enhancement sheet is not
+  fetched at all when the node answered.
+- `Derive` is an HMAC-SHA1 with **the name as the key and the address as the message**. The
+  addresses `0x2b31…0682` (`EquipmentItemSheet`) and `0x1596…d70e` (`EnhancementCostSheetV3`) are
+  in the tests as the regression for it.
+- The experience is parsed in `core/collection/upgradeExp.ts`, not in a new module: a new `core/*`
+  module is a change to the boundary rules in `eslint.config.js`, which needs its own probe, and
+  this has no reason to be one.
+
+**Consequences.** One more request at the start of a sheet read (the node's), in parallel with the
+others. The costs ADR-0046 uses now come from the chain, so the standard price and the upgrade cost
+of grade 8 and 9 pieces exist where they did not. Mimir's `EquipmentItemSheet` is still asked for as
+the fallback and for nothing else.
+
+---
+
+## ADR-0048 — The cart moves to `core/purchase`, so two features can buy through it
+
+**Status.** Accepted (2026-10-28).
+
+**Context.** The batch sheet that buys a selection (ADR-0044, the cart) lived in `features/collection`.
+The Upgrade section buys through the same sheet, and a feature may not import another. Copying the
+sheet would mean every correction to a purchase, which is where mistakes cost NCG, made twice.
+
+**Decision.**
+
+- A new `core/purchase` module holds what both buy through: `BatchSheet`, `useBatchPurchase`,
+  `useNcgBalance` and `readNcgBalance`, the state of an attempt (`purchaseAttemptState`), the batch
+  wording (`batchState`, `purchaseStrings`), `BalanceState` and `formatNcg`. What goes _into_ a batch
+  stays with the feature (`batchPlan` in the collection builds a `BatchPlan` from offers).
+- It may reach `core/model`, `core/common`, `core/design-system` and `core/data` (it reads the arena
+  context), and no more: never `core/db`, `core/network`, `core/collection` or a feature. Features
+  and the route layer may reach it. Probes in `scripts/check-boundaries.mjs` write the violations.
+- The barrel exports only what plain Node can load. The sheet and the hooks are imported by file
+  (`@/core/purchase/BatchSheet`), so a `.test.ts` can still import the rest. The three React files are
+  out of the Node coverage, like the hooks of `core/data`.
+- The single-offer `PurchaseCard` stays in the collection: nothing else buys that way.
+
+**Consequences.** `features/collection` keeps its offers view and its single card and imports the
+cart. The `batch*` words are in `purchaseStrings`, not in the collection's strings. No behaviour
+changed: the same tests, moved with the code, pass unmodified apart from their imports.

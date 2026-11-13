@@ -5,13 +5,19 @@
  *   2026-10-14 against the test avatar: Mimir's `CollectionSheet` has 822 rows and lacks collections
  *   the avatar has unlocked; lib9c's has 942 and has them all. A stale list would read as "you are
  *   further along than you are".
- * - **The equipment sheet comes from Mimir.** It is the chain's own `EquipmentItemSheet`, with the
- *   English `_name` and `elemental_type` the collection sheet does not carry.
+ * - **The item sheets come from Mimir.** The chain's own `EquipmentItemSheet`, with the English
+ *   `_name` and `elemental_type` the collection sheet does not carry, and the costume, material
+ *   and consumable sheets for the rest of what a collection asks for.
+ *
+ * - **The equipment and enhancement sheets come from a node when it has them** (ADR-0047): lib9c
+ *   and Mimir are behind the chain (no Ultimate gear, older experience). Both from the node or
+ *   both from the old sources, and `onChain` says which.
  *
  * It is fetched when the screen opens, not bundled: lib9c is GPL-3.0 and shipping a copy in the
  * app is a licence decision that is still the owner's (ADR-0044, "Where item names are").
  *
- * The two requests go out together and either failing fails the read.
+ * The two requests go out together and either failing fails the read; so does any one item sheet
+ * missing from Mimir's answer.
  */
 
 import { z } from 'zod';
@@ -25,61 +31,128 @@ import {
   type SheetSource,
 } from '../common';
 import type { Planet } from '../model';
-import { networkFailure, postGraphql } from './chainGraphql';
+import { networkFailure, postGraphql, type GraphqlEndpoints } from './chainGraphql';
 import type { NetworkError } from './errors';
 import { HttpClient } from './httpClient';
 import { MIMIR_ENDPOINTS } from './mimirCollectionSource';
+import { NODE_ENDPOINTS } from './nodeCollectionSource';
+import { readNodeSheets } from './nodeSheets';
+
+const EQUIPMENT_SHEET = 'EquipmentItemSheet';
+const ENHANCEMENT_SHEET = 'EnhancementCostSheetV3';
 
 export const LIB9C_COLLECTION_SHEET_URL =
   'https://raw.githubusercontent.com/planetarium/lib9c/development/Lib9c/TableCSV/CollectionSheet.csv';
 
+/** What raising a piece costs (ADR-0046); fetched like the collection sheet, never bundled. */
+export const LIB9C_ENHANCEMENT_SHEET_URL =
+  'https://raw.githubusercontent.com/planetarium/lib9c/development/Lib9c/TableCSV/EnhancementCostSheetV3.csv';
+
 /** Thor has no Mimir endpoint, and the item sheet is the same on every planet that has one. */
 const FALLBACK_PLANET: Planet = 'heimdall';
 
-const sheetSchema = z.object({ sheet: z.object({ csv: z.string().min(1) }).nullish() });
+const csvSchema = z.object({ csv: z.string().min(1) }).nullish();
+
+/**
+ * The four item sheets in one request, by alias: Mimir serves them all the same way, and four
+ * requests for sheets that are only useful together would be four chances to fail.
+ */
+const ITEM_SHEETS_QUERY =
+  '{ equipment: sheet(sheetName: "EquipmentItemSheet") { csv } ' +
+  'costume: sheet(sheetName: "CostumeItemSheet") { csv } ' +
+  'material: sheet(sheetName: "MaterialItemSheet") { csv } ' +
+  'consumable: sheet(sheetName: "ConsumableItemSheet") { csv } }';
+
+const itemSheetsSchema = z.object({
+  equipment: csvSchema,
+  costume: csvSchema,
+  material: csvSchema,
+  consumable: csvSchema,
+});
+
+interface ItemSheets {
+  readonly equipmentCsv: string;
+  readonly costumeCsv: string;
+  readonly materialCsv: string;
+  readonly consumableCsv: string;
+}
 
 export class GameSheetSource implements SheetSource {
   readonly name = 'lib9c+mimir';
 
   constructor(
     private readonly collectionSheetUrl: string = LIB9C_COLLECTION_SHEET_URL,
-    private readonly endpoints: Partial<Record<Planet, string>> = MIMIR_ENDPOINTS,
+    private readonly endpoints: GraphqlEndpoints = MIMIR_ENDPOINTS,
+    private readonly enhancementSheetUrl: string = LIB9C_ENHANCEMENT_SHEET_URL,
+    private readonly nodeEndpoints: GraphqlEndpoints = NODE_ENDPOINTS,
   ) {}
 
   async read(planet: Planet): Promise<Result<GameSheets, SheetError>> {
-    const [collection, equipment] = await Promise.all([
+    const [collection, items, chain] = await Promise.all([
       new HttpClient(this.collectionSheetUrl, null).requestText(''),
-      this.readEquipmentSheet(planet),
+      this.readItemSheets(planet),
+      readNodeSheets(
+        this.nodeEndpoints,
+        this.nodeEndpoints[planet] === undefined ? FALLBACK_PLANET : planet,
+        [EQUIPMENT_SHEET, ENHANCEMENT_SHEET],
+        'node',
+      ),
     ]);
     if (!collection.ok) return err(this.failure(collection.error));
-    if (!equipment.ok) return err(equipment.error);
+    if (!items.ok) return err(items.error);
     if (collection.value.trim() === '') return err(this.failed('the collection sheet was empty.'));
 
+    // The node's copy is the chain's own and newer than both Mimir's and lib9c's (ADR-0047); lib9c's
+    // enhancement sheet is only asked for when the node could not give it.
+    if (chain.ok) {
+      return ok({
+        collectionCsv: collection.value,
+        ...items.value,
+        equipmentCsv: chain.value[EQUIPMENT_SHEET] as string,
+        enhancementCsv: chain.value[ENHANCEMENT_SHEET] as string,
+        onChain: true,
+        source: this.name,
+      });
+    }
+
+    const enhancement = await new HttpClient(this.enhancementSheetUrl, null).requestText('');
     return ok({
       collectionCsv: collection.value,
-      equipmentCsv: equipment.value,
+      ...items.value,
+      // Not all-or-nothing: the costs only add upgradable offers and verdicts to the offers view.
+      ...(enhancement.ok && enhancement.value.trim() !== ''
+        ? { enhancementCsv: enhancement.value }
+        : {}),
+      onChain: false,
       source: this.name,
     });
   }
 
-  private async readEquipmentSheet(planet: Planet): Promise<Result<string, SheetError>> {
+  private async readItemSheets(planet: Planet): Promise<Result<ItemSheets, SheetError>> {
     const endpoint = this.endpoints[planet] ?? this.endpoints[FALLBACK_PLANET];
     if (endpoint === undefined) return err(this.failed('there is no endpoint for the item sheet.'));
 
-    const response = await postGraphql(
-      endpoint,
-      '{ sheet(sheetName: "EquipmentItemSheet") { csv } }',
-    );
+    const response = await postGraphql(endpoint, ITEM_SHEETS_QUERY);
     if (!response.ok) return err(this.failure(response.error));
 
-    const parsed = sheetSchema.safeParse(response.value.data ?? {});
-    const csv = parsed.success ? parsed.data.sheet?.csv : undefined;
-    if (csv === undefined) {
+    const parsed = itemSheetsSchema.safeParse(response.value.data ?? {});
+    const sheets = parsed.success ? parsed.data : undefined;
+    if (
+      sheets?.equipment == null ||
+      sheets.costume == null ||
+      sheets.material == null ||
+      sheets.consumable == null
+    ) {
       return err(
-        this.failed(response.value.errors[0]?.message ?? 'the item sheet did not come back.'),
+        this.failed(response.value.errors[0]?.message ?? 'the item sheets did not come back.'),
       );
     }
-    return ok(csv);
+    return ok({
+      equipmentCsv: sheets.equipment.csv,
+      costumeCsv: sheets.costume.csv,
+      materialCsv: sheets.material.csv,
+      consumableCsv: sheets.consumable.csv,
+    });
   }
 
   private failed(message: string): SheetError {

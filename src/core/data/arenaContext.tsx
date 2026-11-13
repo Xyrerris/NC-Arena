@@ -14,9 +14,16 @@
 
 import { createContext, useContext, type ReactNode } from 'react';
 
-import type { AvatarSource } from '../common';
+import type {
+  AvatarSource,
+  BalanceSource,
+  InventorySource,
+  TransactionSender,
+  TransactionSource,
+} from '../common';
 import type { CollectionRepository } from './collectionRepository';
 import type { UseLiveData } from './liveData';
+import type { MarketLibrary } from './marketLibrary';
 import type { RosterRepository } from './rosterRepository';
 import type { SheetLibrary } from './sheetLibrary';
 
@@ -41,6 +48,69 @@ export interface ArenaData {
    * collection screen reads it, and only when its route did not hand it a sheet directly.
    */
   sheets?: SheetLibrary;
+  /**
+   * What is on sale of an item, scanned and kept for a minute (ADR-0044, "Next: buying"). Optional
+   * like the rest: only the market sheet reads it, and a build that forgot to wire it fails there.
+   */
+  market?: MarketLibrary;
+  /**
+   * What the active avatar owns, read from the chain so the collection screen can mark the pieces
+   * it already has. Optional like the rest: without it the screen shows no ownership at all.
+   */
+  inventory?: InventorySource;
+  /**
+   * How much NCG an account holds, for the purchase card (ADR-0044, step A). Optional like the
+   * rest; without it the card says the balance could not be read instead of guessing one.
+   */
+  balance?: BalanceSource;
+  /**
+   * The keystore the person imported, kept on the device (ADR-0044, step B). Optional like the
+   * rest: only the keystore section reads it.
+   */
+  keystore?: KeystoreStore;
+  /**
+   * The per-purchase limit and the record of purchases (ADR-0044, step D). Optional like the rest:
+   * only the wallet block and the purchase flow read it.
+   */
+  purchases?: PurchaseStore;
+  /**
+   * Asks a node about a transaction: nonce, currency, the unsigned form, the signed form. It has no
+   * method that sends (ADR-0044, step C), so what holds it cannot spend. Optional like the rest.
+   */
+  transactions?: TransactionSource;
+  /**
+   * The one thing that can send a transaction (ADR-0044, step D). Optional, and only handed to a
+   * purchase that resolved to `live`: a dry run is never given it.
+   */
+  sender?: TransactionSender;
+}
+
+/**
+ * Where the purchase limit and the purchase record live. The limit is a number the person chose
+ * (none means nothing can be bought); the record is JSON text, validated by `core/common/purchaseLog`.
+ */
+export interface PurchaseStore {
+  getLimit(): number | null;
+  setLimit(ncg: number | null): void;
+  /** The most a whole batch of purchases may cost in all; none means no batch. */
+  getBatchLimit(): number | null;
+  setBatchLimit(ncg: number | null): void;
+  getLog(): string | null;
+  setLog(json: string): void;
+  /** `live` when the person has turned real purchases on, or null. Anything else is a dry run. */
+  getMode(): string | null;
+  setMode(mode: 'dry-run' | 'live'): void;
+}
+
+/**
+ * Where the imported keystore text lives. A keystore is already encrypted with a passphrase this
+ * app never keeps, so this is a locked file on disk and not a secret: no key is stored, and no
+ * passphrase either.
+ */
+export interface KeystoreStore {
+  get(): string | null;
+  set(json: string): void;
+  clear(): void;
 }
 
 const ArenaDataContext = createContext<ArenaData | null>(null);

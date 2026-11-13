@@ -63,9 +63,34 @@ export type { ApiKeySource, HttpClientOptions } from './httpClient';
 export { FallbackAvatarSource } from './fallbackAvatarSource';
 export { FallbackCollectionSource } from './fallbackCollectionSource';
 export { GameSheetSource, LIB9C_COLLECTION_SHEET_URL } from './gameSheetSource';
+export {
+  MARKET_SERVICE_ENDPOINTS,
+  MarketServiceSource,
+  PAGE_SIZE,
+  marketItemsUrl,
+  type MarketServiceOptions,
+} from './marketServiceSource';
 export { MimirAvatarSource } from './mimirAvatarSource';
 export { NodeAvatarSource } from './nodeAvatarSource';
+export { NodeBalanceSource } from './nodeBalanceSource';
+export { NodeInventorySource } from './nodeInventorySource';
+export { GENESIS_HASHES, NodeTransactionSource } from './nodeTransactionSource';
+export { NodeTransactionSender } from './nodeTransactionSender';
 export { MIMIR_ENDPOINTS, MimirCollectionSource } from './mimirCollectionSource';
-export { NODE_ENDPOINTS, NodeCollectionSource } from './nodeCollectionSource';
+export { NODE_ENDPOINTS, NodeCollectionSource, type NodeEndpoints } from './nodeCollectionSource';
+export type { GraphqlEndpoints } from './chainGraphql';
+export { EndpointBook, type EndpointDefaults, type EndpointKind } from './endpointBook';
+export { graphqlLatencyProbe, rankByLatency, type LatencyProbe } from './nodeRanking';
+export {
+  PLANET_REGISTRY_URL,
+  PlanetRegistrySource,
+  SERVED_PLANETS,
+  decodeRegistryCache,
+  encodeRegistryCache,
+  parsePlanetRegistry,
+  type PlanetEndpoints,
+  type PlanetRegistry,
+  type RegistryReader,
+} from './planetRegistry';
 export { RemoteAccountGateway } from './remoteAccountGateway';
 export { RemoteRosterSource } from './remoteRosterSource';

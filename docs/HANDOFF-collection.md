@@ -8,6 +8,9 @@ that branch deploys the backend** (Coolify), migrations included.
 
 This file is the map. The reasoning is in **ADR-0044** in DECISIONS.md; read it first.
 
+> **Later work:** the market sheet (what is on sale for a collection's pieces) is built, and buying is
+> next. See [HANDOFF-market.md](HANDOFF-market.md) for where it stopped and what to do next.
+
 ## The feature
 
 A section **parallel to the arena** that tracks the collection of the player marked as "me" and lists
@@ -56,7 +59,8 @@ Test avatar: `Xyrerris`, planet `heimdall`, `#1023`,
   `collection(address: "0x…") { ids }` → **442** ids. `sheet(sheetName: "CollectionSheet") { csv }`
   serves the game's sheets (118). `metadata(collectionName: "avatar") { latestBlockIndex }` says how far
   behind the chain it is.
-- **A plain node** (`https://heimdall-rpc-1.nine-chronicles.com/graphql`, or `heimdall6.9capi.com`):
+- **A plain node** (`https://heimdall6.9capi.com/graphql`; `heimdall-rpc-1.nine-chronicles.com` was
+  the first choice until it timed out and answered 502 on 2026-10-21 — ADR-0045):
   root `state(address: <avatar>, accountAddress: "0x000000000000000000000000000000000000001f")` returns
   Bencodex as hex → the same 442 ids. `stateQuery.avatar(avatarAddress) { name level agentAddress }`
   confirms an address. `stateQuery.agent(address) { avatarStates { address name level } }` lists an

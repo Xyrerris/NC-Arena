@@ -23,12 +23,12 @@ import {
   type Result,
   type UnlockedCollections,
 } from '../common';
-import { normaliseAvatarAddress, type Planet, type ViewerAvatar } from '../model';
-import { postGraphql } from './chainGraphql';
+import { normaliseAvatarAddress, type ViewerAvatar } from '../model';
+import { postGraphql, type GraphqlEndpoints } from './chainGraphql';
 import type { NetworkError } from './errors';
 
 /** Mimir's per-planet GraphQL endpoints. Thor has none: `/thor/graphql/` answers 404. */
-export const MIMIR_ENDPOINTS: Partial<Record<Planet, string>> = {
+export const MIMIR_ENDPOINTS: GraphqlEndpoints = {
   odin: 'https://mimir.nine-chronicles.dev/odin/graphql/',
   heimdall: 'https://mimir.nine-chronicles.dev/heimdall/graphql/',
 };
@@ -41,7 +41,7 @@ const dataSchema = z.object({
 export class MimirCollectionSource implements CollectionSource {
   readonly name = 'mimir';
 
-  constructor(private readonly endpoints: Partial<Record<Planet, string>> = MIMIR_ENDPOINTS) {}
+  constructor(private readonly endpoints: GraphqlEndpoints = MIMIR_ENDPOINTS) {}
 
   async readUnlocked(
     avatar: ViewerAvatar,
