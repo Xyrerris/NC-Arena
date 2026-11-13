@@ -29,7 +29,7 @@ import {
 import { err, ok, type Result } from './result';
 import {
   addressOfPublicKey,
-  buildBuyProduct,
+  buildBuyProducts,
   plainValueHex,
   signMessage,
   transactionId,
@@ -37,7 +37,7 @@ import {
   verifyUnsigned,
   type PurchaseOffer,
 } from './transaction';
-import type { TransactionSource } from './transactionSource';
+import type { GoldCurrency, TransactionSource } from './transactionSource';
 
 export type DryRunStage =
   'currency' | 'build' | 'nonce' | 'unsigned' | 'verify' | 'sign' | 'attach';
@@ -76,19 +76,37 @@ export interface DryRun {
 const stop = (stage: DryRunStage, message: string): Result<never, DryRunError> =>
   err({ stage, message });
 
-export async function dryRunPurchase(input: DryRunInput): Promise<Result<DryRun, DryRunError>> {
+export interface BulkDryRunInput extends Omit<DryRunInput, 'offer'> {
+  /** Every offer of one transaction. The chain buys all of them or none. */
+  readonly offers: readonly PurchaseOffer[];
+  /** The gold currency, when the caller already has it: saves a round trip per transaction. */
+  readonly gold?: GoldCurrency;
+}
+
+export function dryRunPurchase(input: DryRunInput): Promise<Result<DryRun, DryRunError>> {
+  const { offer, ...rest } = input;
+  return dryRunBulkPurchase({ ...rest, offers: [offer] });
+}
+
+export async function dryRunBulkPurchase(
+  input: BulkDryRunInput,
+): Promise<Result<DryRun, DryRunError>> {
   const { planet, source, privateKey } = input;
   const publicKey = secp256k1.getPublicKey(privateKey, false);
   const agent = addressOfPublicKey(publicKey);
 
-  const gold = await source.goldCurrency(planet);
-  if (!gold.ok) return stop('currency', gold.error.message);
+  let gold = input.gold;
+  if (gold === undefined) {
+    const read = await source.goldCurrency(planet);
+    if (!read.ok) return stop('currency', read.error.message);
+    gold = read.value;
+  }
 
-  const built = buildBuyProduct({
+  const built = buildBuyProducts({
     buyerAvatar: input.buyerAvatar,
-    offer: input.offer,
-    currency: gold.value.currency,
-    decimalPlaces: gold.value.decimalPlaces,
+    offers: input.offers,
+    currency: gold.currency,
+    decimalPlaces: gold.decimalPlaces,
     actionId: input.actionId,
   });
   if (!built.ok) return stop('build', built.error.message);

@@ -120,7 +120,11 @@ describe('describeAttempt', () => {
     const refused = describeAttempt({
       kind: 'settled',
       transactionId: TX,
-      outcome: { kind: 'failed', reason: 'the piece was already sold or withdrawn.' },
+      outcome: {
+        kind: 'failed',
+        reason: 'the piece was already sold or withdrawn.',
+        pieceGone: true,
+      },
     });
     const unknown = describeAttempt({
       kind: 'settled',

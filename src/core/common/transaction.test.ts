@@ -20,6 +20,7 @@ import {
   addressBytes,
   addressOfPublicKey,
   buildBuyProduct,
+  buildBuyProducts,
   guidBytes,
   plainValueHex,
   rawAmount,
@@ -177,6 +178,50 @@ describe('buildBuyProduct', () => {
 
   it('is the same bytes every time for the same purchase', () => {
     expect(plainValueHex(plain())).toBe(plainValueHex(plain()));
+  });
+
+  describe('buildBuyProducts', () => {
+    const OTHER: PurchaseOffer = {
+      ...OFFER,
+      productId: '00112233-4455-6677-8899-aabbccddee02',
+      tradableId: 'ffeeddcc-bbaa-9988-7766-554433221102',
+      price: 3,
+    };
+    const many = (offers: readonly PurchaseOffer[]) =>
+      buildBuyProducts({
+        buyerAvatar: BUYER,
+        offers,
+        currency: NCG,
+        decimalPlaces: 2,
+        actionId: ACTION_ID,
+      });
+
+    it('writes the same bytes for a list of one as buildBuyProduct does for the offer', () => {
+      const one = many([OFFER]);
+      expect(one.ok && plainValueHex(one.value)).toBe(plainValueHex(plain()));
+    });
+
+    it('writes every offer in `p`, in order, under one buyer and one action id', () => {
+      const built = many([OFFER, OTHER]);
+      if (!built.ok) throw new Error(built.error.message);
+
+      const values = dictGet(built.value, 'values');
+      const products = dictGet(values, 'p') as BencodexValue[][];
+      expect(products).toHaveLength(2);
+      expect(bytesToHex(products[0]?.[0] as Uint8Array)).toBe('33221100554477668899aabbccddeeff');
+      expect(bytesToHex(products[1]?.[0] as Uint8Array)).toBe('33221100554477668899aabbccddee02');
+      expect((products[1]?.[1] as BencodexValue[])[1]).toBe(300n);
+      expect(bytesToHex(dictGet(values, 'a') as Uint8Array)).toBe(BUYER);
+    });
+
+    it('refuses an empty list and the same product twice', () => {
+      expect(many([])).toMatchObject({ ok: false });
+      expect(many([OFFER, OFFER])).toMatchObject({ ok: false });
+    });
+
+    it('refuses the whole action when one offer cannot be written', () => {
+      expect(many([OFFER, { ...OTHER, price: 1.234 }])).toMatchObject({ ok: false });
+    });
   });
 
   it.each([

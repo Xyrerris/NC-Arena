@@ -19,18 +19,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { openKeystore, parseKeystore } from '@/core/common/keystore';
+import type { MarketListing } from '@/core/common/marketSource';
 import {
   awaitPurchase,
   deriveActionId,
   deriveRecordId,
-  runPurchase,
+  runBulkPurchase,
+  type BulkOutcome,
 } from '@/core/common/purchaseFlow';
 import {
   checkBatch,
-  runBatch,
+  runBulkBatch,
   type BatchItem,
   type BatchRefusal,
   type BatchResult,
+  type ChunkAnswer,
   type StepOutcome,
 } from '@/core/common/purchaseBatch';
 import { purchaseLogOver } from '@/core/common/purchaseLog';
@@ -71,6 +74,11 @@ export interface BatchPurchase {
   readonly batchLimit: number | null;
   readonly onRun: (passphrase: string) => void;
 }
+
+/** Offers are read again three items at a time, as the offers view reads (measured 2026-10-20). */
+const SCAN_CONCURRENCY = 3;
+/** The chain's blocks come every few seconds; looking every two finds the verdict soon after it. */
+const WATCH_INTERVAL_MS = 2_000;
 
 const SCAN_FAILED =
   'The market could not be read to check the offer again, so the batch stops here.';
@@ -164,56 +172,38 @@ export const useBatchPurchase = (
           };
           show();
 
-          const buy = async (item: BatchItem, balanceNcg: number | null): Promise<StepOutcome> => {
-            const scan = await market.scan(planet, item.shown.itemSubType, item.shown.itemId, {
-              fresh: true,
-            });
-            if (!scan.ok) return { kind: 'problem', message: SCAN_FAILED };
-            const fresh = scan.value.listings.find((l) => l.productId === item.shown.productId);
+          // Read once for the whole batch: every transaction pays in it.
+          const goldRead = await transactions.goldCurrency(planet);
+          const gold = goldRead.ok ? goldRead.value : undefined;
 
-            const at = Date.now();
-            const outcome = await runPurchase({
-              planet,
-              mode,
-              source: transactions,
-              // Only a purchase that resolved to live is handed the thing that can send.
-              sender: mode === 'live' ? sender : undefined,
-              privateKey: opened.value.privateKey,
-              log,
-              actionId: deriveActionId(item.shown.productId, at, Math.random()),
-              now: () => at,
-              newId: () => deriveRecordId(at, Math.random()),
-              shown: item.shown,
-              fresh: fresh ?? null,
-              limitNcg: purchases.getLimit(),
-              balanceNcg,
-              keyAddress: opened.value.address,
-              avatarAgent,
-              buyerAvatar: avatar.address,
-            });
+          const scanKey = (listing: MarketListing): string =>
+            `${listing.itemSubType}:${listing.itemId}`;
 
-            switch (outcome.kind) {
-              case 'refused':
-                return { kind: 'refused', refusal: outcome.refusal };
-              case 'dry-run':
-                return { kind: 'signed', transactionId: outcome.run.transactionId };
+          /** The group's accepted pieces as the chain settled them: one outcome, or "a piece was gone". */
+          const settle = async (bulk: BulkOutcome): Promise<StepOutcome | 'piece-gone' | null> => {
+            const { carried } = bulk;
+            switch (carried.kind) {
+              case 'nothing':
+                return null;
               case 'live-unavailable':
                 return {
                   kind: 'problem',
                   message: 'Buying for real is not available in this build.',
                 };
+              case 'dry-run':
+                return { kind: 'signed', transactionId: carried.run.transactionId };
               case 'failed':
                 return {
                   kind: 'problem',
-                  message: `Stopped at "${outcome.error.stage}": ${outcome.error.message}`,
+                  message: `Stopped at "${carried.error.stage}": ${carried.error.message}`,
                 };
               case 'not-accepted':
-                return { kind: 'not-accepted', message: outcome.message };
+                return { kind: 'not-accepted', message: carried.message };
               case 'sent': {
                 if (sender === undefined) {
                   return {
                     kind: 'unknown',
-                    transactionId: outcome.transactionId,
+                    transactionId: carried.transactionId,
                     message: 'It was sent but cannot be watched in this build.',
                   };
                 }
@@ -221,23 +211,27 @@ export const useBatchPurchase = (
                   planet,
                   sender,
                   log,
-                  recordId: outcome.recordId,
-                  transactionId: outcome.transactionId,
+                  recordId: bulk.recordIds[0] as string,
+                  alsoRecordIds: bulk.recordIds.slice(1),
+                  transactionId: carried.transactionId,
                   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+                  intervalMs: WATCH_INTERVAL_MS,
                 });
                 switch (settled.kind) {
                   case 'confirmed':
-                    return { kind: 'confirmed', transactionId: outcome.transactionId };
+                    return { kind: 'confirmed', transactionId: carried.transactionId };
                   case 'failed':
-                    return {
-                      kind: 'chain-failed',
-                      transactionId: outcome.transactionId,
-                      reason: settled.reason,
-                    };
+                    return settled.pieceGone
+                      ? 'piece-gone'
+                      : {
+                          kind: 'chain-failed',
+                          transactionId: carried.transactionId,
+                          reason: settled.reason,
+                        };
                   case 'unknown':
                     return {
                       kind: 'unknown',
-                      transactionId: outcome.transactionId,
+                      transactionId: carried.transactionId,
                       message: settled.message,
                     };
                 }
@@ -245,10 +239,82 @@ export const useBatchPurchase = (
             }
           };
 
-          const result = await runBatch({
+          const buyChunk = async (
+            group: readonly BatchItem[],
+            balanceNcg: number | null,
+          ): Promise<ChunkAnswer> => {
+            // One fresh read per distinct item, a few at a time, not one per piece.
+            const wanted = [
+              ...new Map(group.map((item) => [scanKey(item.shown), item.shown] as const)).values(),
+            ];
+            const listings = new Map<string, readonly MarketListing[] | null>();
+            let next = 0;
+            const worker = async (): Promise<void> => {
+              for (let at = next++; at < wanted.length; at = next++) {
+                const one = wanted[at] as MarketListing;
+                const scan = await market.scan(planet, one.itemSubType, one.itemId, {
+                  fresh: true,
+                });
+                listings.set(scanKey(one), scan.ok ? scan.value.listings : null);
+              }
+            };
+            await Promise.all(
+              Array.from({ length: Math.min(SCAN_CONCURRENCY, wanted.length) }, worker),
+            );
+            if ([...listings.values()].some((read) => read === null)) {
+              return {
+                kind: 'done',
+                outcomes: group.map(() => ({ kind: 'problem', message: SCAN_FAILED })),
+              };
+            }
+
+            const at = Date.now();
+            const bulk = await runBulkPurchase({
+              planet,
+              mode,
+              source: transactions,
+              // Only a purchase that resolved to live is handed the thing that can send.
+              sender: mode === 'live' ? sender : undefined,
+              privateKey: opened.value.privateKey,
+              log,
+              actionId: deriveActionId(
+                group.map((item) => item.shown.productId).join(','),
+                at,
+                Math.random(),
+              ),
+              now: () => at,
+              newId: () => deriveRecordId(at, Math.random()),
+              entries: group.map((item) => ({
+                shown: item.shown,
+                fresh:
+                  listings
+                    .get(scanKey(item.shown))
+                    ?.find((l) => l.productId === item.shown.productId) ?? null,
+              })),
+              balanceNcg,
+              gold,
+              limitNcg: purchases.getLimit(),
+              keyAddress: opened.value.address,
+              avatarAgent,
+              buyerAvatar: avatar.address,
+            });
+
+            const shared = await settle(bulk);
+            if (shared === 'piece-gone') return { kind: 'piece-gone' };
+            return {
+              kind: 'done',
+              outcomes: bulk.refusals.map((refusal): StepOutcome =>
+                refusal !== null
+                  ? { kind: 'refused', refusal }
+                  : (shared ?? { kind: 'problem', message: 'Nothing was bought.' }),
+              ),
+            };
+          };
+
+          const result = await runBulkBatch({
             items,
             balanceNcg: startNcg,
-            buy,
+            buyChunk,
             onStep: (index, item, outcome) => {
               rows[index] = outcome === null ? { kind: 'working' } : { kind: 'done', outcome };
               if (outcome?.kind === 'confirmed') told.current?.(item.shown.productId);

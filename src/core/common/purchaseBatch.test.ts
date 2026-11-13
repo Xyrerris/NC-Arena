@@ -11,7 +11,9 @@ import {
   checkBatch,
   continuesAfter,
   runBatch,
+  runBulkBatch,
   type BatchItem,
+  type ChunkAnswer,
   type StepOutcome,
 } from './purchaseBatch';
 
@@ -46,6 +48,138 @@ const confirmed = (n: number): StepOutcome => ({ kind: 'confirmed', transactionI
 const refused = (code: 'GONE' | 'SHORT' | 'WRONG_ACCOUNT'): StepOutcome => ({
   kind: 'refused',
   refusal: { code, message: code },
+});
+
+describe('runBulkBatch', () => {
+  const items = (count: number): BatchItem[] =>
+    Array.from({ length: count }, (_, i) => item(i + 1));
+  const allSigned = (group: readonly BatchItem[]): ChunkAnswer => ({
+    kind: 'done',
+    outcomes: group.map((_, i) => signed(i)),
+  });
+
+  it('buys the pieces in groups of ten, one group after another', async () => {
+    const groups: number[] = [];
+
+    const result = await runBulkBatch({
+      items: items(25),
+      balanceNcg: 1000,
+      buyChunk: (group) => {
+        groups.push(group.length);
+        return Promise.resolve(allSigned(group));
+      },
+    });
+
+    expect(groups).toEqual([10, 10, 5]);
+    expect(result.steps).toHaveLength(25);
+    expect(result.stoppedAt).toBeNull();
+    expect(result.spentNcg).toBe(250);
+  });
+
+  it('hands each group the balance the earlier groups left', async () => {
+    const balances: (number | null)[] = [];
+
+    await runBulkBatch({
+      items: items(15),
+      balanceNcg: 200,
+      chunkSize: 10,
+      buyChunk: (group, balance) => {
+        balances.push(balance);
+        return Promise.resolve(allSigned(group));
+      },
+    });
+
+    expect(balances).toEqual([200, 100]);
+  });
+
+  it('splits a group in half when the chain says a piece was gone, down to the piece', async () => {
+    const asked: string[][] = [];
+    // Piece 3 is the one sold meanwhile: any group holding it fails whole.
+    const result = await runBulkBatch({
+      items: items(4),
+      balanceNcg: 1000,
+      buyChunk: (group) => {
+        asked.push(group.map((g) => g.key));
+        return Promise.resolve(
+          group.some((g) => g.key === 'product-3')
+            ? ({ kind: 'piece-gone' } as const)
+            : ({
+                kind: 'done',
+                outcomes: group.map((g) => confirmed(Number(g.key.slice(-1)))),
+              } as const),
+        );
+      },
+    });
+
+    expect(asked).toEqual([
+      ['product-1', 'product-2', 'product-3', 'product-4'],
+      ['product-1', 'product-2'],
+      ['product-3', 'product-4'],
+      ['product-3'],
+      ['product-4'],
+    ]);
+    expect(result.steps.map((s) => [s.item.key, s.outcome.kind])).toEqual([
+      ['product-1', 'confirmed'],
+      ['product-2', 'confirmed'],
+      ['product-3', 'refused'],
+      ['product-4', 'confirmed'],
+    ]);
+    // A piece sold meanwhile moved no money: the batch is not stopped by it.
+    expect(result.stoppedAt).toBeNull();
+    expect(result.spentNcg).toBe(30);
+  });
+
+  it('ends the batch at a failure that is not a sold piece, and leaves later groups alone', async () => {
+    const groups: number[] = [];
+
+    const result = await runBulkBatch({
+      items: items(25),
+      balanceNcg: 1000,
+      buyChunk: (group) => {
+        groups.push(group.length);
+        return Promise.resolve({
+          kind: 'done',
+          outcomes: group.map(() => ({ kind: 'chain-failed', transactionId: 'tx', reason: 'no' })),
+        });
+      },
+    });
+
+    expect(groups).toEqual([10]);
+    expect(result.stoppedAt?.item.key).toBe('product-1');
+    expect(result.steps).toHaveLength(10);
+    expect(result.notAttempted).toHaveLength(15);
+  });
+
+  it('stops on a group that throws, as a problem on every piece of it', async () => {
+    const result = await runBulkBatch({
+      items: items(12),
+      balanceNcg: 1000,
+      buyChunk: () => Promise.reject(new Error('boom')),
+    });
+
+    expect(result.steps.every((s) => s.outcome.kind === 'problem')).toBe(true);
+    expect(result.notAttempted).toHaveLength(2);
+  });
+
+  it('tells when each piece begins and ends, with its place in the whole batch', async () => {
+    const told: [number, string | null][] = [];
+
+    await runBulkBatch({
+      items: items(3),
+      balanceNcg: 1000,
+      buyChunk: (group) => Promise.resolve(allSigned(group)),
+      onStep: (index, _item, outcome) => told.push([index, outcome?.kind ?? null]),
+    });
+
+    expect(told).toEqual([
+      [0, null],
+      [1, null],
+      [2, null],
+      [0, 'signed'],
+      [1, 'signed'],
+      [2, 'signed'],
+    ]);
+  });
 });
 
 describe('batchTotal', () => {

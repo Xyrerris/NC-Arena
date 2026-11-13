@@ -36,7 +36,12 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import type { Planet } from '../model';
 import { hexToBytes } from './bencodex';
 import type { MarketListing } from './marketSource';
-import { dryRunPurchase, type DryRun, type DryRunError } from './purchaseDryRun';
+import {
+  dryRunBulkPurchase,
+  dryRunPurchase,
+  type DryRun,
+  type DryRunError,
+} from './purchaseDryRun';
 import {
   appendRecord,
   updateRecord,
@@ -52,7 +57,8 @@ import {
 } from './purchasePolicy';
 import type { PurchaseOffer } from './transaction';
 import type { TransactionSender } from './transactionSender';
-import type { TransactionSource } from './transactionSource';
+import { type Result } from './result';
+import type { GoldCurrency, TransactionSource } from './transactionSource';
 
 export interface PurchaseRequest extends Omit<PolicyInput, 'log' | 'planet'> {
   readonly planet: Planet;
@@ -145,14 +151,36 @@ export async function runPurchase(request: PurchaseRequest): Promise<PurchaseOut
     offer,
     actionId: request.actionId,
   });
+  const carried = await carryOut(request, [record.id], result);
+  return { ...carried, recordId: record.id };
+}
 
+/** What became of a transaction once it was signed (or failed to be). */
+export type Carried =
+  | { readonly kind: 'dry-run'; readonly run: DryRun }
+  | { readonly kind: 'failed'; readonly error: DryRunError }
+  | { readonly kind: 'sent'; readonly transactionId: string; readonly uncertain: boolean }
+  | { readonly kind: 'not-accepted'; readonly message: string };
+
+/**
+ * Everything after the signature, for one transaction that covers one record or several: a dry run
+ * stops, a live one stages, and every record the transaction covers moves together. The id is known
+ * before sending, so even a send with no answer leaves records that say `sent`.
+ */
+async function carryOut(
+  request: Pick<PurchaseRequest, 'mode' | 'sender' | 'planet' | 'log'>,
+  recordIds: readonly string[],
+  result: Result<DryRun, DryRunError>,
+): Promise<Carried> {
   const change = (patch: Parameters<typeof updateRecord>[2]): void => {
-    request.log.write(updateRecord(request.log.read().records, record.id, patch));
+    for (const id of recordIds) {
+      request.log.write(updateRecord(request.log.read().records, id, patch));
+    }
   };
 
   if (!result.ok) {
     change({ status: 'failed', note: `${result.error.stage}: ${result.error.message}` });
-    return { kind: 'failed', error: result.error, recordId: record.id };
+    return { kind: 'failed', error: result.error };
   }
 
   if (request.mode === 'dry-run' || request.sender === undefined) {
@@ -161,7 +189,7 @@ export async function runPurchase(request: PurchaseRequest): Promise<PurchaseOut
       transactionId: result.value.transactionId,
       note: 'signed, not sent',
     });
-    return { kind: 'dry-run', run: result.value, recordId: record.id };
+    return { kind: 'dry-run', run: result.value };
   }
 
   // From here the transaction may exist on the chain whatever happens, and its id is already known.
@@ -171,7 +199,7 @@ export async function runPurchase(request: PurchaseRequest): Promise<PurchaseOut
   if (!staged.ok) {
     if (staged.error.kind === 'REFUSED') {
       change({ status: 'failed', transactionId, note: `not accepted: ${staged.error.message}` });
-      return { kind: 'not-accepted', message: staged.error.message, recordId: record.id };
+      return { kind: 'not-accepted', message: staged.error.message };
     }
     // No clear answer: it may have been heard, so it is recorded as sent.
     change({
@@ -179,7 +207,7 @@ export async function runPurchase(request: PurchaseRequest): Promise<PurchaseOut
       transactionId,
       note: `no answer to the send (${staged.error.message}): waiting for the result`,
     });
-    return { kind: 'sent', recordId: record.id, transactionId, uncertain: true };
+    return { kind: 'sent', transactionId, uncertain: true };
   }
 
   change({
@@ -187,12 +215,151 @@ export async function runPurchase(request: PurchaseRequest): Promise<PurchaseOut
     transactionId,
     note: staged.value === transactionId ? 'sent' : `sent; the node named it ${staged.value}`,
   });
-  return { kind: 'sent', recordId: record.id, transactionId, uncertain: false };
+  return { kind: 'sent', transactionId, uncertain: false };
+}
+
+export interface BulkEntry {
+  /** The offer as the person saw it. */
+  readonly shown: MarketListing;
+  /** The same offer read again just now, or null when the market no longer has it. */
+  readonly fresh: MarketListing | null;
+}
+
+export interface BulkPurchaseRequest extends Omit<
+  PolicyInput,
+  'log' | 'planet' | 'shown' | 'fresh' | 'balanceNcg'
+> {
+  readonly planet: Planet;
+  readonly mode: PurchaseMode;
+  readonly source: TransactionSource;
+  readonly sender?: TransactionSender;
+  readonly privateKey: Uint8Array;
+  readonly log: PurchaseLogStore;
+  readonly actionId: Uint8Array;
+  readonly now: () => number;
+  readonly newId: () => string;
+  readonly entries: readonly BulkEntry[];
+  /** The account's NCG before the first entry, or null when unknown. */
+  readonly balanceNcg: number | null;
+  /** The gold currency, when the caller has already read it. */
+  readonly gold?: GoldCurrency;
+}
+
+export interface BulkOutcome {
+  /** One per entry, in order: why it was left out, or null when it went into the transaction. */
+  readonly refusals: readonly (Refusal | null)[];
+  /** The entries that went in (indexes into `entries`), aligned with `recordIds`. */
+  readonly accepted: readonly number[];
+  readonly recordIds: readonly string[];
+  /** `nothing`: every entry was refused, nothing was written, signed or sent. */
+  readonly carried: Carried | { readonly kind: 'nothing' } | { readonly kind: 'live-unavailable' };
+}
+
+const centsOf = (ncg: number): number => Math.round(ncg * 100);
+
+/**
+ * Several offers in **one** transaction: each entry passes `checkPurchase` alone (with the balance
+ * the entries before it leave), the ones that pass get a record each — written first — and a single
+ * `buy_product3` carries them all. The chain buys all of them or none, so a refusal here only ever
+ * takes an entry *out*; if the chain refuses the whole, every record says so together.
+ */
+export async function runBulkPurchase(request: BulkPurchaseRequest): Promise<BulkOutcome> {
+  const none = (refusal: Refusal | null): (Refusal | null)[] => request.entries.map(() => refusal);
+
+  if (request.mode === 'live' && request.sender === undefined) {
+    return {
+      refusals: none(null),
+      accepted: [],
+      recordIds: [],
+      carried: { kind: 'live-unavailable' },
+    };
+  }
+  const stored = request.log.read();
+  if (stored.unreadable) {
+    const refusal: Refusal = {
+      code: 'LOG_UNREADABLE',
+      message: 'The record of purchases could not be read, so nothing is bought over it.',
+    };
+    return { refusals: none(refusal), accepted: [], recordIds: [], carried: { kind: 'nothing' } };
+  }
+
+  const refusals: (Refusal | null)[] = [];
+  const accepted: number[] = [];
+  const offers: PurchaseOffer[] = [];
+  const taken = new Set<string>();
+  let balance = request.balanceNcg === null ? null : centsOf(request.balanceNcg);
+  for (const [index, entry] of request.entries.entries()) {
+    const refusal: Refusal | null =
+      entry.fresh !== null && taken.has(entry.fresh.productId)
+        ? { code: 'ALREADY', message: 'This offer is in the transaction twice.' }
+        : checkPurchase({
+            planet: request.planet,
+            shown: entry.shown,
+            fresh: entry.fresh,
+            limitNcg: request.limitNcg,
+            balanceNcg: balance === null ? null : balance / 100,
+            keyAddress: request.keyAddress,
+            avatarAgent: request.avatarAgent,
+            buyerAvatar: request.buyerAvatar,
+            log: stored.records,
+          });
+    refusals.push(refusal);
+    if (refusal !== null) continue;
+    // `checkPurchase` has refused a missing offer and anything that is not single equipment.
+    const fresh = entry.fresh as MarketListing;
+    accepted.push(index);
+    offers.push(toPurchaseOffer(fresh) as PurchaseOffer);
+    taken.add(fresh.productId);
+    if (balance !== null) balance -= centsOf(fresh.price);
+  }
+  if (offers.length === 0) {
+    return { refusals, accepted: [], recordIds: [], carried: { kind: 'nothing' } };
+  }
+
+  const at = request.now();
+  let records = stored.records;
+  const recordIds: string[] = [];
+  for (const [position, offer] of offers.entries()) {
+    const entry = request.entries[accepted[position] as number] as BulkEntry;
+    const record: PurchaseRecord = {
+      id: request.newId(),
+      productId: offer.productId,
+      planet: request.planet,
+      itemId: entry.shown.itemId,
+      price: offer.price,
+      mode: request.mode,
+      status: 'prepared',
+      at,
+      transactionId: null,
+      note: offers.length > 1 ? `one of ${offers.length} in one transaction` : null,
+    };
+    recordIds.push(record.id);
+    records = appendRecord(records, record);
+  }
+  // Written first, all of them, before the key is touched.
+  request.log.write(records);
+
+  const result = await dryRunBulkPurchase({
+    planet: request.planet,
+    source: request.source,
+    privateKey: request.privateKey,
+    buyerAvatar: request.buyerAvatar,
+    offers,
+    actionId: request.actionId,
+    gold: request.gold,
+  });
+  const carried = await carryOut(request, recordIds, result);
+  return { refusals, accepted, recordIds, carried };
 }
 
 export type AwaitOutcome =
   | { readonly kind: 'confirmed'; readonly blockIndex: number | null }
-  | { readonly kind: 'failed'; readonly reason: string }
+  | {
+      readonly kind: 'failed';
+      readonly reason: string;
+      /** The chain said a product was already sold or withdrawn: the one reason to split a bulk. */
+      readonly pieceGone: boolean;
+    }
   /** Neither a success nor a failure the chain reported: the offer stays blocked until someone looks. */
   | { readonly kind: 'unknown'; readonly message: string };
 
@@ -201,6 +368,8 @@ export interface AwaitRequest {
   readonly sender: TransactionSender;
   readonly log: PurchaseLogStore;
   readonly recordId: string;
+  /** The other records the same transaction covers (a bulk): they settle together. */
+  readonly alsoRecordIds?: readonly string[];
   readonly transactionId: string;
   /** Waits between two looks. Injected so a test does not wait. */
   readonly sleep: (ms: number) => Promise<void>;
@@ -236,7 +405,9 @@ export async function awaitPurchase(request: AwaitRequest): Promise<AwaitOutcome
   const grace = request.invalidGraceMs ?? 60_000;
 
   const settle = (patch: Parameters<typeof updateRecord>[2]): void => {
-    request.log.write(updateRecord(request.log.read().records, request.recordId, patch));
+    for (const id of [request.recordId, ...(request.alsoRecordIds ?? [])]) {
+      request.log.write(updateRecord(request.log.read().records, id, patch));
+    }
   };
 
   for (let elapsed = 0; elapsed <= timeout; elapsed += interval) {
@@ -254,7 +425,11 @@ export async function awaitPurchase(request: AwaitRequest): Promise<AwaitOutcome
       case 'FAILURE': {
         const reason = describeFailure(look.value.exceptions);
         settle({ status: 'failed', note: `the chain refused it: ${reason}` });
-        return { kind: 'failed', reason };
+        return {
+          kind: 'failed',
+          reason,
+          pieceGone: look.value.exceptions.some((name) => name.includes('ProductNotFound')),
+        };
       }
       case 'INVALID':
         if (elapsed >= grace) {

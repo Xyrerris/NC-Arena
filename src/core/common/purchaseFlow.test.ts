@@ -20,7 +20,10 @@ import {
   deriveActionId,
   deriveRecordId,
   describeFailure,
+  runBulkPurchase,
   runPurchase,
+  type BulkEntry,
+  type BulkPurchaseRequest,
   type PurchaseRequest,
 } from './purchaseFlow';
 import { parsePurchaseLog, purchaseLogOver, type PurchaseRecord } from './purchaseLog';
@@ -202,6 +205,132 @@ const status = (
 ): Result<TransactionResult, TransactionSourceError> =>
   ok({ status: value, blockIndex, exceptions });
 
+describe('runBulkPurchase', () => {
+  const second = listing({
+    productId: '00112233-4455-6677-8899-aabbccddee02',
+    tradableId: 'ffeeddcc-bbaa-9988-7766-554433221102',
+  });
+  const entry = (shown: MarketListing, fresh: MarketListing | null = shown): BulkEntry => ({
+    shown,
+    fresh,
+  });
+  const bulk = (
+    s: ReturnType<typeof setup>,
+    entries: BulkEntry[],
+    over: Partial<BulkPurchaseRequest> = {},
+  ): BulkPurchaseRequest => {
+    const {
+      shown: _shown,
+      fresh: _fresh,
+      balanceNcg: _balance,
+      newId: _newId,
+      ...base
+    } = s.request();
+    let n = 0;
+    return { ...base, newId: () => `record-${(n += 1)}`, entries, balanceNcg: 5000, ...over };
+  };
+
+  it('puts every accepted piece in one transaction: one signature, a record each, written first', async () => {
+    const s = setup();
+
+    const outcome = await runBulkPurchase(bulk(s, [entry(listing()), entry(second)]));
+
+    expect(outcome.refusals).toEqual([null, null]);
+    expect(outcome.accepted).toEqual([0, 1]);
+    expect(outcome.carried.kind).toBe('dry-run');
+    expect(s.events).toEqual([
+      'write:prepared,prepared',
+      'goldCurrency',
+      'nextNonce',
+      'unsignedTransaction',
+      'attachSignature',
+      'write:dry-run,prepared',
+      'write:dry-run,dry-run',
+    ]);
+    expect(s.records().map((r) => r.productId)).toEqual([listing().productId, second.productId]);
+  });
+
+  it('asks the node for the currency only when the caller has not got it', async () => {
+    const s = setup();
+    const gold: GoldCurrency = {
+      currency: dict([
+        ['ticker', 'NCG'],
+        ['decimalPlaces', Uint8Array.of(2)],
+      ]),
+      decimalPlaces: 2,
+    };
+
+    await runBulkPurchase(bulk(s, [entry(listing())], { gold }));
+
+    expect(s.events).not.toContain('goldCurrency');
+  });
+
+  it('leaves out a piece that cannot be bought and buys the others', async () => {
+    const s = setup();
+
+    const outcome = await runBulkPurchase(bulk(s, [entry(listing(), null), entry(second)]));
+
+    expect(outcome.refusals[0]?.code).toBe('GONE');
+    expect(outcome.refusals[1]).toBeNull();
+    expect(outcome.accepted).toEqual([1]);
+    expect(s.records().map((r) => r.productId)).toEqual([second.productId]);
+  });
+
+  it('hands each piece what the ones before it leave of the balance', async () => {
+    const s = setup();
+
+    const outcome = await runBulkPurchase(
+      bulk(s, [entry(listing()), entry(second)], { balanceNcg: 800 }),
+    );
+
+    expect(outcome.refusals.map((r) => r?.code ?? null)).toEqual([null, 'SHORT']);
+    expect(outcome.accepted).toEqual([0]);
+  });
+
+  it('writes and signs nothing when every piece is refused', async () => {
+    const s = setup();
+
+    const outcome = await runBulkPurchase(bulk(s, [entry(listing(), null), entry(second, null)]));
+
+    expect(outcome.carried.kind).toBe('nothing');
+    expect(s.events).toEqual([]);
+  });
+
+  it('does nothing at all for a live request that has no sender', async () => {
+    const s = setup();
+
+    const outcome = await runBulkPurchase(bulk(s, [entry(listing())], { mode: 'live' }));
+
+    expect(outcome.carried.kind).toBe('live-unavailable');
+    expect(s.events).toEqual([]);
+  });
+
+  it('stages once, and a verdict settles every record the transaction covers', async () => {
+    const s = setup();
+    const sender = fakeSender(s.events, { results: [status('SUCCESS', [], 9)] });
+
+    const outcome = await runBulkPurchase(
+      bulk(s, [entry(listing()), entry(second)], { mode: 'live', sender }),
+    );
+
+    expect(sender.stagedBytes).toHaveLength(1);
+    expect(outcome.carried).toMatchObject({ kind: 'sent', uncertain: false });
+    expect(s.records().map((r) => r.status)).toEqual(['sent', 'sent']);
+
+    const settled = await awaitPurchase({
+      planet: 'heimdall',
+      sender,
+      log: s.request().log,
+      recordId: outcome.recordIds[0] as string,
+      alsoRecordIds: outcome.recordIds.slice(1),
+      transactionId: (outcome.carried as { transactionId: string }).transactionId,
+      sleep: () => Promise.resolve(),
+    });
+    expect(settled.kind).toBe('confirmed');
+    expect(s.records().map((r) => r.status)).toEqual(['confirmed', 'confirmed']);
+  });
+});
+
 describe('runPurchase, live, with a sender', () => {
   it('stages what was signed after the record is written, and records it as sent', async () => {
     const { events, request, records } = setup();
@@ -363,7 +492,11 @@ describe('awaitPurchase', () => {
       status('FAILURE', ['Nekoyume.Exceptions.ProductNotFoundException']),
     ]);
 
-    expect(outcome).toEqual({ kind: 'failed', reason: 'the piece was already sold or withdrawn.' });
+    expect(outcome).toEqual({
+      kind: 'failed',
+      reason: 'the piece was already sold or withdrawn.',
+      pieceGone: true,
+    });
     expect(record).toMatchObject({ status: 'failed' });
     expect(record?.note).toContain('already sold or withdrawn');
   });

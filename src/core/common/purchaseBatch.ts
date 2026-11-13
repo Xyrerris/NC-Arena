@@ -202,3 +202,115 @@ export async function runBatch(request: BatchRequest): Promise<BatchResult> {
   }
   return { steps, stoppedAt: null, notAttempted: [], spentNcg: spent / 100 };
 }
+
+/** How many pieces go into one transaction. A failure of the whole costs at most this many to retry. */
+export const BULK_CHUNK_SIZE = 10;
+
+/** What buying a group of pieces in one transaction came to. */
+export type ChunkAnswer =
+  /** One outcome per piece, in the order given. The group was bought, or refused piece by piece. */
+  | { readonly kind: 'done'; readonly outcomes: readonly StepOutcome[] }
+  /**
+   * The chain refused the whole transaction because a piece in it was already sold or withdrawn:
+   * nothing was bought, and the group can be split to find the piece.
+   */
+  | { readonly kind: 'piece-gone' };
+
+export interface BulkBatchRequest {
+  readonly items: readonly BatchItem[];
+  /** The account's NCG before the first piece, or null when it is not known. */
+  readonly balanceNcg: number | null;
+  readonly chunkSize?: number;
+  /** Buys a group in one transaction, given what the account has left. Must settle it first. */
+  readonly buyChunk: (
+    items: readonly BatchItem[],
+    balanceNcg: number | null,
+  ) => Promise<ChunkAnswer>;
+  /** Told when a piece begins (`outcome` null) and when it ends. */
+  readonly onStep?: (index: number, item: BatchItem, outcome: StepOutcome | null) => void;
+}
+
+const SOLD_MEANWHILE: StepOutcome = {
+  kind: 'refused',
+  refusal: {
+    code: 'GONE',
+    message: 'It was sold or withdrawn just as it was being bought. No NCG was spent on it.',
+  },
+};
+
+/**
+ * The batch in groups: each group is one transaction, and the groups go one after another, each
+ * settled before the next. The stopping rule is `runBatch`'s, per piece.
+ *
+ * A transaction is all or nothing, so one piece sold in the meantime fails the whole group. That
+ * one failure — and only that one — is answered by **splitting the group in half** and buying each
+ * half again (the caller reads the offers again each time), down to a single piece, which is then
+ * skipped as sold. A failure for any other reason is not understood and ends the batch.
+ */
+export async function runBulkBatch(request: BulkBatchRequest): Promise<BatchResult> {
+  const size = Math.max(1, request.chunkSize ?? BULK_CHUNK_SIZE);
+  const indexOf = new Map(request.items.map((item, index) => [item.key, index] as const));
+  const steps: BatchStep[] = [];
+  // An object, not a `let`: the closures below change it, and a `let` would be read as still null.
+  const state: { stoppedAt: BatchStep | null; balance: number | null; spent: number } = {
+    stoppedAt: null,
+    balance: request.balanceNcg === null ? null : cents(request.balanceNcg),
+    spent: 0,
+  };
+
+  const note = (item: BatchItem, outcome: StepOutcome): void => {
+    const step: BatchStep = { item, outcome };
+    steps.push(step);
+    request.onStep?.(indexOf.get(item.key) ?? steps.length - 1, item, outcome);
+    if (spends(outcome)) {
+      const price = cents(item.shown.price);
+      state.spent += price;
+      if (state.balance !== null) state.balance -= price;
+    }
+    if (state.stoppedAt === null && !continuesAfter(outcome)) state.stoppedAt = step;
+  };
+
+  const attempt = async (group: readonly BatchItem[]): Promise<void> => {
+    for (const item of group) request.onStep?.(indexOf.get(item.key) ?? 0, item, null);
+
+    let answer: ChunkAnswer;
+    try {
+      answer = await request.buyChunk(group, state.balance === null ? null : state.balance / 100);
+    } catch (cause) {
+      // Not understood, and the transaction may have been sent: the batch ends.
+      const message = cause instanceof Error ? cause.message : 'The purchase stopped unexpectedly.';
+      answer = { kind: 'done', outcomes: group.map(() => ({ kind: 'problem', message })) };
+    }
+
+    if (answer.kind === 'piece-gone') {
+      if (group.length > 1) {
+        const middle = Math.ceil(group.length / 2);
+        await attempt(group.slice(0, middle));
+        if (state.stoppedAt === null) await attempt(group.slice(middle));
+        return;
+      }
+      answer = { kind: 'done', outcomes: [SOLD_MEANWHILE] };
+    }
+
+    for (const [position, item] of group.entries()) {
+      note(
+        item,
+        answer.outcomes[position] ?? {
+          kind: 'problem',
+          message: 'The purchase gave no answer for this piece.',
+        },
+      );
+    }
+  };
+
+  for (let start = 0; start < request.items.length && state.stoppedAt === null; start += size) {
+    await attempt(request.items.slice(start, start + size));
+  }
+
+  return {
+    steps,
+    stoppedAt: state.stoppedAt,
+    notAttempted: request.items.slice(steps.length),
+    spentNcg: state.spent / 100,
+  };
+}

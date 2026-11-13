@@ -122,12 +122,20 @@ export interface BuyProductArgs {
   readonly actionId: Uint8Array;
 }
 
-export function buildBuyProduct(args: BuyProductArgs): Result<BencodexValue, TransactionError> {
-  const { offer } = args;
-  const buyer = addressBytes(args.buyerAvatar);
+export interface BuyProductsArgs extends Omit<BuyProductArgs, 'offer'> {
+  /** At least one. The action carries them all in `p`, and the chain buys all of them or none. */
+  readonly offers: readonly PurchaseOffer[];
+}
+
+/** One entry of the action's `p` list, or why the offer cannot be written. */
+function productEntry(
+  offer: PurchaseOffer,
+  currency: BencodexValue,
+  decimalPlaces: number,
+): Result<BencodexValue, TransactionError> {
   const sellerAgent = addressBytes(offer.sellerAgentAddress);
   const sellerAvatar = addressBytes(offer.sellerAvatarAddress);
-  if (buyer === null || sellerAgent === null || sellerAvatar === null) {
+  if (sellerAgent === null || sellerAvatar === null) {
     return fail('BAD_ADDRESS', 'An address in the purchase is not 40 hexadecimal digits.');
   }
   const productId = guidBytes(offer.productId);
@@ -141,25 +149,40 @@ export function buildBuyProduct(args: BuyProductArgs): Result<BencodexValue, Tra
       `"${String(offer.equipmentType)}" is not equipment: only equipment is covered.`,
     );
   }
-  if (args.actionId.length !== 16) return fail('BAD_OFFER', 'An action id is 16 bytes.');
-  const amount = rawAmount(offer.price, args.decimalPlaces);
+  const amount = rawAmount(offer.price, decimalPlaces);
   if (amount === null) {
-    return fail(
-      'BAD_OFFER',
-      `${offer.price} is not an amount with ${args.decimalPlaces} decimals.`,
-    );
+    return fail('BAD_OFFER', `${offer.price} is not an amount with ${decimalPlaces} decimals.`);
   }
-
-  const product: BencodexValue = [
+  return ok([
     productId,
-    [args.currency, amount],
+    [currency, amount],
     sellerAgent,
     sellerAvatar,
     'NonFungible',
     offer.legacy,
     offer.equipmentType,
     tradableId,
-  ];
+  ]);
+}
+
+/** One `buy_product3` action for several offers: one signature, one transaction, one wait. */
+export function buildBuyProducts(args: BuyProductsArgs): Result<BencodexValue, TransactionError> {
+  const buyer = addressBytes(args.buyerAvatar);
+  if (buyer === null) {
+    return fail('BAD_ADDRESS', 'An address in the purchase is not 40 hexadecimal digits.');
+  }
+  if (args.offers.length === 0) return fail('BAD_OFFER', 'There is nothing to buy.');
+  if (new Set(args.offers.map((offer) => offer.productId)).size !== args.offers.length) {
+    return fail('BAD_OFFER', 'The same product is in the purchase twice.');
+  }
+  if (args.actionId.length !== 16) return fail('BAD_OFFER', 'An action id is 16 bytes.');
+
+  const products: BencodexValue[] = [];
+  for (const offer of args.offers) {
+    const entry = productEntry(offer, args.currency, args.decimalPlaces);
+    if (!entry.ok) return entry;
+    products.push(entry.value);
+  }
   return ok(
     dict([
       ['type_id', BUY_PRODUCT_TYPE_ID],
@@ -168,11 +191,16 @@ export function buildBuyProduct(args: BuyProductArgs): Result<BencodexValue, Tra
         dict([
           ['a', buyer],
           ['id', args.actionId],
-          ['p', [product]],
+          ['p', products],
         ]),
       ],
     ]),
   );
+}
+
+export function buildBuyProduct(args: BuyProductArgs): Result<BencodexValue, TransactionError> {
+  const { offer, ...rest } = args;
+  return buildBuyProducts({ ...rest, offers: [offer] });
 }
 
 export const plainValueHex = (plain: BencodexValue): string => bytesToHex(encodeBencodex(plain));

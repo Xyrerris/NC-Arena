@@ -209,7 +209,9 @@ describe('BatchSheet, dry run', () => {
       [A.productId, 'dry-run', 'dry-run'],
       [B.productId, 'dry-run', 'dry-run'],
     ]);
-    expect(node.calls.filter((c) => c === 'attachSignature')).toHaveLength(2);
+    // Two pieces, one transaction: one signature, and the currency read once.
+    expect(node.calls.filter((c) => c === 'attachSignature')).toHaveLength(1);
+    expect(node.calls.filter((c) => c === 'goldCurrency')).toHaveLength(1);
     // Once run, nothing offers to run it again.
     expect(screen.queryByTestId('batch-try-button')).toBeNull();
   });

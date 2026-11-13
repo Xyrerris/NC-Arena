@@ -1,5 +1,5 @@
 /**
- * The words of the cart: the sheet that buys a selection of listings, one after the other. They live
+ * The words of the cart: the sheet that buys a selection of listings, in groups. They live
  * with the sheet and not with a feature because more than one feature buys through it (the
  * collection's offers and the upgrade's materials), and a sentence written twice would be two
  * sentences to keep in step.
@@ -13,8 +13,8 @@ export const purchaseStrings = {
   batchConfirm: (total: string) => `CONFIRM AND PAY ${total} NCG`,
   batchCancel: 'CANCEL',
   batchWarning: (count: number, total: string) =>
-    `You are about to pay ${total} NCG for ${count} ${count === 1 ? 'piece' : 'pieces'}, one after ` +
-    'the other. Each payment cannot be undone once it is sent. If one goes wrong the rest are not bought.',
+    `You are about to pay ${total} NCG for ${count} ${count === 1 ? 'piece' : 'pieces'}, in groups of ` +
+    'up to 10. Each payment cannot be undone once it is sent. If something goes wrong the rest are not bought.',
   batchTitle: 'Buy the selection',
   batchClose: 'CLOSE',
   batchCloseA11y: 'Close the batch',
@@ -29,7 +29,8 @@ export const purchaseStrings = {
     'equipment can be bought from here so far.',
   batchNothing: 'Nothing in the selection can be bought from here yet.',
   batchOrder:
-    'Bought one at a time, in this order. Each is checked again and settled before the next.',
+    'Bought in groups of up to 10, in this order. Each piece is checked again, and each group is one ' +
+    'payment that is settled before the next. If a piece was sold meanwhile, the group is split to find it.',
   batchRowWaiting: 'waiting',
   batchRowWorking: 'checking, signing, waiting for the chain…',
   batchRowNotAttempted: 'not attempted',

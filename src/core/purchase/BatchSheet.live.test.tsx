@@ -91,7 +91,8 @@ describe('BatchSheet, live', () => {
   let bought: string[];
   let order: string[];
   let stageAnswer: 'accept' | 'refuse-first';
-  let results: ('SUCCESS' | 'FAILURE')[];
+  /** One verdict per transaction staged, in order; `GONE` is a failure for a piece sold meanwhile. */
+  let results: ('SUCCESS' | 'FAILURE' | 'GONE')[];
   let keystoreText: string | null;
   let purchaseLog: string | null;
   let held: number;
@@ -135,10 +136,14 @@ describe('BatchSheet, live', () => {
       order.push('look');
       return Promise.resolve(
         ok({
-          status: verdict,
+          status: verdict === 'SUCCESS' ? ('SUCCESS' as const) : ('FAILURE' as const),
           blockIndex: 9,
           exceptions:
-            verdict === 'FAILURE' ? ['Nekoyume.Exceptions.InsufficientBalanceException'] : [],
+            verdict === 'FAILURE'
+              ? ['Nekoyume.Exceptions.InsufficientBalanceException']
+              : verdict === 'GONE'
+                ? ['Nekoyume.Exceptions.ProductNotFoundException']
+                : [],
         }),
       );
     },
@@ -260,26 +265,27 @@ describe('BatchSheet, live', () => {
     expect(staged).toEqual([]);
   });
 
-  it('pays every piece, one at a time, each settled before the next, and records them', async () => {
+  it('pays the pieces in one transaction, settled once, and records each of them', async () => {
     await confirmWith(PASSPHRASE);
     await waitFor(() => expect(screen.getByTestId('batch-result')).toBeTruthy());
 
     expect(text('batch-result')).toBe(words.batchAllBought(2, '7'));
-    // Staged, then looked at until decided, and only then the next one.
-    expect(order).toEqual(['stage', 'look', 'stage', 'look']);
+    // Two pieces, one transaction: staged once, then looked at until the chain decided.
+    expect(order).toEqual(['stage', 'look']);
+    expect(node.calls.filter((c) => c === 'attachSignature')).toHaveLength(1);
     const records = parsePurchaseLog(purchaseLog).records;
     expect(records.map((r) => [r.productId, r.mode, r.status, r.price])).toEqual([
       [A.productId, 'live', 'confirmed', 3],
       [B.productId, 'live', 'confirmed', 4],
     ]);
     expect(records[0]?.transactionId).toBe(transactionId(staged[0] as Uint8Array));
-    expect(records[1]?.transactionId).toBe(transactionId(staged[1] as Uint8Array));
+    expect(records[1]?.transactionId).toBe(transactionId(staged[0] as Uint8Array));
     expect(screen.queryByTestId('batch-buy-button')).toBeNull();
     // Each listing is reported the moment the chain confirms it, so the lists can drop it.
     expect(bought).toEqual([A.productId, B.productId]);
   });
 
-  it('stops when the chain refuses a piece, and leaves the rest untouched', async () => {
+  it('stops when the chain refuses the transaction, and every piece in it is free again', async () => {
     results = ['FAILURE'];
     await confirmWith(PASSPHRASE);
     await waitFor(() => expect(screen.getByTestId('batch-result')).toBeTruthy());
@@ -287,22 +293,41 @@ describe('BatchSheet, live', () => {
 
     expect(staged).toHaveLength(1);
     expect(String(text(`batch-row-${A.productId}`))).toContain('The chain refused it');
-    expect(text(`batch-row-${B.productId}`)).toBe(words.batchRowNotAttempted);
-    expect(String(text('batch-result'))).toContain(words.batchStopped('Long Sword +0', 1));
-    // The refused piece is free again; the one never reached has no record at all.
+    expect(String(text(`batch-row-${B.productId}`))).toContain('The chain refused it');
+    expect(String(text('batch-result'))).toContain(words.batchStopped('Long Sword +0', 0));
     expect(parsePurchaseLog(purchaseLog).records.map((r) => [r.productId, r.status])).toEqual([
       [A.productId, 'failed'],
+      [B.productId, 'failed'],
     ]);
   });
 
-  it('stops when the node does not accept a piece, so nothing after it is sent', async () => {
+  it('stops when the node does not accept the transaction, and sends nothing else', async () => {
     stageAnswer = 'refuse-first';
     await confirmWith(PASSPHRASE);
     await waitFor(() => expect(screen.getByTestId('batch-result')).toBeTruthy());
 
     expect(staged).toHaveLength(1);
     expect(String(text(`batch-row-${A.productId}`))).toContain('did not accept it');
-    expect(text(`batch-row-${B.productId}`)).toBe(words.batchRowNotAttempted);
+    expect(String(text(`batch-row-${B.productId}`))).toContain('did not accept it');
+  });
+
+  it('splits the group when a piece was sold meanwhile, buys the rest and skips that piece', async () => {
+    // The pair fails because one is gone; then A alone goes through and B alone is the one gone.
+    results = ['GONE', 'SUCCESS', 'GONE'];
+    await confirmWith(PASSPHRASE);
+    await waitFor(() => expect(screen.getByTestId('batch-result')).toBeTruthy());
+
+    expect(staged).toHaveLength(3);
+    expect(bought).toEqual([A.productId]);
+    expect(String(text(`batch-row-${B.productId}`))).toContain('sold or withdrawn');
+    expect(text('batch-result')).toBe(words.batchAllBought(1, '3'));
+    const statuses = parsePurchaseLog(purchaseLog).records.map((r) => [r.productId, r.status]);
+    expect(statuses).toEqual([
+      [A.productId, 'failed'],
+      [B.productId, 'failed'],
+      [A.productId, 'confirmed'],
+      [B.productId, 'failed'],
+    ]);
   });
 
   it('refuses before touching the node when the account cannot cover the total', async () => {
