@@ -233,6 +233,13 @@ export const cheapestLots = (
 /** A missing piece together with the listings read for it. */
 export interface OfferInput extends MissingPiece {
   readonly listings: readonly MarketListing[];
+  /**
+   * Set when the piece is already covered by pieces the avatar holds and can raise (`HeldToRaise`):
+   * the market is read only to see whether something is cheaper than raising them. An offer is then
+   * kept only if its total is under the NCG those pieces would cost to raise, and a piece with no
+   * such offer is not "without an offer" — it has its held pieces.
+   */
+  readonly raisedFrom?: readonly { readonly fromLevel: number; readonly count: number }[];
 }
 
 export interface Offer {
@@ -255,6 +262,11 @@ export interface Offer {
   readonly total: number;
   /** `total` against the standard price of the level (ADR-0046); null when there is none. */
   readonly verdict: Verdict | null;
+  /**
+   * For a piece the avatar could raise from what it holds: the NCG this offer saves against that
+   * raise (the held pieces' upgrade cost less `total`). Null for a piece that is simply missing.
+   */
+  readonly saves: number | null;
 }
 
 export interface BestOffers {
@@ -333,7 +345,7 @@ const offerFor = (
   own: string | undefined,
   costs: EnhancementCosts | undefined,
 ): Offer | null => {
-  const { listings, ...piece } = input;
+  const { listings, raisedFrom, ...piece } = input;
   const others = listings.filter(
     (l) => !claimed.has(l.productId) && (own === undefined || !isOwn(l, own)),
   );
@@ -363,6 +375,14 @@ const offerFor = (
   }
   const from = picks.find((pick) => raised.has(pick.productId))?.level ?? null;
 
+  let saves: number | null = null;
+  if (raisedFrom !== undefined) {
+    const held = heldRaiseNcg(piece.requirement, raisedFrom, listings, costs);
+    // Only prices are compared (materials are not counted); equal is not cheaper.
+    if (held === null || toHundredths(total) >= toHundredths(held)) return null;
+    saves = (toHundredths(held) - toHundredths(total)) / 100;
+  }
+
   return {
     key: piece.key,
     requirement: piece.requirement,
@@ -376,7 +396,29 @@ const offerFor = (
     fromLevel: from,
     total,
     verdict: standard === null ? null : verdictFor(total, standard),
+    saves,
   };
+};
+
+/**
+ * What raising the held pieces to the requirement's level costs in NCG, or null when it cannot be
+ * told. The slot and grade are not on a held piece, but every listing of the same item has them.
+ */
+const heldRaiseNcg = (
+  requirement: CollectionRequirement,
+  raisedFrom: readonly { readonly fromLevel: number; readonly count: number }[],
+  listings: readonly MarketListing[],
+  costs: EnhancementCosts | undefined,
+): number | null => {
+  const sample = listings.find((l) => l.itemId === requirement.itemId);
+  if (costs === undefined || sample === undefined) return null;
+  let cents = 0;
+  for (const { fromLevel, count } of raisedFrom) {
+    const one = upgradeNcg(costs, sample.itemSubType, sample.grade, fromLevel, requirement.level);
+    if (one === null) return null;
+    cents += toHundredths(one) * count;
+  }
+  return cents / 100;
 };
 
 /**
@@ -420,8 +462,9 @@ export const bestOffers = (
     }
   }
   for (const { input, offer } of pending.values()) {
-    if (offer === null) {
-      const { listings: _listings, ...piece } = input;
+    // A piece covered by held pieces that nothing beats is not missing: it has no offer to wait for.
+    if (offer === null && input.raisedFrom === undefined) {
+      const { listings: _listings, raisedFrom: _raisedFrom, ...piece } = input;
       withoutOffer.push(piece);
     }
   }

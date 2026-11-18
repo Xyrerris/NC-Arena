@@ -174,9 +174,11 @@ export const collectionStrings = {
   offersPriceRaised: (price: string, ncg: string, to: number) =>
     ncg === '0' ? `${price} NCG (free raise to +${to})` : `${price} NCG (+${ncg} NCG to +${to})`,
   offersBoughtAs: (from: number) => `bought as +${from}`,
+  offersSaves: (ncg: string) => `${ncg} NCG less than raising the piece you hold`,
   offersToRaise: (count: number) =>
     `${count} ${count === 1 ? 'piece you hold is' : 'pieces you hold are'} under a ` +
-    'target and can be raised to it, so no offer is looked for. Materials for the raise are not counted.',
+    'target and can be raised to it. A listing is shown only if it costs less than that raise; ' +
+    'materials for the raise are not counted.',
   offersRaiseNote: (to: number, ncg: string) =>
     ncg === '0'
       ? `Bought at this level; raising it to +${to} later costs nothing.`

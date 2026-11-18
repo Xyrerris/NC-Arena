@@ -319,6 +319,42 @@ describe('bestOffers with upgrade costs', () => {
     expect(result.withoutOffer).toEqual([]);
   });
 
+  describe('against a held piece that would be raised', () => {
+    // Raising from +0 to +9 costs 640, from +7 costs 480 (see `costs` above).
+    const covered = (from: number, listings: MarketListing[]) =>
+      bestOffers([{ ...piece(wanted), raisedFrom: [{ fromLevel: from, count: 1 }], listings }], {
+        costs,
+      });
+
+    it('shows a listing that costs less than raising the held piece, with the saving', () => {
+      const result = covered(0, [legend({ level: 9, price: 180 })]);
+      expect(result.offers[0]).toMatchObject({ total: 180, saves: 460 });
+    });
+
+    it('prices a raised listing at its price plus its own upgrade: a +7 at 40 is 40 + 480', () => {
+      const result = covered(0, [legend({ level: 7, price: 40 })]);
+      expect(result.offers[0]).toMatchObject({ total: 520, saves: 120, fromLevel: 7 });
+    });
+
+    it('shows nothing when no listing is cheaper than the raise, and reports no piece as lost', () => {
+      // Equal to the raise (480) is not cheaper; a +0 at 1 is 1 + 640.
+      const result = covered(7, [legend({ level: 9, price: 480 }), legend({ level: 0, price: 1 })]);
+      expect(result.offers).toEqual([]);
+      expect(result.withoutOffer).toEqual([]);
+    });
+
+    it('shows nothing when the cost of the raise cannot be told', () => {
+      const result = bestOffers([
+        {
+          ...piece(wanted),
+          raisedFrom: [{ fromLevel: 0, count: 1 }],
+          listings: [legend({ level: 9, price: 1 })],
+        },
+      ]);
+      expect(result.offers).toEqual([]);
+    });
+  });
+
   it('does not raise what is not equipment', () => {
     expect(run([legend({ level: 8, price: 1, quantity: 2 })]).offers).toEqual([]);
     expect(run([legend({ level: 8, price: 1, hasSkill: true })]).offers).toEqual([]);
