@@ -132,7 +132,8 @@ describe('toOfferRow', () => {
       { ...piece, equipment },
     );
     expect(ui.title).toBe('Long Sword +3 · Normal');
-    expect(ui.detail).toContain('bought as +3 at 5 NCG · +20 NCG to raise it to +9');
+    expect(ui.price).toBe('5 NCG (+20 NCG to +9)');
+    expect(ui.detail).toContain('bought as +3');
   });
 
   it('says a piece below the target is raised for free, when raising costs nothing', () => {
@@ -150,7 +151,8 @@ describe('toOfferRow', () => {
       { ...piece, requirement: target, equipment },
     );
     expect(ui.title).toBe('Long Sword +0 · Normal');
-    expect(ui.detail).toContain('bought as +0 at 5 NCG · raising it to +2 is free');
+    expect(ui.price).toBe('5 NCG (free raise to +2)');
+    expect(ui.detail).toContain('bought as +0');
   });
 
   it('shows a counted piece by what all of it costs, and says how many lots', () => {

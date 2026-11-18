@@ -170,13 +170,13 @@ export const collectionStrings = {
   offersUnits: (units: string, lots: number) =>
     `${units} units in ${lots} ${lots === 1 ? 'lot' : 'lots'}`,
   offersTotal: (price: string) => `${price} NCG`,
-  offersRaise: (from: number, to: number, listed: string, ncg: string) =>
-    `bought as +${from} at ${listed} NCG · +${ncg} NCG to raise it to +${to}`,
+  /** The purchase price, then what raising it to the target level adds: `1 NCG (+320 NCG to +9)`. */
+  offersPriceRaised: (price: string, ncg: string, to: number) =>
+    ncg === '0' ? `${price} NCG (free raise to +${to})` : `${price} NCG (+${ncg} NCG to +${to})`,
+  offersBoughtAs: (from: number) => `bought as +${from}`,
   offersToRaise: (count: number) =>
-    `${count} ${count === 1 ? 'piece you hold is' : 'pieces you hold are'} a few levels under a ` +
+    `${count} ${count === 1 ? 'piece you hold is' : 'pieces you hold are'} under a ` +
     'target and can be raised to it, so no offer is looked for. Materials for the raise are not counted.',
-  offersRaiseFree: (from: number, to: number, listed: string) =>
-    `bought as +${from} at ${listed} NCG · raising it to +${to} is free`,
   offersRaiseNote: (to: number, ncg: string) =>
     ncg === '0'
       ? `Bought at this level; raising it to +${to} later costs nothing.`

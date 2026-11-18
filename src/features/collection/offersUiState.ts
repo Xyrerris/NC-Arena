@@ -110,9 +110,14 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   // Raised or not is a matter of the level, not of the price: up to +3 raising costs nothing, and
   // such a piece must still say which level it is bought for.
   const raised = offer.fromLevel !== null;
-  // A raised piece shows what it costs in the end, so it sorts and reads like the rest.
+  // A raised piece shows the purchase price and, apart, what raising it to the target adds: the
+  // total alone would hide what is actually paid on the market.
   const price = raised
-    ? words.offersTotal(formatNcg(offer.total))
+    ? words.offersPriceRaised(
+        formatNcg(offer.price),
+        formatNcg(offer.upgradeNcg),
+        offer.requirement.level,
+      )
     : counted || first === undefined
       ? words.offersTotal(formatNcg(offer.price))
       : askingPrice(first);
@@ -120,18 +125,7 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   const parts: string[] = [];
   if (offer.verdict !== null) parts.push(VERDICT_WORDS[offer.verdict]);
   parts.push(words.offersHelps(offer.collectionIds.length));
-  if (raised && offer.fromLevel !== null) {
-    parts.push(
-      offer.upgradeNcg > 0
-        ? words.offersRaise(
-            offer.fromLevel,
-            offer.requirement.level,
-            formatNcg(offer.price),
-            formatNcg(offer.upgradeNcg),
-          )
-        : words.offersRaiseFree(offer.fromLevel, offer.requirement.level, formatNcg(offer.price)),
-    );
-  }
+  if (raised && offer.fromLevel !== null) parts.push(words.offersBoughtAs(offer.fromLevel));
   if (counted) {
     parts.push(words.offersUnits(statFormatter.exact(offer.units), offer.picks.length));
   }
