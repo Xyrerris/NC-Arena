@@ -90,9 +90,6 @@ export const upgradeNcg = (
   return start === null || target === null ? null : target - start;
 };
 
-/** How far below the target a listing may be and still count as an offer. */
-export const MAX_UPGRADE_GAP = 3;
-
 /**
  * Against the standard price: `good` at or under it, `fair` up to 30% over, `dear` beyond. Where
  * the standard price is 0 (+1 to +3 cost nothing to raise) there is nothing to compare, and no

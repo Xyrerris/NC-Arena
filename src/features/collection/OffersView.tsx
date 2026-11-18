@@ -53,8 +53,8 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
   const { offerIds, holdings } = controller;
   const offerCollections = useMemo(() => collectionsById(sheet, offerIds), [sheet, offerIds]);
   const { targets, unsearchable, toRaise } = useMemo(
-    () => offerTargets(offerCollections, holdings, catalog, others),
-    [offerCollections, holdings, catalog, others],
+    () => offerTargets(offerCollections, holdings, catalog, others, costs !== null),
+    [offerCollections, holdings, catalog, others, costs],
   );
   const offers = useBestOffers(planet, targets, costs);
   // The offers above the standard price are left out, counted, and shown at the end on request.

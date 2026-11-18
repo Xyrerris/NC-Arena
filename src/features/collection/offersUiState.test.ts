@@ -65,6 +65,7 @@ const offer = (overrides: Partial<Offer> = {}): Offer => ({
   fromLevel: null,
   total: 3,
   verdict: null,
+  saves: null,
   ...overrides,
 });
 
@@ -96,6 +97,19 @@ describe('offerTargets', () => {
     const result = offerTargets([collection(1, SWORD)], held, catalog);
     expect(result.targets).toEqual([]);
     expect(result.toRaise).toBe(1);
+  });
+
+  it('with compareRaised, also reads the market for a piece the bag can raise', () => {
+    const held = {
+      equipment: [{ itemId: 10110000, level: 7, hasSkill: false }],
+      stackable: new Map<number, number>(),
+    };
+    const result = offerTargets([collection(1, SWORD)], held, catalog, undefined, true);
+    expect(result.toRaise).toBe(1);
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0]?.raisedFrom).toEqual([{ fromLevel: 7, count: 1 }]);
+    expect(result.targets[0]?.missing).toMatchObject({ key: '10110000|9|false', need: 1 });
+    expect(result.targets[0]?.missing.collectionIds).toEqual([1]);
   });
 });
 
@@ -132,7 +146,8 @@ describe('toOfferRow', () => {
       { ...piece, equipment },
     );
     expect(ui.title).toBe('Long Sword +3 · Normal');
-    expect(ui.detail).toContain('bought as +3 at 5 NCG · +20 NCG to raise it to +9');
+    expect(ui.price).toBe('5 NCG (+20 NCG to +9)');
+    expect(ui.detail).toContain('bought as +3');
   });
 
   it('says a piece below the target is raised for free, when raising costs nothing', () => {
@@ -150,7 +165,13 @@ describe('toOfferRow', () => {
       { ...piece, requirement: target, equipment },
     );
     expect(ui.title).toBe('Long Sword +0 · Normal');
-    expect(ui.detail).toContain('bought as +0 at 5 NCG · raising it to +2 is free');
+    expect(ui.price).toBe('5 NCG (free raise to +2)');
+    expect(ui.detail).toContain('bought as +0');
+  });
+
+  it('says how much an offer saves against raising the piece that is held', () => {
+    const ui = toOfferRow(offer({ saves: 140 }), piece);
+    expect(ui.detail).toContain('140 NCG less than raising the piece you hold');
   });
 
   it('shows a counted piece by what all of it costs, and says how many lots', () => {

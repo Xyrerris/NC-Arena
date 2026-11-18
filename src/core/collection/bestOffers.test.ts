@@ -111,16 +111,49 @@ describe('missingAfterRaising', () => {
 
   it('serves the higher target first, from the nearest level under it, each piece once', () => {
     const sheet = [collection(1, req(10110000, 2), req(10110000, 3))];
-    const result = missingAfterRaising(sheet, held(1));
-    expect(result.missing.map((m) => m.requirement.level)).toEqual([2]);
-    expect(result.raised).toEqual([{ requirement: req(10110000, 3), fromLevel: 1, count: 1 }]);
+    const result = missingAfterRaising(sheet, held(0, 1));
+    expect(result.missing).toEqual([]);
+    expect(result.raised).toEqual([
+      { requirement: req(10110000, 3), fromLevel: 1, count: 1 },
+      { requirement: req(10110000, 2), fromLevel: 0, count: 1 },
+    ]);
   });
 
-  it('reaches no further than three levels, and keeps the skill state apart', () => {
-    expect(missingAfterRaising([collection(1, req(10110000, 9))], held(5)).missing).toHaveLength(1);
+  it('keeps a single spare piece out when two levels are missing', () => {
+    const sheet = [collection(1, req(10110000, 2), req(10110000, 3))];
+    const result = missingAfterRaising(sheet, held(1));
+    expect(result.missing.map((m) => m.requirement.level)).toEqual([2, 3]);
+    expect(result.raised).toEqual([]);
+  });
+
+  it('reaches any number of levels under a target, and keeps the skill state apart', () => {
+    const far = missingAfterRaising([collection(1, req(10110000, 9))], held(0));
+    expect(far.missing).toEqual([]);
+    expect(far.raised).toEqual([{ requirement: req(10110000, 9), fromLevel: 0, count: 1 }]);
     expect(
       missingAfterRaising([collection(1, req(10110000, 2, true))], held(0)).missing,
     ).toHaveLength(1);
+  });
+
+  it('sets nothing aside when the spare pieces cannot cover every missing level: +0 and +2 held, +4/+7/+9 asked', () => {
+    const sheet = [
+      collection(1, req(10110000, 4)),
+      collection(2, req(10110000, 7)),
+      collection(3, req(10110000, 9)),
+    ];
+    const result = missingAfterRaising(sheet, held(0, 2));
+    expect(result.missing.map((m) => m.requirement.level)).toEqual([4, 7, 9]);
+    expect(result.raised).toEqual([]);
+  });
+
+  it('sets the pieces aside once they cover every missing level', () => {
+    const sheet = [collection(1, req(10110000, 4)), collection(2, req(10110000, 9))];
+    const result = missingAfterRaising(sheet, held(0, 2));
+    expect(result.missing).toEqual([]);
+    expect(result.raised).toEqual([
+      { requirement: req(10110000, 9), fromLevel: 2, count: 1 },
+      { requirement: req(10110000, 4), fromLevel: 0, count: 1 },
+    ]);
   });
 
   it('is what missingPieces answers, so nothing else changes', () => {
@@ -267,8 +300,62 @@ describe('bestOffers with upgrade costs', () => {
     expect(result.offers[0]?.fromLevel).toBe(8);
   });
 
-  it('does not reach further than three levels, nor raise what is not equipment', () => {
-    expect(run([legend({ level: 5, price: 1 })]).offers).toEqual([]);
+  it('offers a +0 for a +9 as well: any level under the target is acceptable', () => {
+    const result = run([legend({ level: 0, price: 1 })]);
+    expect(result.offers[0]).toMatchObject({ price: 1, upgradeNcg: 640, total: 641, fromLevel: 0 });
+  });
+
+  it('offers one listing per missing level, each a distinct piece', () => {
+    const listings = [
+      legend({ level: 0, price: 1, productId: 'zero' }),
+      legend({ level: 2, price: 2, productId: 'two' }),
+      legend({ level: 4, price: 3, productId: 'four' }),
+    ];
+    const result = bestOffers(
+      [4, 7, 9].map((level) => ({ ...piece(req(10110000, level)), listings })),
+      { costs },
+    );
+    expect(result.offers.length + result.overpriced.length).toBe(3);
+    expect(result.withoutOffer).toEqual([]);
+  });
+
+  describe('against a held piece that would be raised', () => {
+    // Raising from +0 to +9 costs 640, from +7 costs 480 (see `costs` above).
+    const covered = (from: number, listings: MarketListing[]) =>
+      bestOffers([{ ...piece(wanted), raisedFrom: [{ fromLevel: from, count: 1 }], listings }], {
+        costs,
+      });
+
+    it('shows a listing that costs less than raising the held piece, with the saving', () => {
+      const result = covered(0, [legend({ level: 9, price: 180 })]);
+      expect(result.offers[0]).toMatchObject({ total: 180, saves: 460 });
+    });
+
+    it('prices a raised listing at its price plus its own upgrade: a +7 at 40 is 40 + 480', () => {
+      const result = covered(0, [legend({ level: 7, price: 40 })]);
+      expect(result.offers[0]).toMatchObject({ total: 520, saves: 120, fromLevel: 7 });
+    });
+
+    it('shows nothing when no listing is cheaper than the raise, and reports no piece as lost', () => {
+      // Equal to the raise (480) is not cheaper; a +0 at 1 is 1 + 640.
+      const result = covered(7, [legend({ level: 9, price: 480 }), legend({ level: 0, price: 1 })]);
+      expect(result.offers).toEqual([]);
+      expect(result.withoutOffer).toEqual([]);
+    });
+
+    it('shows nothing when the cost of the raise cannot be told', () => {
+      const result = bestOffers([
+        {
+          ...piece(wanted),
+          raisedFrom: [{ fromLevel: 0, count: 1 }],
+          listings: [legend({ level: 9, price: 1 })],
+        },
+      ]);
+      expect(result.offers).toEqual([]);
+    });
+  });
+
+  it('does not raise what is not equipment', () => {
     expect(run([legend({ level: 8, price: 1, quantity: 2 })]).offers).toEqual([]);
     expect(run([legend({ level: 8, price: 1, hasSkill: true })]).offers).toEqual([]);
   });

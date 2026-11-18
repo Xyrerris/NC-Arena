@@ -9,7 +9,7 @@
  * Long Sword +9 at 1 NCG before a +0 at 1 NCG — then the stronger piece, then the key, so the same
  * market always gives the same list. The level is the *requirement's*: a collection accepts one
  * exact level, so a listing of another level is never an offer (`listingMatches`) — except, when
- * the upgrade costs are given, a single piece a few levels under it that can be raised: its offer
+ * the upgrade costs are given, a single piece under it, at any level, that can be raised: its offer
  * is priced at the listing plus the upgrade, and sorted by that total (ADR-0046).
  *
  * **Verdict.** With the costs, every equipment offer is set against the standard price of its level
@@ -31,7 +31,6 @@ import type { Collection, CollectionRequirement } from './collectionSheet';
 import { matchingListings } from './marketMatch';
 import { ownedCount } from './ownership';
 import {
-  MAX_UPGRADE_GAP,
   standardPrice,
   upgradeNcg,
   verdictFor,
@@ -76,11 +75,15 @@ export interface HeldToRaise {
  * What is still missing, once the pieces held below a requirement are counted towards it.
  *
  * A held piece is first spent on the requirements of its own exact level, as `ownedCount` does.
- * What is left over of an item (same skill state), from 1 to `MAX_UPGRADE_GAP` levels under a
- * requirement that is still missing, can be raised to it instead of buying another: it is set
- * against that requirement and each piece is used once. The highest requirements are served first,
- * each from the nearest level under it, so the pieces that are closest to a target are not wasted
- * on a lower one. Raising costs materials and NCG that are not counted here (ADR-0046).
+ * What is left over of an item (same skill state), at any level under a requirement that is still
+ * missing, can be raised to it instead of buying another: it is set against that requirement and
+ * each piece is used once. The highest requirements are served first, each from the nearest level
+ * under it, so the pieces that are closest to a target are not wasted on a lower one.
+ *
+ * Only when the spare pieces cover **every** missing level of the item are they set aside. If they
+ * fall short (two pieces held, three levels missing) none is, and all the levels are searched on
+ * the market, since which piece goes to which level is the owner's call. Raising costs materials
+ * and NCG that are not counted here (ADR-0046).
  */
 export const missingAfterRaising = (
   collections: readonly Collection[],
@@ -119,22 +122,42 @@ export const missingAfterRaising = (
     spare.set(key, Math.max(0, count - (asked.get(key)?.total ?? 0)));
   }
 
+  // The still-missing levels of one item and skill state, which spare pieces compete for.
+  const groups = new Map<string, MissingPiece[]>();
+  for (const piece of open.values()) {
+    const { itemId, skillContains } = piece.requirement;
+    const group = groups.get(`${itemId}|${skillContains}`) ?? [];
+    group.push(piece);
+    groups.set(`${itemId}|${skillContains}`, group);
+  }
+
   const raised: HeldToRaise[] = [];
-  const byLevelDesc = [...open.values()].sort((a, b) => b.requirement.level - a.requirement.level);
-  for (const piece of byLevelDesc) {
-    const { itemId, level, skillContains } = piece.requirement;
-    let need = piece.need;
-    for (let gap = 1; gap <= MAX_UPGRADE_GAP && need > 0; gap += 1) {
-      const from = level - gap;
-      if (from < 0) break;
-      const held = `${itemId}|${from}|${skillContains}`;
-      const take = Math.min(need, spare.get(held) ?? 0);
-      if (take === 0) continue;
-      spare.set(held, (spare.get(held) as number) - take);
-      raised.push({ requirement: piece.requirement, fromLevel: from, count: take });
-      need -= take;
+  for (const group of groups.values()) {
+    // Try to serve the whole group: the highest levels first, each from the nearest level under it.
+    const left = new Map(spare);
+    const planned: HeldToRaise[] = [];
+    const needs = new Map<string, number>();
+    let covered = true;
+    const byLevelDesc = [...group].sort((a, b) => b.requirement.level - a.requirement.level);
+    for (const piece of byLevelDesc) {
+      const { itemId, level, skillContains } = piece.requirement;
+      let need = piece.need;
+      for (let from = level - 1; from >= 0 && need > 0; from -= 1) {
+        const held = `${itemId}|${from}|${skillContains}`;
+        const take = Math.min(need, left.get(held) ?? 0);
+        if (take === 0) continue;
+        left.set(held, (left.get(held) as number) - take);
+        planned.push({ requirement: piece.requirement, fromLevel: from, count: take });
+        need -= take;
+      }
+      needs.set(piece.key, need);
+      if (need > 0) covered = false;
     }
-    open.set(piece.key, { ...piece, need });
+    // Pieces that cannot cover every level of the item are not set aside: the market is searched
+    // for all of them, so the owner sees every acceptable offer and decides where each piece goes.
+    if (!covered) continue;
+    raised.push(...planned);
+    for (const piece of group) open.set(piece.key, { ...piece, need: needs.get(piece.key) ?? 0 });
   }
 
   return {
@@ -210,6 +233,13 @@ export const cheapestLots = (
 /** A missing piece together with the listings read for it. */
 export interface OfferInput extends MissingPiece {
   readonly listings: readonly MarketListing[];
+  /**
+   * Set when the piece is already covered by pieces the avatar holds and can raise (`HeldToRaise`):
+   * the market is read only to see whether something is cheaper than raising them. An offer is then
+   * kept only if its total is under the NCG those pieces would cost to raise, and a piece with no
+   * such offer is not "without an offer" — it has its held pieces.
+   */
+  readonly raisedFrom?: readonly { readonly fromLevel: number; readonly count: number }[];
 }
 
 export interface Offer {
@@ -232,6 +262,11 @@ export interface Offer {
   readonly total: number;
   /** `total` against the standard price of the level (ADR-0046); null when there is none. */
   readonly verdict: Verdict | null;
+  /**
+   * For a piece the avatar could raise from what it holds: the NCG this offer saves against that
+   * raise (the held pieces' upgrade cost less `total`). Null for a piece that is simply missing.
+   */
+  readonly saves: number | null;
 }
 
 export interface BestOffers {
@@ -257,7 +292,7 @@ const sameAddress = (a: string, b: string): boolean =>
   a.replace(/^0x/i, '').toLowerCase() === b.replace(/^0x/i, '').toLowerCase();
 
 /**
- * Single pieces of the same item and skill state that are `1..MAX_UPGRADE_GAP` levels under the
+ * Single pieces of the same item and skill state that are any number of levels under the
  * requirement and can be raised. Each is returned as the listing with the upgrade added to its
  * price, so the knapsack ranks it by what it costs in the end; `raised` remembers the real listing.
  */
@@ -274,8 +309,7 @@ const raisable = (
       listing.itemId !== requirement.itemId ||
       listing.hasSkill !== requirement.skillContains ||
       listing.quantity !== 1 ||
-      gap < 1 ||
-      gap > MAX_UPGRADE_GAP
+      gap < 1
     ) {
       continue;
     }
@@ -311,7 +345,7 @@ const offerFor = (
   own: string | undefined,
   costs: EnhancementCosts | undefined,
 ): Offer | null => {
-  const { listings, ...piece } = input;
+  const { listings, raisedFrom, ...piece } = input;
   const others = listings.filter(
     (l) => !claimed.has(l.productId) && (own === undefined || !isOwn(l, own)),
   );
@@ -341,6 +375,14 @@ const offerFor = (
   }
   const from = picks.find((pick) => raised.has(pick.productId))?.level ?? null;
 
+  let saves: number | null = null;
+  if (raisedFrom !== undefined) {
+    const held = heldRaiseNcg(piece.requirement, raisedFrom, listings, costs);
+    // Only prices are compared (materials are not counted); equal is not cheaper.
+    if (held === null || toHundredths(total) >= toHundredths(held)) return null;
+    saves = (toHundredths(held) - toHundredths(total)) / 100;
+  }
+
   return {
     key: piece.key,
     requirement: piece.requirement,
@@ -354,7 +396,29 @@ const offerFor = (
     fromLevel: from,
     total,
     verdict: standard === null ? null : verdictFor(total, standard),
+    saves,
   };
+};
+
+/**
+ * What raising the held pieces to the requirement's level costs in NCG, or null when it cannot be
+ * told. The slot and grade are not on a held piece, but every listing of the same item has them.
+ */
+const heldRaiseNcg = (
+  requirement: CollectionRequirement,
+  raisedFrom: readonly { readonly fromLevel: number; readonly count: number }[],
+  listings: readonly MarketListing[],
+  costs: EnhancementCosts | undefined,
+): number | null => {
+  const sample = listings.find((l) => l.itemId === requirement.itemId);
+  if (costs === undefined || sample === undefined) return null;
+  let cents = 0;
+  for (const { fromLevel, count } of raisedFrom) {
+    const one = upgradeNcg(costs, sample.itemSubType, sample.grade, fromLevel, requirement.level);
+    if (one === null) return null;
+    cents += toHundredths(one) * count;
+  }
+  return cents / 100;
 };
 
 /**
@@ -398,8 +462,9 @@ export const bestOffers = (
     }
   }
   for (const { input, offer } of pending.values()) {
-    if (offer === null) {
-      const { listings: _listings, ...piece } = input;
+    // A piece covered by held pieces that nothing beats is not missing: it has no offer to wait for.
+    if (offer === null && input.raisedFrom === undefined) {
+      const { listings: _listings, raisedFrom: _raisedFrom, ...piece } = input;
       withoutOffer.push(piece);
     }
   }

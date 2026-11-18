@@ -9,6 +9,7 @@
 
 import {
   missingAfterRaising,
+  requirementKey,
   type Collection,
   type EquipmentCatalog,
   type MissingPiece,
@@ -45,6 +46,11 @@ export const collectionsById = (
 export interface OfferTarget {
   readonly missing: MissingPiece;
   readonly piece: MarketPiece;
+  /**
+   * Set for a piece the avatar already covers by raising what it holds: the pieces and levels it
+   * would raise. The market is read for it only to find something cheaper than that raise.
+   */
+  readonly raisedFrom?: readonly { readonly fromLevel: number; readonly count: number }[];
 }
 
 export interface OfferTargets {
@@ -65,6 +71,8 @@ export const offerTargets = (
   holdings: Holdings | null,
   catalog: EquipmentCatalog,
   others: OtherItemCatalog = NO_OTHERS,
+  /** Also look for a piece the bag can raise, to offer one that costs less than the raise. */
+  compareRaised = false,
 ): OfferTargets => {
   const targets: OfferTarget[] = [];
   let unsearchable = 0;
@@ -76,6 +84,38 @@ export const offerTargets = (
       continue;
     }
     targets.push({ missing, piece });
+  }
+  if (compareRaised) {
+    const covered = new Map<
+      string,
+      {
+        requirement: Collection['requirements'][number];
+        from: { fromLevel: number; count: number }[];
+      }
+    >();
+    for (const held of left.raised) {
+      const key = requirementKey(held.requirement);
+      const entry = covered.get(key) ?? { requirement: held.requirement, from: [] };
+      entry.from.push({ fromLevel: held.fromLevel, count: held.count });
+      covered.set(key, entry);
+    }
+    for (const [key, { requirement, from }] of covered) {
+      const piece = marketPieceFor(requirement, catalog, others);
+      // A piece with no market just stays raised: nothing to compare, and nothing to count as lost.
+      if (piece === null || piece.route.kind !== 'route') continue;
+      targets.push({
+        missing: {
+          key,
+          requirement,
+          need: from.reduce((sum, one) => sum + one.count, 0),
+          collectionIds: collections
+            .filter((c) => c.requirements.some((r) => requirementKey(r) === key))
+            .map((c) => c.id),
+        },
+        piece,
+        raisedFrom: from,
+      });
+    }
   }
   return {
     targets,
@@ -110,9 +150,14 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   // Raised or not is a matter of the level, not of the price: up to +3 raising costs nothing, and
   // such a piece must still say which level it is bought for.
   const raised = offer.fromLevel !== null;
-  // A raised piece shows what it costs in the end, so it sorts and reads like the rest.
+  // A raised piece shows the purchase price and, apart, what raising it to the target adds: the
+  // total alone would hide what is actually paid on the market.
   const price = raised
-    ? words.offersTotal(formatNcg(offer.total))
+    ? words.offersPriceRaised(
+        formatNcg(offer.price),
+        formatNcg(offer.upgradeNcg),
+        offer.requirement.level,
+      )
     : counted || first === undefined
       ? words.offersTotal(formatNcg(offer.price))
       : askingPrice(first);
@@ -120,18 +165,8 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   const parts: string[] = [];
   if (offer.verdict !== null) parts.push(VERDICT_WORDS[offer.verdict]);
   parts.push(words.offersHelps(offer.collectionIds.length));
-  if (raised && offer.fromLevel !== null) {
-    parts.push(
-      offer.upgradeNcg > 0
-        ? words.offersRaise(
-            offer.fromLevel,
-            offer.requirement.level,
-            formatNcg(offer.price),
-            formatNcg(offer.upgradeNcg),
-          )
-        : words.offersRaiseFree(offer.fromLevel, offer.requirement.level, formatNcg(offer.price)),
-    );
-  }
+  if (raised && offer.fromLevel !== null) parts.push(words.offersBoughtAs(offer.fromLevel));
+  if (offer.saves !== null) parts.push(words.offersSaves(formatNcg(offer.saves)));
   if (counted) {
     parts.push(words.offersUnits(statFormatter.exact(offer.units), offer.picks.length));
   }

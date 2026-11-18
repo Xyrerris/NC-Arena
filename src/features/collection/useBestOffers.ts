@@ -179,6 +179,7 @@ export const useBestOffers = (
             ? [
                 {
                   ...target.missing,
+                  ...(target.raisedFrom === undefined ? {} : { raisedFrom: target.raisedFrom }),
                   listings:
                     sold.size === 0
                       ? outcome.listings
