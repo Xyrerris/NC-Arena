@@ -61,6 +61,11 @@ export const upgradeStrings = {
     `${ng} NCG per Gexp · ${gexp} Gexp · ${r} NCG per +0 piece`,
   bandOptimum: 'bargain',
   bandWithin: 'in range',
+  addBargains: (count: number) => `ADD ALL BARGAINS (${count})`,
+  addBargainsA11y: (count: number) =>
+    `Add the ${count} ${count === 1 ? 'bargain' : 'bargains'} in the list to the selection`,
+  toTop: '↑ TOP',
+  toTopA11y: 'Scroll back to the top of the list',
   barTitle: (count: number, total: string) =>
     `${count} ${count === 1 ? 'piece' : 'pieces'} selected · ${total} NCG`,
   barNote:

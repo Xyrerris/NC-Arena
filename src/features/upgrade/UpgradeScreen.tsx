@@ -8,8 +8,8 @@
  * says how many +0 pieces it hides.
  */
 
-import { FlashList } from '@shopify/flash-list';
-import { useMemo, useState, type ReactNode } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -123,6 +123,8 @@ interface UpgradeBodyProps {
 }
 
 const CEILING_GRADES = [9, 8, 7] as const;
+/** Scrolled further than this (px), the list shows the back-to-top button. */
+const SHOW_TOP_BUTTON_AFTER = 600;
 
 function UpgradeBody({
   planet,
@@ -203,6 +205,21 @@ function UpgradeBody({
     });
   };
   const chosen = ranking.offers.filter((scored) => selected.has(scored.listing.productId));
+  // A bargain is an offer under its grade's optimum (`band === 'optimum'`, see upgradeRanking.ts).
+  const bargains = useMemo(
+    () => ranking.offers.filter((scored) => scored.band === 'optimum'),
+    [ranking.offers],
+  );
+  const addBargains = (): void => {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const scored of bargains) next.add(scored.listing.productId);
+      return next;
+    });
+  };
+
+  const listRef = useRef<FlashListRef<(typeof rows)[number]>>(null);
+  const [farDown, setFarDown] = useState(false);
   // The batch as it was when BUY was pressed: its lines must not vanish as the pieces are bought.
   const [buying, setBuying] = useState<BatchPlan | null>(null);
   const bought = (productId: string): void => {
@@ -221,6 +238,12 @@ function UpgradeBody({
     <ScreenScaffold applyBottomInset={false}>
       <View style={styles.fill}>
         <FlashList
+          ref={listRef}
+          onScroll={(event) => {
+            const down = event.nativeEvent.contentOffset.y > SHOW_TOP_BUTTON_AFTER;
+            setFarDown((current) => (current === down ? current : down));
+          }}
+          scrollEventThrottle={100}
           data={rows}
           extraData={selected}
           keyExtractor={(row) => row.ui.key}
@@ -390,6 +413,15 @@ function UpgradeBody({
                   onPress={() => setOnlyRaised((current) => !current)}
                   testID="upgrade-only-raised"
                 />
+                {bargains.length === 0 ? null : (
+                  <ArenaButton
+                    label={words.addBargains(bargains.length)}
+                    accessibilityLabel={words.addBargainsA11y(bargains.length)}
+                    variant="secondary"
+                    onPress={addBargains}
+                    testID="upgrade-add-bargains"
+                  />
+                )}
                 <SortChip
                   label={words.ceilings}
                   accessibilityLabel={words.ceilingsA11y}
@@ -438,6 +470,17 @@ function UpgradeBody({
           contentContainerStyle={styles.list}
           testID="upgrade-list"
         />
+        {farDown ? (
+          <View style={styles.toTop} pointerEvents="box-none">
+            <ArenaButton
+              label={words.toTop}
+              accessibilityLabel={words.toTopA11y}
+              variant="secondary"
+              onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+              testID="upgrade-to-top"
+            />
+          </View>
+        ) : null}
         {chosen.length === 0 ? null : (
           <View style={styles.bar} testID="upgrade-bar">
             <ArenaText
@@ -523,6 +566,7 @@ const styles = StyleSheet.create({
     gap: space[8],
   },
   rowTitle: { flex: 1 },
+  toTop: { position: 'absolute', right: layout.screenGutter, bottom: space[16] },
   bar: {
     paddingHorizontal: layout.screenGutter,
     paddingVertical: space[12],
