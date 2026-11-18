@@ -3040,7 +3040,7 @@ often cheaper, and nothing told the owner whether a listed +9 was fair.
   **fetched** with the collection sheet (`GameSheetSource`), never bundled (GPL, as ADR-0044), and
   its failure does not fail the read: without it the offers view is what it was.
 - **Raisable offers.** With the costs, a single piece (quantity 1) of the same item and skill
-  state, 1 to `MAX_UPGRADE_GAP` (3) levels under the requirement, is an offer priced at the listing
+  state, any levels under the requirement (ADR-0049 removed the gap of 3), is an offer priced at the listing
   plus the upgrade and sorted by that total. `Offer.price` stays what the purchase pays; the
   upgrade is `upgradeNcg`, the sum `total`, so the batch ceiling and the balance check never count
   NCG that is spent later in the game.
@@ -3053,11 +3053,12 @@ often cheaper, and nothing told the owner whether a listed +9 was fair.
 in the total, the standard price ignores the +0 piece's own value, and the exp of the materials
 must land on the target level exactly. The reference is a ceiling for the NCG, not a quote.
 
-**Consequences.** The 130% line and the gap of 3 are judgement, not measured: they are constants
-(`FAIR_RATIO`, `MAX_UPGRADE_GAP`) to move once real listings have been looked at. The purchase card
+**Consequences.** The 130% line is judgement, not measured: it is a constant
+(`FAIR_RATIO`) to move once real listings have been looked at. The purchase card
 still buys the listing as listed; raising it afterwards is done in the game.
 
 **Amended by ADR-0047:** the costs are read from a node first; lib9c is the fallback.
+**Amended by ADR-0049:** the gap of 3 is gone; a piece at any level under the target is an offer.
 
 ---
 
@@ -3128,3 +3129,39 @@ sheet would mean every correction to a purchase, which is where mistakes cost NC
 **Consequences.** `features/collection` keeps its offers view and its single card and imports the
 cart. The `batch*` words are in `purchaseStrings`, not in the collection's strings. No behaviour
 changed: the same tests, moved with the code, pass unmodified apart from their imports.
+
+---
+
+## ADR-0049 — No gap limit on raisable offers; held pieces are set aside only if they cover every level
+
+**Status.** Accepted (2026-11-18). Amends ADR-0046.
+
+**Context.** The +0 and +2 pieces of most items are already found; the +4 and above are rare on
+the market. The gap of 3 levels (`MAX_UPGRADE_GAP`) left a +0 listing out of the offers for a +9,
+although raising it is just a matter of NCG.
+
+**Decision.**
+
+- **No gap.** `MAX_UPGRADE_GAP` is removed. A single piece of the same item and skill state at any
+  level under the requirement is an offer, priced at the listing plus the upgrade. The rule of ADR-0046
+  stays: one listing serves one piece, and at the same total the cheaper purchase wins.
+- **Held pieces, all or nothing.** `missingAfterRaising` sets the spare pieces of an item aside only
+  when they cover **every** missing level of that item. With +0 and +2 held and +4/+7/+9 asked, none
+  is set aside and the market is searched for all three: which piece goes where is the owner's call.
+  With +0 and +2 held and +4/+9 asked, both are set aside and nothing is searched.
+- **Cheaper than the raise.** A piece that is covered by raising a held one is still read on the
+  market (`OfferTarget.raisedFrom`, only when the cost sheet is available). A listing is offered when
+  `price + its own upgrade` is **strictly under** the NCG the nearest held piece would cost to raise
+  to the target; the offer carries `saves`, the difference. A listing of any level counts (a +7 at 40
+  is 40 plus the +7 to +9 step). With nothing cheaper the piece is not reported as lacking an offer.
+  The slot and grade of a held piece are taken from the listings of the same item, since the
+  inventory does not carry them.
+- **The price label** reads `<price> NCG (+<upgrade> NCG to +<level>)`, `free raise` when the
+  upgrade costs nothing, so the purchase price is no longer hidden inside a total. The detail line
+  says `bought as +N`, and `N NCG less than raising the piece you hold` where `saves` is set.
+
+**Not priced.** As in ADR-0046, materials are left out, on both sides of the comparison.
+
+**Consequences.** Far-off listings add rows (a +0 for a +9 is a valid offer), and the verdict against
+the standard price still sets aside what is `dear`. Covered pieces add one market read each when the
+cost sheet is there, so a scan is longer for an owner who holds many spare pieces.
