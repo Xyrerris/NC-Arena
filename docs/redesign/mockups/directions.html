@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arena Scout: three directions</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Cinzel:wght@500;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      /* ---- Direction tokens. Every screen below reads only these variables. ---- */
+      #stage[data-dir='a'] {
+        --font: 'Inter', system-ui, sans-serif;
+        --display: 'Inter', system-ui, sans-serif;
+        --num: 'JetBrains Mono', monospace;
+        --r-card: 14px;
+        --r-ctl: 999px;
+        --label-case: none;
+        --label-track: 0;
+        --rank-font: var(--num);
+        --shadow: none;
+        --card-border: 0;
+      }
+      #stage[data-dir='b'] {
+        --font: 'Barlow', system-ui, sans-serif;
+        --display: 'Cinzel', serif;
+        --num: 'JetBrains Mono', monospace;
+        --r-card: 10px;
+        --r-ctl: 10px;
+        --label-case: uppercase;
+        --label-track: 0.14em;
+        --rank-font: 'Cinzel', serif;
+        --shadow: none;
+        --card-border: 1px;
+      }
+      #stage[data-dir='c'] {
+        --font: 'Manrope', system-ui, sans-serif;
+        --display: 'Manrope', system-ui, sans-serif;
+        --num: 'Manrope', system-ui, sans-serif;
+        --r-card: 22px;
+        --r-ctl: 999px;
+        --label-case: none;
+        --label-track: 0;
+        --rank-font: 'Manrope', sans-serif;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.07);
+        --card-border: 0;
+      }
+      /* colour: dark and light for each direction */
+      #stage[data-dir='a'][data-theme='dark'] {
+        --bg: #0e0f10;
+        --surface: #17181a;
+        --text: #f2f5f3;
+        --text2: #a6b0ab;
+        --line: rgba(255, 255, 255, 0.08);
+        --accent: #5fd6a2;
+        --on-accent: #07120d;
+        --neg: #ef7b6b;
+      }
+      #stage[data-dir='a'][data-theme='light'] {
+        --bg: #f6f7f6;
+        --surface: #ffffff;
+        --text: #101312;
+        --text2: #5d6662;
+        --line: rgba(0, 0, 0, 0.08);
+        --accent: #0f7a54;
+        --on-accent: #ffffff;
+        --neg: #c2412f;
+      }
+      #stage[data-dir='b'][data-theme='dark'] {
+        --bg: #07100d;
+        --surface: #0e1a16;
+        --text: #ece6d8;
+        --text2: #a59f90;
+        --line: rgba(236, 230, 216, 0.14);
+        --accent: #5fd6a2;
+        --on-accent: #07100d;
+        --neg: #e0705f;
+      }
+      #stage[data-dir='b'][data-theme='light'] {
+        --bg: #f1eee6;
+        --surface: #faf8f2;
+        --text: #14201b;
+        --text2: #5c6259;
+        --line: rgba(20, 32, 27, 0.16);
+        --accent: #0f7a54;
+        --on-accent: #faf8f2;
+        --neg: #b53d2c;
+      }
+      #stage[data-dir='c'][data-theme='dark'] {
+        --bg: #101514;
+        --surface: #1b2220;
+        --text: #eef3f1;
+        --text2: #9fb0aa;
+        --line: rgba(255, 255, 255, 0.06);
+        --accent: #6fdcb0;
+        --on-accent: #08150f;
+        --neg: #f08a7a;
+      }
+      #stage[data-dir='c'][data-theme='light'] {
+        --bg: #eef2f0;
+        --surface: #ffffff;
+        --text: #0f1b17;
+        --text2: #5a6a64;
+        --line: rgba(0, 0, 0, 0.05);
+        --accent: #0c7451;
+        --on-accent: #ffffff;
+        --neg: #c2412f;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        background: #d9dcda;
+        color: #111;
+        padding: 24px;
+      }
+      .bar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .bar button {
+        font: 600 13px system-ui;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid #888;
+        background: #fff;
+        cursor: pointer;
+      }
+      .bar button.on {
+        background: #111;
+        color: #fff;
+        border-color: #111;
+      }
+      .note {
+        font: 14px/1.5 system-ui;
+        max-width: 900px;
+        margin-bottom: 18px;
+      }
+      .screens {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      figure {
+        width: 390px;
+      }
+      figcaption {
+        font: 600 13px system-ui;
+        margin-top: 8px;
+        color: #333;
+      }
+
+      /* ---- phone ---- */
+      .phone {
+        width: 390px;
+        height: 800px;
+        overflow: hidden;
+        position: relative;
+        border-radius: 36px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font);
+        border: 8px solid #000;
+        display: flex;
+        flex-direction: column;
+      }
+      .status {
+        height: 38px;
+        padding: 12px 24px 0;
+        font: 600 13px var(--font);
+        display: flex;
+        justify-content: space-between;
+        color: var(--text);
+      }
+      .body {
+        flex: 1;
+        overflow: hidden;
+        padding: 0 20px;
+        position: relative;
+      }
+      .label {
+        font: 500 11px var(--font);
+        text-transform: var(--label-case);
+        letter-spacing: var(--label-track);
+        color: var(--text2);
+      }
+      .accent {
+        color: var(--accent);
+      }
+      .num {
+        font-family: var(--num);
+        font-variant-numeric: tabular-nums;
+      }
+      .seg {
+        display: flex;
+        gap: 4px;
+        padding: 3px;
+        border-radius: var(--r-ctl);
+        background: var(--surface);
+        margin: 6px 0 14px;
+        border: var(--card-border) solid var(--line);
+      }
+      .seg span {
+        flex: 1;
+        text-align: center;
+        font: 600 13px var(--font);
+        padding: 8px 0;
+        border-radius: var(--r-ctl);
+        color: var(--text2);
+        text-transform: var(--label-case);
+        letter-spacing: var(--label-track);
+      }
+      .seg span.on {
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      #stage[data-dir='a'] .seg {
+        background: transparent;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        border-radius: 0;
+        padding: 0;
+        gap: 0;
+      }
+      #stage[data-dir='a'] .seg span {
+        border-radius: 0;
+        background: transparent !important;
+        color: var(--text2);
+        border-bottom: 2px solid transparent;
+      }
+      #stage[data-dir='a'] .seg span.on {
+        color: var(--text);
+        border-bottom-color: var(--accent);
+      }
+      h1 {
+        font: 700 34px/1.1 var(--display);
+        letter-spacing: -0.01em;
+      }
+      #stage[data-dir='b'] h1 {
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .sync {
+        font: 400 12px var(--font);
+        color: var(--text2);
+        margin: 4px 0 14px;
+      }
+      .viewer {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        background: var(--surface);
+        border-radius: var(--r-card);
+        border: var(--card-border) solid var(--line);
+        box-shadow: var(--shadow);
+        margin-bottom: 12px;
+      }
+      .viewer .rk {
+        font: 600 22px var(--rank-font);
+        color: var(--accent);
+        width: 34px;
+      }
+      .viewer .nm {
+        font: 600 16px var(--font);
+      }
+      .viewer .cp {
+        margin-left: auto;
+        text-align: right;
+      }
+      .viewer .cp b {
+        display: block;
+        font: 500 15px var(--num);
+      }
+      .search {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .search .in {
+        flex: 1;
+        background: var(--surface);
+        border-radius: var(--r-ctl);
+        padding: 11px 16px;
+        font: 400 14px var(--font);
+        color: var(--text2);
+        border: var(--card-border) solid var(--line);
+      }
+      .search .add {
+        width: 44px;
+        border-radius: var(--r-ctl);
+        background: var(--accent);
+        color: var(--on-accent);
+        display: grid;
+        place-items: center;
+        font: 600 22px var(--font);
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .chip {
+        font: 600 12px var(--font);
+        padding: 7px 13px;
+        border-radius: var(--r-ctl);
+        background: var(--surface);
+        color: var(--text2);
+        border: var(--card-border) solid var(--line);
+        text-transform: var(--label-case);
+        letter-spacing: var(--label-track);
+      }
+      .chip.on {
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 40px 1fr auto;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+        gap: 8px;
+      }
+      .row .rk {
+        font: 600 17px var(--rank-font);
+        color: var(--accent);
+      }
+      .row .nm {
+        font: 600 16px var(--font);
+      }
+      .row .sub {
+        font: 400 12px var(--num);
+        color: var(--text2);
+        margin-top: 2px;
+      }
+      .row .pts {
+        font: 400 12px var(--font);
+        color: var(--text2);
+        text-align: right;
+      }
+      .row.me {
+        background: color-mix(in srgb, var(--accent) 10%, transparent);
+        margin: 0 -10px;
+        padding: 12px 10px;
+        border-radius: 12px;
+      }
+      #stage[data-dir='c'] .list {
+        background: var(--surface);
+        border-radius: var(--r-card);
+        padding: 2px 16px;
+        box-shadow: var(--shadow);
+      }
+      #stage[data-dir='c'] .row:last-child {
+        border-bottom: 0;
+      }
+      #stage[data-dir='b'] .list {
+        border-top: 1px solid var(--line);
+      }
+      #stage[data-dir='b'] .row .rk {
+        font-size: 22px;
+      }
+      .viewer .upd {
+        display: block;
+        font: 600 12px var(--font);
+        color: var(--accent);
+        margin-top: 2px;
+      }
+      .ic {
+        width: 20px;
+        height: 20px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        vertical-align: middle;
+      }
+      /* A: no card, a hairline only. B: the viewer is a highlighted ladder row with a dominant rank. */
+      #stage[data-dir='a'] .viewer {
+        background: transparent;
+        border-radius: 0;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      #stage[data-dir='b'] .viewer {
+        background: color-mix(in srgb, var(--accent) 9%, transparent);
+        border: 0;
+        border-left: 3px solid var(--accent);
+        border-radius: 0;
+      }
+      #stage[data-dir='b'] .viewer .rk,
+      #stage[data-dir='b'] .row .rk {
+        font-size: 28px;
+        width: 46px;
+      }
+      #stage[data-dir='b'] .row {
+        grid-template-columns: 52px 1fr auto;
+      }
+      .tabbar {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 64px;
+        display: none;
+      }
+      #stage[data-dir='c'] .tabbar {
+        display: flex;
+        left: 16px;
+        right: 16px;
+        bottom: 14px;
+        background: var(--surface);
+        border-radius: 999px;
+        box-shadow:
+          var(--shadow),
+          0 0 0 1px var(--line);
+        justify-content: space-around;
+        align-items: center;
+      }
+      #stage[data-dir='c'] .tabbar span {
+        font: 700 12px var(--font);
+        color: var(--text2);
+      }
+      #stage[data-dir='c'] .tabbar span.on {
+        color: var(--accent);
+      }
+
+      /* detail */
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0 14px;
+        font: 600 14px var(--font);
+        color: var(--accent);
+      }
+      .hero .lv {
+        font: 400 13px var(--font);
+        color: var(--text2);
+        margin-bottom: 10px;
+      }
+      .hero .cpx {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        margin: 4px 0 16px;
+      }
+      .hero .cpx b {
+        font: 500 30px var(--num);
+        color: var(--accent);
+      }
+      .hero .cpx span {
+        font: 400 13px var(--num);
+        color: var(--text2);
+      }
+      .hero h2 {
+        font: 700 30px/1.15 var(--display);
+        letter-spacing: 0.01em;
+      }
+      .group {
+        background: var(--surface);
+        border-radius: var(--r-card);
+        border: var(--card-border) solid var(--line);
+        box-shadow: var(--shadow);
+        padding: 0 16px;
+      }
+      .stat {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 13px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .stat:last-child {
+        border-bottom: 0;
+      }
+      .stat .k {
+        font: 500 12px var(--font);
+        color: var(--text2);
+        text-transform: var(--label-case);
+        letter-spacing: var(--label-track);
+        width: 52px;
+      }
+      .stat .ex {
+        font: 500 16px var(--num);
+        flex: 1;
+      }
+      .stat .rd {
+        font: 400 12px var(--num);
+        color: var(--text2);
+      }
+      .foot {
+        margin-top: 10px;
+        font: 400 12px var(--font);
+        color: var(--text2);
+      }
+
+      /* upgrade / filters */
+      .sumrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 14px;
+        background: var(--surface);
+        border-radius: var(--r-card);
+        border: var(--card-border) solid var(--line);
+        box-shadow: var(--shadow);
+        margin: 4px 0 12px;
+        font: 500 13px var(--font);
+      }
+      .sumrow .tag {
+        margin-left: auto;
+        color: var(--accent);
+        font-weight: 700;
+      }
+      .prim {
+        display: inline-block;
+        background: var(--accent);
+        color: var(--on-accent);
+        font: 700 13px var(--font);
+        padding: 11px 20px;
+        border-radius: var(--r-ctl);
+        text-transform: var(--label-case);
+        letter-spacing: var(--label-track);
+      }
+      .sec {
+        font: 600 13px var(--font);
+        color: var(--accent);
+        padding: 11px 6px;
+      }
+      .btnrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+      .item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 13px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .item .t {
+        font: 600 15px var(--font);
+      }
+      .item .s {
+        font: 400 12px var(--font);
+        color: var(--text2);
+        margin-top: 2px;
+      }
+      .item .p {
+        margin-left: auto;
+        text-align: right;
+        font: 600 15px var(--num);
+      }
+      .item .p small {
+        display: block;
+        font: 400 11px var(--font);
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button data-dir="a" class="on">A · Graphite</button>
+      <button data-dir="b">B · Noir Crest</button>
+      <button data-dir="c">C · Soft Paper</button>
+      <span style="width: 16px"></span>
+      <button data-theme="dark" class="on">Dark</button>
+      <button data-theme="light">Light</button>
+    </div>
+    <p class="note" id="note"></p>
+
+    <div id="stage" data-dir="a" data-theme="dark">
+      <div class="screens">
+        <!-- 1 Roster -->
+        <figure>
+          <div class="phone">
+            <div class="status"><span>9:41</span><span>●●● 82</span></div>
+            <div class="body">
+              <div class="seg">
+                <span class="on">Arena</span><span>Collection</span><span>Upgrade</span>
+              </div>
+              <h1>Arena</h1>
+              <div class="sync">Season 1 · Updated 4 min ago · 40 players</div>
+              <div class="viewer">
+                <div class="rk num">03</div>
+                <div>
+                  <div class="label">Your avatar · Score 0</div>
+                  <div class="nm">Xyrerris</div>
+                  <span class="upd">Update my stats</span>
+                </div>
+                <div class="cp">
+                  <b>55.163.719.399</b><span class="label num">55.163,72 M</span>
+                </div>
+              </div>
+              <div class="search">
+                <div class="in">
+                  <svg class="ic" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m20 20-3.5-3.5" />
+                  </svg>
+                  Search players
+                </div>
+                <div class="add">
+                  <svg class="ic" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                </div>
+              </div>
+              <div class="chips">
+                <span class="chip on">Rank</span><span class="chip">CP</span
+                ><span class="chip">My wins</span>
+              </div>
+              <div class="list">
+                <div class="row me">
+                  <div class="rk num">03</div>
+                  <div>
+                    <div class="nm">Xyrerris</div>
+                    <div class="sub">CP 55.163.719.399 · 55.163,72 M</div>
+                  </div>
+                  <div class="pts">0 pts</div>
+                </div>
+                <div class="row">
+                  <div class="rk num">34</div>
+                  <div>
+                    <div class="nm">JillyBean</div>
+                    <div class="sub">CP 26.994.922.010 · 26.994,92 M</div>
+                  </div>
+                  <div class="pts"><span style="color: var(--neg)">0W · 1L</span><br />0 pts</div>
+                </div>
+                <div class="row">
+                  <div class="rk num">39</div>
+                  <div>
+                    <div class="nm">Triplexmazi</div>
+                    <div class="sub">CP 103.705.589.421 · 103.705,59 M</div>
+                  </div>
+                  <div class="pts">0 pts</div>
+                </div>
+                <div class="row">
+                  <div class="rk num">40</div>
+                  <div>
+                    <div class="nm">torChun</div>
+                    <div class="sub">CP 49.402.148.758 · 49.402,15 M</div>
+                  </div>
+                  <div class="pts">0 pts</div>
+                </div>
+              </div>
+            </div>
+            <div class="tabbar">
+              <span class="on">Arena</span><span>Collection</span><span>Upgrade</span>
+            </div>
+          </div>
+          <figcaption>
+            Roster: title scrolls with the list; viewer is one compact row; search and sort share a
+            band.
+          </figcaption>
+        </figure>
+
+        <!-- 2 Detail -->
+        <figure>
+          <div class="phone">
+            <div class="status"><span>9:41</span><span>●●● 82</span></div>
+            <div class="body">
+              <div class="topbar">
+                <span
+                  ><svg class="ic" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></svg> Arena</span
+                ><span>Edit</span>
+              </div>
+              <div class="hero">
+                <div class="label">Rank #01</div>
+                <h2>DangerAhead</h2>
+                <div class="lv">Lv. 484 · #0e9d</div>
+                <div class="cpx">
+                  <span class="label">CP</span><b>8.531.802.550</b><span>8.531,80 M</span>
+                </div>
+              </div>
+              <div class="seg"><span class="on">Stats</span><span>Vs you</span></div>
+              <div class="group">
+                <div class="stat">
+                  <span class="k">HP</span><span class="ex">1.356.499.121</span
+                  ><span class="rd">1,36 B</span>
+                </div>
+                <div class="stat">
+                  <span class="k">ATK</span><span class="ex">187.216.172</span
+                  ><span class="rd">0,19 B</span>
+                </div>
+                <div class="stat">
+                  <span class="k">DEF</span><span class="ex">85.937.915</span
+                  ><span class="rd">0,09 B</span>
+                </div>
+                <div class="stat">
+                  <span class="k">CRIT</span><span class="ex">338,0000 %</span
+                  ><span class="rd">338,0%</span>
+                </div>
+                <div class="stat">
+                  <span class="k">HIT</span><span class="ex">246.054.648</span
+                  ><span class="rd">0,25 B</span>
+                </div>
+                <div class="stat">
+                  <span class="k">SPD</span><span class="ex">1.324.992.775</span
+                  ><span class="rd">1,32 B</span>
+                </div>
+              </div>
+              <div class="foot">Exact value left · rounded value right</div>
+            </div>
+            <div class="tabbar"><span>Arena</span><span>Collection</span><span>Upgrade</span></div>
+          </div>
+          <figcaption>
+            Detail: one grouped stat list; exact and rounded values both kept on every row.
+          </figcaption>
+        </figure>
+
+        <!-- 3 Upgrade -->
+        <figure>
+          <div class="phone">
+            <div class="status"><span>9:41</span><span>●●● 82</span></div>
+            <div class="body">
+              <div class="seg">
+                <span>Arena</span><span class="on">Collection</span><span>Upgrade</span>
+              </div>
+              <h1>Collection</h1>
+              <div class="sync">488 of 942 unlocked · Updated 2 h ago · mimir</div>
+              <div class="seg">
+                <span>Collections</span><span>Items</span><span class="on">Offers</span>
+              </div>
+              <div class="sumrow">
+                <span>Filters</span><span class="label">any</span
+                ><span class="tag"
+                  ><svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4" /></svg
+                ></span>
+              </div>
+              <div class="sync">
+                378 pieces still to find · 149 offers found, 105 with nothing on sale.
+              </div>
+              <div class="btnrow">
+                <span class="prim">Read again</span><span class="sec">Price</span
+                ><span class="sec">Level</span><span class="sec">Saving</span>
+              </div>
+              <div class="item">
+                <div>
+                  <div class="t">얼음 잎사귀 샐러드 · needs 5</div>
+                  <div class="s">helps 1 collection · 5 units in 5 lots</div>
+                </div>
+                <div class="p">
+                  5 NCG<small
+                    class="prim"
+                    style="
+                      padding: 6px 12px;
+                      font-size: 11px;
+                      margin-top: 4px;
+                      color: var(--on-accent);
+                    "
+                    >Select</small
+                  >
+                </div>
+              </div>
+              <div class="item">
+                <div>
+                  <div class="t">Second offer · needs 2</div>
+                  <div class="s">sample row: same layout as above</div>
+                </div>
+                <div class="p">
+                  3 NCG<small
+                    class="prim"
+                    style="
+                      padding: 6px 12px;
+                      font-size: 11px;
+                      margin-top: 4px;
+                      color: var(--on-accent);
+                    "
+                    >Select</small
+                  >
+                </div>
+              </div>
+            </div>
+            <div class="tabbar">
+              <span>Arena</span><span class="on">Collection</span><span>Upgrade</span>
+            </div>
+          </div>
+          <figcaption>
+            Collection · Offers: one primary action, SELECT kept on every offer, filters shown as a
+            summary row (F: the real panel would open as a sheet). Rows are sample data except the
+            first, taken from the emulator.
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <script>
+      const stage = document.getElementById('stage');
+      const notes = {
+        a: 'A · Graphite. The most Apple-like: neutral graphite, Inter, one mint accent, hairline lists instead of cards, text tabs with an underline, a single filled action per screen. Risk: loses the arena character the app has today.',
+        b: 'B · Noir Crest. Keeps the brand: deep green-black, Cinzel for titles and rank numerals, mono numbers, sharp 10 px corners, ivory text. Calm, but with a crest-like identity. Risk: the serif has to stay rare or it turns theatrical again.',
+        c: 'C · Soft Paper. Light-first: soft tonal surfaces, 22 px corners, gentle shadows, Manrope, a floating bottom tab bar. Friendliest and most current. The bottom bar is a flow change (F) and needs your approval; without it C keeps the top tabs.',
+      };
+      const note = document.getElementById('note');
+      const apply = () => (note.textContent = notes[stage.dataset.dir]);
+      document.querySelectorAll('.bar button').forEach((b) =>
+        b.addEventListener('click', () => {
+          const key = b.dataset.dir ? 'dir' : 'theme';
+          stage.dataset[key] = b.dataset.dir || b.dataset.theme;
+          document
+            .querySelectorAll(`.bar button[data-${key}]`)
+            .forEach((x) => x.classList.toggle('on', x === b));
+          apply();
+        }),
+      );
+      apply();
+    </script>
+  </body>
+</html>

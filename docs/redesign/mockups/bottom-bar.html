@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arena Scout: bottom bar proposal</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Cinzel:wght@700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #07100d;
+        --surface: #0e1a16;
+        --text: #ece6d8;
+        --text2: #a59f90;
+        --line: rgba(236, 230, 216, 0.14);
+        --accent: #5fd6a2;
+        --on: #07100d;
+      }
+      body[data-theme='light'] {
+        --bg: #f1eee6;
+        --surface: #faf8f2;
+        --text: #14201b;
+        --text2: #5c6259;
+        --line: rgba(20, 32, 27, 0.16);
+        --accent: #0f7a54;
+        --on: #faf8f2;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        background: #d9dcda;
+        padding: 24px;
+      }
+      .bar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .bar button {
+        font: 600 13px system-ui;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid #888;
+        background: #fff;
+        cursor: pointer;
+      }
+      .bar button.on {
+        background: #111;
+        color: #fff;
+        border-color: #111;
+      }
+      .note {
+        font: 14px/1.5 system-ui;
+        max-width: 940px;
+        margin-bottom: 18px;
+      }
+      .screens {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      figure {
+        width: 390px;
+      }
+      figcaption {
+        font: 600 13px system-ui;
+        margin-top: 8px;
+      }
+      .phone {
+        width: 390px;
+        height: 800px;
+        border: 8px solid #000;
+        border-radius: 36px;
+        overflow: hidden;
+        position: relative;
+        background: var(--bg);
+        color: var(--text);
+        font-family: 'Barlow', sans-serif;
+        display: flex;
+        flex-direction: column;
+      }
+      /* 200 % text: every size below is exactly twice its 100 % value */
+      .phone.big h1 {
+        font-size: 64px;
+      }
+      .phone.big .row {
+        grid-template-columns: 96px 1fr auto;
+      }
+      .phone.big .row .rk {
+        font-size: 52px;
+      }
+      .phone.big .row .nm {
+        font-size: 32px;
+      }
+      .phone.big .row .sub {
+        font-size: 24px;
+        overflow-wrap: anywhere;
+      }
+      .phone.big .row .pts {
+        font-size: 24px;
+      }
+      .phone.big .dock span {
+        font-size: 24px;
+      }
+      .status {
+        height: 38px;
+        padding: 12px 24px 0;
+        font: 600 13px 'Barlow';
+        display: flex;
+        justify-content: space-between;
+      }
+      .body {
+        flex: 1;
+        overflow: hidden;
+        padding: 0 20px;
+      }
+      h1 {
+        font:
+          700 32px/1.1 'Cinzel',
+          serif;
+        letter-spacing: 0.02em;
+        margin: 6px 0 12px;
+      }
+      .top {
+        display: flex;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 8px;
+      }
+      .top span {
+        flex: 1;
+        text-align: center;
+        padding: 10px 0;
+        font: 600 13px 'Barlow';
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text2);
+        border-bottom: 2px solid transparent;
+      }
+      .top span.on {
+        color: var(--text);
+        border-bottom-color: var(--accent);
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 52px 1fr auto;
+        align-items: center;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .row .rk {
+        font: 700 26px 'Cinzel';
+        color: var(--accent);
+      }
+      .row .nm {
+        font: 600 16px 'Barlow';
+      }
+      .row .sub {
+        font: 400 12px 'JetBrains Mono';
+        color: var(--text2);
+      }
+      .row .pts {
+        font: 400 12px 'Barlow';
+        color: var(--text2);
+      }
+      /* docked Material-style bar: sits under the list, never over it */
+      .dock {
+        display: flex;
+        border-top: 1px solid var(--line);
+        background: var(--bg);
+        padding: 10px 8px 14px;
+      }
+      .dock span {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        font: 600 12px 'Barlow';
+        color: var(--text2);
+      }
+      .dock span.on {
+        color: var(--accent);
+      }
+      .dock svg {
+        width: 24px;
+        height: 24px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .dock .pill {
+        width: 56px;
+        height: 30px;
+        border-radius: 15px;
+        display: grid;
+        place-items: center;
+      }
+      .dock span.on .pill {
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+      }
+      .phone.big .dock {
+        padding: 10px 4px 14px;
+      }
+    </style>
+  </head>
+  <body data-theme="dark">
+    <div class="bar">
+      <button class="on" data-theme="dark">Dark</button>
+      <button data-theme="light">Light</button>
+    </div>
+    <p class="note">
+      Proposal: move the Arena / Collection / Upgrade switch from the top to a <b>docked</b> bottom
+      bar (Material 3 style, not floating), three destinations, same behaviour as today
+      (<code>router.replace</code>, no new route structure). The list ends above the bar, so nothing
+      is covered at 200 % font scale (right). Pushed screens (player, forms, /me) keep no bar, as
+      now.
+    </p>
+    <div class="screens">
+      <figure>
+        <div class="phone">
+          <div class="status"><span>9:41</span><span>82</span></div>
+          <div class="body">
+            <div class="top">
+              <span class="on">Arena</span><span>Collection</span><span>Upgrade</span>
+            </div>
+            <h1>Arena</h1>
+            <div class="row">
+              <div class="rk">03</div>
+              <div>
+                <div class="nm">Xyrerris</div>
+                <div class="sub">CP 55.163.719.399 · 55.163,72 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+            <div class="row">
+              <div class="rk">34</div>
+              <div>
+                <div class="nm">JillyBean</div>
+                <div class="sub">CP 26.994.922.010 · 26.994,92 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+            <div class="row">
+              <div class="rk">39</div>
+              <div>
+                <div class="nm">Triplexmazi</div>
+                <div class="sub">CP 103.705.589.421 · 103.705,59 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+          </div>
+        </div>
+        <figcaption>Today (restyled): tabs on top, reached by stretching up.</figcaption>
+      </figure>
+      <figure>
+        <div class="phone">
+          <div class="status"><span>9:41</span><span>82</span></div>
+          <div class="body">
+            <h1>Arena</h1>
+            <div class="row">
+              <div class="rk">03</div>
+              <div>
+                <div class="nm">Xyrerris</div>
+                <div class="sub">CP 55.163.719.399 · 55.163,72 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+            <div class="row">
+              <div class="rk">34</div>
+              <div>
+                <div class="nm">JillyBean</div>
+                <div class="sub">CP 26.994.922.010 · 26.994,92 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+            <div class="row">
+              <div class="rk">39</div>
+              <div>
+                <div class="nm">Triplexmazi</div>
+                <div class="sub">CP 103.705.589.421 · 103.705,59 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+          </div>
+          <div class="dock">
+            <span class="on"
+              ><i class="pill"
+                ><svg viewBox="0 0 24 24">
+                  <path d="M6 4h12v5a6 6 0 0 1-12 0zM9 20h6M12 15v5" /></svg></i
+              >Arena</span
+            >
+            <span
+              ><i class="pill"
+                ><svg viewBox="0 0 24 24">
+                  <rect x="4" y="4" width="7" height="7" rx="1.5" />
+                  <rect x="13" y="4" width="7" height="7" rx="1.5" />
+                  <rect x="4" y="13" width="7" height="7" rx="1.5" />
+                  <rect x="13" y="13" width="7" height="7" rx="1.5" /></svg></i
+              >Collection</span
+            >
+            <span
+              ><i class="pill"
+                ><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" /></svg></i
+              >Upgrade</span
+            >
+          </div>
+        </div>
+        <figcaption>
+          Proposed: docked bar, 100 % font. The top band is freed for the title.
+        </figcaption>
+      </figure>
+      <figure>
+        <div class="phone big">
+          <div class="status"><span>9:41</span><span>82</span></div>
+          <div class="body">
+            <h1>Arena</h1>
+            <div class="row">
+              <div class="rk">03</div>
+              <div>
+                <div class="nm">Xyrerris</div>
+                <div class="sub">CP 55.163.719.399 · 55.163,72 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+            <div class="row">
+              <div class="rk">34</div>
+              <div>
+                <div class="nm">JillyBean</div>
+                <div class="sub">CP 26.994.922.010 · 26.994,92 M</div>
+              </div>
+              <div class="pts">0 pts</div>
+            </div>
+          </div>
+          <div class="dock">
+            <span class="on"
+              ><i class="pill"
+                ><svg viewBox="0 0 24 24">
+                  <path d="M6 4h12v5a6 6 0 0 1-12 0zM9 20h6M12 15v5" /></svg></i
+              >Arena</span
+            >
+            <span
+              ><i class="pill"
+                ><svg viewBox="0 0 24 24">
+                  <rect x="4" y="4" width="7" height="7" rx="1.5" />
+                  <rect x="13" y="4" width="7" height="7" rx="1.5" />
+                  <rect x="4" y="13" width="7" height="7" rx="1.5" />
+                  <rect x="13" y="13" width="7" height="7" rx="1.5" /></svg></i
+              >Collection</span
+            >
+            <span
+              ><i class="pill"
+                ><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" /></svg></i
+              >Upgrade</span
+            >
+          </div>
+        </div>
+        <figcaption>
+          Proposed at 200 % text: three labels still fit; rows scroll above the bar.
+        </figcaption>
+      </figure>
+    </div>
+    <script>
+      document.querySelectorAll('.bar button').forEach((b) =>
+        b.addEventListener('click', () => {
+          document.body.dataset.theme = b.dataset.theme;
+          document
+            .querySelectorAll('.bar button')
+            .forEach((x) => x.classList.toggle('on', x === b));
+        }),
+      );
+    </script>
+  </body>
+</html>

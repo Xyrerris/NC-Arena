@@ -22,12 +22,13 @@ compliant codebase — which is what happened for two phases (ADR-0006). Treat a
 
 ## Read first
 
-| Doc                                          | What it decides                                                             |
-| -------------------------------------------- | --------------------------------------------------------------------------- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, module boundaries (§4), the data layer (§7), the testing split (§10) |
-| [docs/DECISIONS.md](docs/DECISIONS.md)       | Every ADR. The _why_ behind anything that looks arbitrary                   |
-| [docs/ROADMAP.md](docs/ROADMAP.md)           | Phases, exit criteria, and what is deliberately still open (marked ⚠️)      |
-| [docs/HANDOFF.md](docs/HANDOFF.md)           | Where Phase 5 stopped, what is decided, and what to pick up next            |
+| Doc                                                  | What it decides                                                             |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)         | Stack, module boundaries (§4), the data layer (§7), the testing split (§10) |
+| [docs/DECISIONS.md](docs/DECISIONS.md)               | Every ADR. The _why_ behind anything that looks arbitrary                   |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                   | Phases, exit criteria, and what is deliberately still open (marked ⚠️)      |
+| [docs/HANDOFF.md](docs/HANDOFF.md)                   | Where Phase 5 stopped, what is decided, and what to pick up next            |
+| [docs/redesign/HANDOFF.md](docs/redesign/HANDOFF.md) | The UI/UX redesign: decisions made, process rules, what comes next          |
 
 ARCHITECTURE.md first; the roadmap references its section numbers throughout. HANDOFF.md is the
 short one — read it before you plan anything, because it says which decisions are already made.
