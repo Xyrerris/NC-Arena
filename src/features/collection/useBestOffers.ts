@@ -35,6 +35,8 @@ export const OFFER_SCAN_CONCURRENCY = 3;
  */
 export const OFFER_FLUSH_MS = 1000;
 
+const NO_OFFERS: BestOffers = { offers: [], overpriced: [], withoutOffer: [] };
+
 export type OffersPhase = 'idle' | 'running' | 'done' | 'stopped';
 
 type Outcome =
@@ -88,6 +90,8 @@ export const useBestOffers = (
   const markSold = useCallback((productId: string) => {
     setSold((now) => (now.has(productId) ? now : new Set(now).add(productId)));
   }, []);
+  // The offers last ranked: shown while a read is running, since ranking waits for its end.
+  const [shown, setShown] = useState<BestOffers>(NO_OFFERS);
   const run = useRef<AbortController | null>(null);
   // Hands over what the running read has gathered but not yet shown (see `OFFER_FLUSH_MS`).
   const flushNow = useRef<(() => void) | null>(null);
@@ -183,6 +187,8 @@ export const useBestOffers = (
         if (identity.ok && identity.value !== null) setAgent(identity.value.agentAddress);
       });
     }
+    // A new read starts from nothing: the earlier offers are not shown while it runs.
+    setShown(NO_OFFERS);
     read(targets, {});
   }, [avatar, avatarSource, read, targets]);
 
@@ -205,31 +211,39 @@ export const useBestOffers = (
     );
   }, [signature]);
 
-  const result = useMemo(
+  // Ranking every offer read so far is the heavy part, and it grows with the list: while the market
+  // is being read it is not done at all, only at the end or on STOP. A read that adds to a previous
+  // one (retrying what failed) keeps showing the earlier result meanwhile.
+  const running = current.phase === 'running';
+  const ranked = useMemo(
     () =>
-      bestOffers(
-        targets.flatMap((target) => {
-          const outcome = current.outcomes[target.piece.key];
-          return outcome?.kind === 'ready'
-            ? [
-                {
-                  ...target.missing,
-                  ...(target.raisedFrom === undefined ? {} : { raisedFrom: target.raisedFrom }),
-                  listings:
-                    sold.size === 0
-                      ? outcome.listings
-                      : outcome.listings.filter((listing) => !sold.has(listing.productId)),
-                },
-              ]
-            : [];
-        }),
-        {
-          ...(agent === null ? {} : { excludeSeller: agent }),
-          ...(costs === null ? {} : { costs }),
-        },
-      ),
-    [targets, current.outcomes, agent, costs, sold],
+      running
+        ? null
+        : bestOffers(
+            targets.flatMap((target) => {
+              const outcome = current.outcomes[target.piece.key];
+              return outcome?.kind === 'ready'
+                ? [
+                    {
+                      ...target.missing,
+                      ...(target.raisedFrom === undefined ? {} : { raisedFrom: target.raisedFrom }),
+                      listings:
+                        sold.size === 0
+                          ? outcome.listings
+                          : outcome.listings.filter((listing) => !sold.has(listing.productId)),
+                    },
+                  ]
+                : [];
+            }),
+            {
+              ...(agent === null ? {} : { excludeSeller: agent }),
+              ...(costs === null ? {} : { costs }),
+            },
+          ),
+    [running, targets, current.outcomes, agent, costs, sold],
   );
+  if (ranked !== null && ranked !== shown) setShown(ranked);
+  const result = ranked ?? shown;
 
   const outcomes = Object.values(current.outcomes);
   return {

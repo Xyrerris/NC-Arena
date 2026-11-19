@@ -151,7 +151,7 @@ export const collectionStrings = {
   offersStopA11y: 'Stop reading the market',
   offersReading: (done: number, total: number) =>
     `Reading the market… ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}. ` +
-    'The order can change until it is done.',
+    'The offers appear when it is done, or when you stop it.',
   offersStopped: (done: number, total: number, found: number) =>
     `Stopped after ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}: ` +
     `${found} ${found === 1 ? 'offer' : 'offers'} found so far, the rest not read.`,
