@@ -63,6 +63,7 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
 
   const [sort, setSort] = useState<OfferSort>('price');
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
+  const [underStandard, setUnderStandard] = useState(false);
 
   const allRows = useMemo(() => {
     const pieces = new Map(targets.map((target) => [target.piece.key, target.piece]));
@@ -77,7 +78,10 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
   const levels = useMemo(() => offerLevels(allRows), [allRows]);
   // A level a new read no longer has is not a filter any more, rather than an empty list.
   const level = levelFilter !== null && levels.includes(levelFilter) ? levelFilter : null;
-  const rows = useMemo(() => arrangeOffers(allRows, sort, level), [allRows, sort, level]);
+  const rows = useMemo(
+    () => arrangeOffers(allRows, sort, level, underStandard),
+    [allRows, sort, level, underStandard],
+  );
   // The row is kept as it was opened: once its piece is bought it leaves the list, and the card
   // that says it went through has to stay until the person closes it.
   const [open, setOpen] = useState<(typeof allRows)[number] | null>(null);
@@ -257,6 +261,20 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
                   onPress={() => setSort('level')}
                   testID="offers-sort-level"
                 />
+                <SortChip
+                  label={words.offersSortSaving}
+                  accessibilityLabel={words.offersSortSavingA11y}
+                  selected={sort === 'saving'}
+                  onPress={() => setSort('saving')}
+                  testID="offers-sort-saving"
+                />
+                <SortChip
+                  label={words.offersUnderStandard}
+                  accessibilityLabel={words.offersUnderStandardA11y}
+                  selected={underStandard}
+                  onPress={() => setUnderStandard((now) => !now)}
+                  testID="offers-under-standard"
+                />
               </View>
             )}
             {levels.length < 2 ? null : (
@@ -280,6 +298,11 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
                 ))}
               </View>
             )}
+            {underStandard && allRows.length > 0 && rows.length === 0 ? (
+              <ArenaText variant="bodySmall" tone="subtle" testID="offers-under-standard-none">
+                {words.offersUnderStandardNone}
+              </ArenaText>
+            ) : null}
             {dearCount === 0 ? null : (
               <View style={styles.actions}>
                 <ArenaText variant="bodySmall" tone="subtle" testID="offers-overpriced">

@@ -164,6 +164,8 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
 
   const parts: string[] = [];
   if (offer.verdict !== null) parts.push(VERDICT_WORDS[offer.verdict]);
+  const saving = savingOf(offer);
+  if (saving !== null && saving > 0) parts.push(words.offersSavingLine(formatNcg(saving)));
   parts.push(words.offersHelps(offer.collectionIds.length));
   if (raised && offer.fromLevel !== null) parts.push(words.offersBoughtAs(offer.fromLevel));
   if (offer.saves !== null) parts.push(words.offersSaves(formatNcg(offer.saves)));
@@ -184,7 +186,14 @@ export const toOfferRow = (offer: Offer, target: MarketPiece): OfferRowUi => {
   };
 };
 
-export type OfferSort = 'price' | 'level';
+export type OfferSort = 'price' | 'level' | 'saving';
+
+/**
+ * What the offer saves against buying a +0 and raising it from scratch: the standard price less the
+ * total, in whole hundredths. Null when there is no standard to compare with.
+ */
+export const savingOf = (offer: Offer): number | null =>
+  offer.standard === null ? null : (hundredths(offer.standard) - hundredths(offer.total)) / 100;
 
 /** The level a piece is bought at; null for what has none (a costume, a material). */
 export const offerLevel = (offer: Offer, piece: MarketPiece): number | null =>
@@ -205,16 +214,29 @@ export const offerLevels = <T extends { offer: Offer; piece: MarketPiece }>(
 /**
  * The rows as the person asked to see them: only one level when `level` is given, and by price
  * (the order they come in) or by level, highest first, the cheaper first within a level. What has
- * no level goes last.
+ * no level goes last. By saving, the biggest first and the rows with no standard last, each group
+ * in the order the rows came in. `underStandard` keeps only the rows judged `good`.
  */
 export const arrangeOffers = <T extends { offer: Offer; piece: MarketPiece }>(
   rows: readonly T[],
   sort: OfferSort,
   level: number | null,
+  underStandard = false,
 ): readonly T[] => {
-  const kept =
-    level === null ? rows : rows.filter((row) => offerLevel(row.offer, row.piece) === level);
+  const kept = rows.filter(
+    (row) =>
+      (level === null || offerLevel(row.offer, row.piece) === level) &&
+      (!underStandard || row.offer.verdict === 'good'),
+  );
   if (sort === 'price') return kept;
+  if (sort === 'saving') {
+    const saving = (row: T): number => savingOf(row.offer) ?? Number.NEGATIVE_INFINITY;
+    return [...kept].sort((a, b) => {
+      const sa = saving(a);
+      const sb = saving(b);
+      return sa === sb ? 0 : sb > sa ? 1 : -1;
+    });
+  }
   const rank = (row: T): number => offerLevel(row.offer, row.piece) ?? -1;
   return [...kept].sort((a, b) => rank(b) - rank(a) || a.offer.total - b.offer.total);
 };

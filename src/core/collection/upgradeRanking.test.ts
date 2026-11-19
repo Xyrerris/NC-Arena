@@ -113,7 +113,10 @@ describe('ceilingAt', () => {
 
     expect(ceilingAt(GRADE_RANGES[9]!, month)).toBeCloseTo(8.4, 6);
     expect(ceilingAt(GRADE_RANGES[9]!, afterYear)).toBe(3);
-    expect(ceilingAt(GRADE_RANGES[8]!, afterYear)).toBe(2.5);
+    // Grades 8 and 7 have a flat default ceiling: no ramp.
+    expect(ceilingAt(GRADE_RANGES[8]!, OPENING)).toBe(6);
+    expect(ceilingAt(GRADE_RANGES[8]!, afterYear)).toBe(6);
+    expect(ceilingAt(GRADE_RANGES[7]!, afterYear)).toBe(5);
   });
 
   it('reaches the grade 9 target in about four months', () => {
@@ -129,7 +132,7 @@ describe('rangeFor', () => {
   });
 
   it('opens a new grade at 1.1 times its floor, with the lowest target and optimum known', () => {
-    expect(rangeFor(10, { 10: 20 })).toEqual({ opening: 22, target: 2.5, optimum: 0.8 });
+    expect(rangeFor(10, { 10: 20 })).toEqual({ opening: 22, target: 3, optimum: 0.8 });
   });
 
   it('does not offer a new grade nobody has priced', () => {
@@ -144,11 +147,11 @@ describe('rankMaterials', () => {
 
   const opening = [
     listing({ productId: 'A', price: 100 }), // g9 10.4 /G of 12
-    listing({ productId: 'B', itemId: 10181000, grade: 8, price: 10 }), // 8.3 of 11.5
-    listing({ productId: 'C', itemId: 10181000, grade: 8, price: 13 }), // 10.8 of 11.5
+    listing({ productId: 'B', itemId: 10181000, grade: 8, price: 6 }), // 5.0 of 6
+    listing({ productId: 'C', itemId: 10181000, grade: 8, price: 7 }), // 5.8 of 6
     listing({ productId: 'D', price: 120 }), // 12.5 of 12: over
-    listing({ productId: 'E', itemId: 10171000, grade: 7, level: 3, price: 5 }), // 8.9 of 9.5
-    listing({ productId: 'F', itemId: 10171000, grade: 7, price: 1 }), // 8.3 of 9.5
+    listing({ productId: 'E', itemId: 10171000, grade: 7, level: 3, price: 2.5 }), // 4.4 of 5
+    listing({ productId: 'F', itemId: 10171000, grade: 7, price: 0.55 }), // 4.6 of 5
   ];
 
   it('orders by the share of the ceiling an offer spends, and counts what is over it', () => {
@@ -157,8 +160,8 @@ describe('rankMaterials', () => {
     expect(ranking.offers.map((offer) => offer.listing.productId)).toEqual([
       'B',
       'A',
-      'F',
       'E',
+      'F',
       'C',
     ]);
     expect(ranking.over).toBe(1);
@@ -198,13 +201,30 @@ describe('rankMaterials', () => {
     expect(ranking.offers.every((offer) => offer.listing.grade !== 9)).toBe(true);
   });
 
-  it('lowers the ceilings with the date, so a later read keeps fewer offers', () => {
-    const cheapSeven = listing({ productId: 'G', itemId: 10171000, grade: 7, price: 0.9 }); // 7.5 /G
+  it('lowers the grade 9 ceiling with the date, while grades 8 and 7 stay flat', () => {
+    const cheapSeven = listing({ productId: 'G', itemId: 10171000, grade: 7, price: 0.4 }); // 3.3 /G
     const later = rank([...opening, cheapSeven], { now: new Date('2027-03-05') });
 
-    // Grade 9 ceiling is 3 by now, grade 8 is 2.5, grade 7 is 8: only the 0.9 NCG grade 7 is left.
-    expect(later.offers.map((offer) => offer.listing.productId)).toEqual(['G']);
-    expect(later.over).toBe(6);
+    // Grade 9 ceiling is 3 by now, so both grade 9 pieces are over; grades 8 and 7 keep 6 and 5.
+    expect(later.offers.map((offer) => offer.listing.productId)).toEqual(['G', 'B', 'E', 'F', 'C']);
+    expect(later.over).toBe(2);
+  });
+
+  it('takes the bargain threshold from the owner when given, per grade', () => {
+    const optimum = (options = {}) =>
+      Object.fromEntries(
+        rank(opening, options).offers.map((offer) => [offer.listing.productId, offer.band]),
+      );
+
+    // B is 5.0 /G, E 4.4 and F 4.6: none is a bargain (grade 8 at 0.8, grade 7 at 4) by default.
+    expect(optimum().B).toBe('within');
+    expect(optimum().E).toBe('within');
+
+    const own = optimum({ optimums: { 8: 5, 7: 4.5 } });
+
+    expect(own.B).toBe('optimum');
+    expect(own.E).toBe('optimum');
+    expect(own.F).toBe('within');
   });
 
   it('counts what it cannot value, skips the buyer’s own listings, and offers a new grade only with a floor', () => {

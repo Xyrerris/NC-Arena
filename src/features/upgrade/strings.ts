@@ -41,6 +41,11 @@ export const upgradeStrings = {
   levelsA11y: 'Switch between only pieces raised above +0 and every piece',
   ceilings: 'CEILINGS',
   ceilingsA11y: 'Show or hide the ceilings in NCG per Gexp',
+  bargains: 'BARGAINS',
+  bargainsA11y: 'Show or hide the bargain thresholds in NCG per Gexp',
+  bargainLabel: (grade: number) => `Grade ${grade} bargain threshold, NCG per Gexp`,
+  bargainHint: (current: string) =>
+    `An offer at or under this is a bargain. Now ${current}. Leave empty for the default.`,
   ceilingLabel: (grade: number) => `Grade ${grade} ceiling, NCG per Gexp`,
   ceilingHint: (current: string) => `Now ${current}. Leave empty for the default.`,
   overCeiling: (count: number) =>

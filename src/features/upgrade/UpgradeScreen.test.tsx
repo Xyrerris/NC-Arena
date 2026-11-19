@@ -72,9 +72,9 @@ const listing = (productId: string, over: Partial<MarketListing>): MarketListing
   ...over,
 });
 
-// A grade 9 +0 at 100 NCG (10.4 per Gexp, in range) and a grade 8 +1 at 10 NCG (7.8, in range).
+// A grade 9 +0 at 100 NCG (10.4 per Gexp, in range) and a grade 8 +1 at 6 NCG (4.7, in range).
 const ULTIMATE = listing('ult', { itemId: 10191000, grade: 9, level: 0, price: 100 });
-const RAISED = listing('raised', { itemId: 10181000, grade: 8, level: 1, price: 10 });
+const RAISED = listing('raised', { itemId: 10181000, grade: 8, level: 1, price: 6 });
 const AVATAR = {
   planet: 'heimdall',
   address: '0x1023d8f22c6f5a8701e56a95e18fb2dbe436b41f',
@@ -173,20 +173,20 @@ describe('UpgradeScreen', () => {
     expect(text('upgrade-idle')).toBe(words.nothingYet);
     expect(scan).not.toHaveBeenCalled();
 
-    await press('upgrade-only-raised'); // every level
     await press('upgrade-find');
 
-    // Grades 8 and 9 only: grade 7 starts switched off.
-    expect(scan.mock.calls.map((call) => call[2]).sort()).toEqual([10181000, 10191000]);
-    expect(text('upgrade-status')).toBe(words.status(2, 2, false));
+    // Grades 7, 8 and 9: grade 7 starts switched on, and every level is shown.
+    expect(scan.mock.calls.map((call) => call[2]).sort()).toEqual([10171000, 10181000, 10191000]);
+    expect(text('upgrade-status')).toBe(words.status(3, 3, false));
     const ids = screen
       .queryAllByTestId(/^upgrade-row-/)
       .map((node) => String(node.props.testID).replace('upgrade-row-', ''));
     expect(ids).toEqual(['raised', 'ult']);
   });
 
-  it('hides +0 pieces by default and says how many qualify', async () => {
+  it('hides +0 pieces when ONLY RAISED is on and says how many qualify', async () => {
     await mount();
+    await press('upgrade-only-raised');
     await press('upgrade-find');
 
     expect(screen.queryByTestId('upgrade-row-ult')).toBeNull();
@@ -199,11 +199,38 @@ describe('UpgradeScreen', () => {
     await press('upgrade-find');
     await press('upgrade-ceilings-toggle');
     await act(async () => {
-      fireEvent.changeText(screen.getByTestId('upgrade-ceiling-8'), '5');
+      fireEvent.changeText(screen.getByTestId('upgrade-ceiling-8'), '4');
     });
 
     expect(screen.queryByTestId('upgrade-row-raised')).toBeNull();
     expect(text('upgrade-over')).toBe(words.overCeiling(1));
+  });
+
+  it('shows the default ceiling and bargain threshold of each grade as the placeholder', async () => {
+    await mount();
+    await press('upgrade-find');
+    await press('upgrade-ceilings-toggle');
+    await press('upgrade-bargains-toggle');
+
+    expect(screen.getByTestId('upgrade-ceiling-8').props.placeholder).toBe('6');
+    expect(screen.getByTestId('upgrade-ceiling-7').props.placeholder).toBe('5');
+    expect(screen.getByTestId('upgrade-bargain-8').props.placeholder).toBe('0,8');
+    expect(screen.getByTestId('upgrade-bargain-7').props.placeholder).toBe('4');
+  });
+
+  it('calls an offer a bargain at the threshold the owner sets', async () => {
+    await mount();
+    await press('upgrade-find');
+
+    expect(screen.queryByText(words.bandOptimum)).toBeNull();
+
+    await press('upgrade-bargains-toggle');
+    await act(async () => {
+      fireEvent.changeText(screen.getByTestId('upgrade-bargain-8'), '5');
+    });
+
+    expect(screen.getByText(words.bandOptimum)).toBeTruthy(); // the grade 8 +1 at 4.7 /G
+    expect(screen.getByTestId('upgrade-add-bargains')).toBeTruthy();
   });
 
   it('offers to buy a selection with its total', async () => {
@@ -211,7 +238,7 @@ describe('UpgradeScreen', () => {
     await press('upgrade-find');
     await press('upgrade-select-raised');
 
-    expect(text('upgrade-bar-title')).toBe('1 piece selected · 10 NCG');
+    expect(text('upgrade-bar-title')).toBe('1 piece selected · 6 NCG');
     expect(screen.getByTestId('upgrade-buy')).toBeTruthy();
 
     await press('upgrade-clear');
@@ -290,13 +317,13 @@ describe('UpgradeScreen', () => {
       await press('planner-piece-my-sword');
 
       expect(text('planner-target')).toBe(words.plannerTarget(1));
-      // +0 to +1 takes 0.08 G more; the raised piece (1.28 G, 10 NCG) is the cheapest per Gexp.
-      expect(screen.getByText(words.planBuy(1, '10'))).toBeTruthy();
+      // +0 to +1 takes 0.08 G more; the raised piece (1.28 G, 6 NCG) is the cheapest per Gexp.
+      expect(screen.getByText(words.planBuy(1, '6'))).toBeTruthy();
 
       await press('planner-select');
 
       expect(screen.queryByTestId('planner-sheet')).toBeNull();
-      expect(text('upgrade-bar-title')).toBe('1 piece selected · 10 NCG');
+      expect(text('upgrade-bar-title')).toBe('1 piece selected · 6 NCG');
     });
 
     it('folds the list once a piece is chosen, and CHANGE opens it again', async () => {

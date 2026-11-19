@@ -8,6 +8,7 @@ import {
   offerLevels,
   offerTargets,
   offersStatus,
+  savingOf,
   selectionSummary,
   toOfferRow,
 } from './offersUiState';
@@ -65,6 +66,7 @@ const offer = (overrides: Partial<Offer> = {}): Offer => ({
   fromLevel: null,
   total: 3,
   verdict: null,
+  standard: null,
   saves: null,
   ...overrides,
 });
@@ -174,6 +176,14 @@ describe('toOfferRow', () => {
     expect(ui.detail).toContain('140 NCG less than raising the piece you hold');
   });
 
+  it('says what an offer saves against the standard price, only when it does', () => {
+    const saving = toOfferRow(offer({ total: 10, standard: 40, verdict: 'good' }), piece);
+    expect(saving.detail).toContain('saves 30 NCG against raising from +0');
+
+    const none = toOfferRow(offer({ total: 40, standard: 40, verdict: 'good' }), piece);
+    expect(none.detail).not.toContain('saves');
+  });
+
   it('shows a counted piece by what all of it costs, and says how many lots', () => {
     const lots = [listing({ productId: 'a', price: 4 }), listing({ productId: 'b', price: 6 })];
     const ui = toOfferRow(offer({ need: 2, picks: lots, units: 2, price: 10 }), piece);
@@ -218,6 +228,57 @@ describe('arrangeOffers', () => {
 
   it('keeps one level only, and drops what has no level', () => {
     expect(ids(arrangeOffers(rows, 'price', 9))).toEqual(['b', 'd']);
+  });
+
+  describe('by saving and under the standard price', () => {
+    const priced = (
+      id: string,
+      level: number,
+      total: number,
+      standard: number | null,
+      verdict: Offer['verdict'],
+    ) => ({
+      offer: offer({
+        key: id,
+        picks: [listing({ productId: id, level })],
+        price: total,
+        total,
+        standard,
+        verdict,
+      }),
+      piece: { ...piece, equipment },
+    });
+    const saving = [
+      priced('a', 9, 10, 50, 'good'), // saves 40
+      priced('b', 9, 20, 25, 'good'), // saves 5
+      priced('c', 3, 5, null, null), // no standard
+      priced('d', 9, 60, 50, 'fair'), // saves -10
+      priced('e', 3, 12, 52, 'good'), // saves 40, ties with a
+    ];
+
+    it('says what an offer saves, in hundredths, and nothing without a standard', () => {
+      expect(savingOf(offer({ total: 10.1, standard: 50.35 }))).toBe(40.25);
+      expect(savingOf(offer({ total: 50, standard: 50 }))).toBe(0);
+      expect(savingOf(offer({ total: 60, standard: 50 }))).toBe(-10);
+      expect(savingOf(offer({ total: 5, standard: null }))).toBeNull();
+    });
+
+    it('puts the biggest saving first, no standard last, ties in the incoming order', () => {
+      expect(ids(arrangeOffers(saving, 'saving', null))).toEqual(['a', 'e', 'b', 'd', 'c']);
+    });
+
+    it('keeps only the good offers when asked, before sorting', () => {
+      expect(ids(arrangeOffers(saving, 'price', null, true))).toEqual(['a', 'b', 'e']);
+      expect(ids(arrangeOffers(saving, 'saving', null, true))).toEqual(['a', 'e', 'b']);
+    });
+
+    it('combines with the level filter', () => {
+      expect(ids(arrangeOffers(saving, 'saving', 9, true))).toEqual(['a', 'b']);
+    });
+
+    it('leaves the price order alone when the filter is off', () => {
+      expect(ids(arrangeOffers(saving, 'price', null))).toEqual(['a', 'b', 'c', 'd', 'e']);
+    });
   });
 });
 

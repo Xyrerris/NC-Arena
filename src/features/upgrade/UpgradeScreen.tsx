@@ -3,9 +3,9 @@
  * piece, ranked by NCG per Gexp against a ceiling for its grade, and bought through the cart.
  *
  * **Nothing is read until FIND MATERIAL is pressed** (`useUpgradeMarket`), and grade 7 — the biggest
- * read and the one with the least to gain — starts switched off. Offers over the ceiling are counted,
- * not listed. At the opening ceilings the bargains are pieces at +0, so "only raised" (on, as asked)
- * says how many +0 pieces it hides.
+ * read and the one with the least to gain — starts switched on (owner, 2026-11-18). Offers over the
+ * ceiling are counted, not listed. "Only raised" starts off; when on, it says how many +0 pieces it
+ * hides. The ceilings and the bargain thresholds can each be overridden per grade.
  */
 
 import { FlashList, type FlashListRef } from '@shopify/flash-list';
@@ -135,7 +135,7 @@ function UpgradeBody({
   onChain,
   sectionTabs,
 }: UpgradeBodyProps) {
-  const [withValkyrie, setWithValkyrie] = useState(false);
+  const [withValkyrie, setWithValkyrie] = useState(true);
   const candidates = useMemo(
     () => materialCandidates(base, { minGrade: withValkyrie ? 7 : 8 }),
     [base, withValkyrie],
@@ -144,9 +144,11 @@ function UpgradeBody({
 
   const [grade, setGrade] = useState<number | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
-  const [onlyRaised, setOnlyRaised] = useState(true);
+  const [onlyRaised, setOnlyRaised] = useState(false);
   const [showCeilings, setShowCeilings] = useState(false);
   const [ceilingText, setCeilingText] = useState<Readonly<Record<number, string>>>({});
+  const [showBargains, setShowBargains] = useState(false);
+  const [bargainText, setBargainText] = useState<Readonly<Record<number, string>>>({});
 
   const grades = useMemo(
     () => [...new Set(candidates.map((candidate) => candidate.grade))].sort((a, b) => b - a),
@@ -162,6 +164,14 @@ function UpgradeBody({
     }
     return own;
   }, [ceilingText]);
+  const optimums = useMemo(() => {
+    const own: Record<number, number> = {};
+    for (const g of CEILING_GRADES) {
+      const typed = parseCeiling(bargainText[g] ?? '');
+      if (typed !== null) own[g] = typed;
+    }
+    return own;
+  }, [bargainText]);
   const floors = useMemo(
     () => observedFloors(market.listings, base, levels),
     [market.listings, base, levels],
@@ -172,11 +182,23 @@ function UpgradeBody({
       rankMaterials(filterListings(market.listings, base, { grade, slot }), base, levels, {
         now: new Date(),
         ceilings,
+        optimums,
         floors,
         onlyRaised,
         ...(market.ownAgent === null ? {} : { ownAgentAddress: market.ownAgent }),
       }),
-    [market.listings, base, levels, grade, slot, ceilings, floors, onlyRaised, market.ownAgent],
+    [
+      market.listings,
+      base,
+      levels,
+      grade,
+      slot,
+      ceilings,
+      optimums,
+      floors,
+      onlyRaised,
+      market.ownAgent,
+    ],
   );
   const rows = useMemo(
     () => ranking.offers.map((scored) => ({ scored, ui: toMaterialRow(scored, catalog) })),
@@ -189,10 +211,11 @@ function UpgradeBody({
       rankMaterials(market.listings, base, levels, {
         now: new Date(),
         ceilings,
+        optimums,
         floors,
         ...(market.ownAgent === null ? {} : { ownAgentAddress: market.ownAgent }),
       }).offers,
-    [market.listings, base, levels, ceilings, floors, market.ownAgent],
+    [market.listings, base, levels, ceilings, optimums, floors, market.ownAgent],
   );
   const [planning, setPlanning] = useState(false);
 
@@ -429,6 +452,13 @@ function UpgradeBody({
                   onPress={() => setShowCeilings((current) => !current)}
                   testID="upgrade-ceilings-toggle"
                 />
+                <SortChip
+                  label={words.bargains}
+                  accessibilityLabel={words.bargainsA11y}
+                  selected={showBargains}
+                  onPress={() => setShowBargains((current) => !current)}
+                  testID="upgrade-bargains-toggle"
+                />
               </View>
               {showCeilings
                 ? CEILING_GRADES.filter((g) => grades.includes(g)).map((g) => (
@@ -439,8 +469,24 @@ function UpgradeBody({
                       onChangeText={(text) =>
                         setCeilingText((current) => ({ ...current, [g]: text }))
                       }
+                      placeholder={formatNcg(ceilingAt(GRADE_RANGES[g]!, new Date()))}
                       hint={words.ceilingHint(formatNcg(ceilingAt(GRADE_RANGES[g]!, new Date())))}
                       testID={`upgrade-ceiling-${g}`}
+                    />
+                  ))
+                : null}
+              {showBargains
+                ? CEILING_GRADES.filter((g) => grades.includes(g)).map((g) => (
+                    <FormField
+                      key={g}
+                      label={words.bargainLabel(g)}
+                      value={bargainText[g] ?? ''}
+                      onChangeText={(text) =>
+                        setBargainText((current) => ({ ...current, [g]: text }))
+                      }
+                      placeholder={formatNcg(GRADE_RANGES[g]!.optimum)}
+                      hint={words.bargainHint(formatNcg(GRADE_RANGES[g]!.optimum))}
+                      testID={`upgrade-bargain-${g}`}
                     />
                   ))
                 : null}

@@ -263,6 +263,12 @@ export interface Offer {
   /** `total` against the standard price of the level (ADR-0046); null when there is none. */
   readonly verdict: Verdict | null;
   /**
+   * The standard price the verdict compares `total` with: the cumulative upgrade cost from +0 summed
+   * over the picks (ADR-0046), without the price of the +0 piece. Null when the costs were not read
+   * or a pick has none (not the same thing as `saves`, which is against raising held pieces).
+   */
+  readonly standard: number | null;
+  /**
    * For a piece the avatar could raise from what it holds: the NCG this offer saves against that
    * raise (the held pieces' upgrade cost less `total`). Null for a piece that is simply missing.
    */
@@ -396,6 +402,7 @@ const offerFor = (
     fromLevel: from,
     total,
     verdict: standard === null ? null : verdictFor(total, standard),
+    standard,
     saves,
   };
 };

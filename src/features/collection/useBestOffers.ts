@@ -28,6 +28,13 @@ import type { OfferTarget } from './offersUiState';
 /** Scans in flight together. */
 export const OFFER_SCAN_CONCURRENCY = 3;
 
+/**
+ * The answers that arrive while reading are handed to the screen at most this often. Each hand-over
+ * ranks every offer read so far and redraws the list, so doing it per answer starved the JS thread
+ * and made every tap wait seconds; the first answer and the last are never held back.
+ */
+export const OFFER_FLUSH_MS = 1000;
+
 export type OffersPhase = 'idle' | 'running' | 'done' | 'stopped';
 
 type Outcome =
@@ -82,6 +89,8 @@ export const useBestOffers = (
     setSold((now) => (now.has(productId) ? now : new Set(now).add(productId)));
   }, []);
   const run = useRef<AbortController | null>(null);
+  // Hands over what the running read has gathered but not yet shown (see `OFFER_FLUSH_MS`).
+  const flushNow = useRef<(() => void) | null>(null);
 
   // The answers of another set of pieces are not this set's.
   const current: Reading =
@@ -91,6 +100,7 @@ export const useBestOffers = (
   useEffect(
     () => () => {
       run.current?.abort();
+      flushNow.current = null;
     },
     [signature],
   );
@@ -102,12 +112,31 @@ export const useBestOffers = (
       run.current = controller;
       setReading({ signature, phase: wanted.length === 0 ? 'done' : 'running', outcomes: kept });
 
-      const put = (key: string, outcome: Outcome): void => {
+      // Answers wait here and reach the state in batches: the first at once, then one a second.
+      let waiting: Record<string, Outcome> = {};
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let lastFlush = 0;
+      const flush = (): void => {
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        const batch = waiting;
+        if (Object.keys(batch).length === 0) return;
+        waiting = {};
+        lastFlush = Date.now();
         setReading((now) =>
-          now.signature === signature
-            ? { ...now, outcomes: { ...now.outcomes, [key]: outcome } }
-            : now,
+          now.signature === signature ? { ...now, outcomes: { ...now.outcomes, ...batch } } : now,
         );
+      };
+      flushNow.current = flush;
+
+      const put = (key: string, outcome: Outcome): void => {
+        waiting[key] = outcome;
+        if (timer !== null) return;
+        const wait = Math.max(0, lastFlush + OFFER_FLUSH_MS - Date.now());
+        if (wait === 0) flush();
+        else timer = setTimeout(flush, wait);
       };
 
       let next = 0;
@@ -136,7 +165,11 @@ export const useBestOffers = (
       void Promise.all(
         Array.from({ length: Math.min(OFFER_SCAN_CONCURRENCY, wanted.length) }, worker),
       ).then(() => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          if (timer !== null) clearTimeout(timer);
+          return;
+        }
+        flush();
         setReading((now) => (now.signature === signature ? { ...now, phase: 'done' } : now));
       });
     },
@@ -164,6 +197,8 @@ export const useBestOffers = (
   }, [current.outcomes, read, targets]);
 
   const stop = useCallback(() => {
+    // What was read before STOP is kept and shown.
+    flushNow.current?.();
     run.current?.abort();
     setReading((now) =>
       now.signature === signature && now.phase === 'running' ? { ...now, phase: 'stopped' } : now,
