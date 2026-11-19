@@ -152,6 +152,10 @@ export const collectionStrings = {
   offersReading: (done: number, total: number) =>
     `Reading the market… ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}. ` +
     'The offers appear when it is done, or when you stop it.',
+  offersProgressA11y: (done: number, total: number) =>
+    `Reading the market, ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}`,
+  offersToTop: '↑ TOP',
+  offersToTopA11y: 'Scroll back to the top of the offers',
   offersStopped: (done: number, total: number, found: number) =>
     `Stopped after ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}: ` +
     `${found} ${found === 1 ? 'offer' : 'offers'} found so far, the rest not read.`,

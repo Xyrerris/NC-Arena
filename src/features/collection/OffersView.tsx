@@ -7,8 +7,8 @@
  * the purchase card over it — this view buys nothing by itself. Prices are what is asked.
  */
 
-import { FlashList } from '@shopify/flash-list';
-import { useMemo, useState } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import type {
@@ -17,7 +17,15 @@ import type {
   EquipmentCatalog,
   OtherItemCatalog,
 } from '@/core/collection';
-import { ArenaButton, ArenaText, SortChip, color, layout, space } from '@/core/design-system';
+import {
+  ArenaButton,
+  ArenaText,
+  ProgressBar,
+  SortChip,
+  color,
+  layout,
+  space,
+} from '@/core/design-system';
 import type { Planet } from '@/core/model';
 import { BatchSheet } from '@/core/purchase/BatchSheet';
 import { useNcgBalance } from '@/core/purchase/useNcgBalance';
@@ -49,6 +57,9 @@ export interface OffersViewProps {
   planet: Planet;
 }
 
+/** How far down the list is scrolled before the way back to the top is offered. */
+const SHOW_TOP_BUTTON_AFTER = 600;
+
 export function OffersView({ controller, sheet, catalog, others, costs, planet }: OffersViewProps) {
   const { offerIds, holdings } = controller;
   const offerCollections = useMemo(() => collectionsById(sheet, offerIds), [sheet, offerIds]);
@@ -64,6 +75,7 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
   const [sort, setSort] = useState<OfferSort>('price');
   const [levelFilter, setLevelFilter] = useState<number | null>(null);
   const [underStandard, setUnderStandard] = useState(false);
+  const [farDown, setFarDown] = useState(false);
 
   const allRows = useMemo(() => {
     const pieces = new Map(targets.map((target) => [target.piece.key, target.piece]));
@@ -85,6 +97,7 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
   // The row is kept as it was opened: once its piece is bought it leaves the list, and the card
   // that says it went through has to stay until the person closes it.
   const [open, setOpen] = useState<(typeof allRows)[number] | null>(null);
+  const listRef = useRef<FlashListRef<(typeof allRows)[number]>>(null);
 
   // The offers picked for the total. Kept by key and read against the rows as they are now, so an
   // offer that a new read took away leaves the selection with it. Not kept anywhere: prices age.
@@ -148,6 +161,12 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
   return (
     <View style={styles.fill}>
       <FlashList
+        ref={listRef}
+        onScroll={(event) => {
+          const down = event.nativeEvent.contentOffset.y > SHOW_TOP_BUTTON_AFTER;
+          setFarDown((current) => (current === down ? current : down));
+        }}
+        scrollEventThrottle={100}
         data={rows}
         extraData={selected}
         keyExtractor={(row) => row.offer.key}
@@ -235,6 +254,13 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
               )}
             </View>
 
+            {offers.phase === 'running' && offers.total > 0 ? (
+              <ProgressBar
+                fraction={offers.done / offers.total}
+                accessibilityLabel={words.offersProgressA11y(offers.done, offers.total)}
+                testID="offers-progress"
+              />
+            ) : null}
             {status === null ? null : (
               <ArenaText
                 variant="bodySmall"
@@ -338,6 +364,17 @@ export function OffersView({ controller, sheet, catalog, others, costs, planet }
         contentContainerStyle={styles.list}
         testID="offers-list"
       />
+      {farDown ? (
+        <View style={styles.toTop} pointerEvents="box-none">
+          <ArenaButton
+            label={words.offersToTop}
+            accessibilityLabel={words.offersToTopA11y}
+            variant="secondary"
+            onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+            testID="offers-to-top"
+          />
+        </View>
+      ) : null}
       {summary === null ? null : (
         <View style={styles.bar} testID="offers-bar">
           <ArenaText
@@ -417,6 +454,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: layout.screenGutter, paddingTop: space[12], gap: space[8] },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: space[8] },
   fill: { flex: 1 },
+  toTop: { position: 'absolute', right: layout.screenGutter, bottom: space[16] },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

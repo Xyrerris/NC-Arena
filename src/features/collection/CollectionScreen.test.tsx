@@ -639,6 +639,24 @@ describe('CollectionScreen', () => {
         expect(text('offers-status')).toBe(words.offersDone(1, 1));
       });
 
+      it('shows a progress bar while the market is read, and takes it away at the end', async () => {
+        makeViewerWithAvatar();
+        // A scan that never answers keeps the read running.
+        const scan = jest.fn(() => new Promise<never>(() => {}));
+        market = { scan } as unknown as MarketLibrary;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await openOffers();
+        expect(screen.queryByTestId('offers-progress')).toBeNull();
+
+        await press('offers-find');
+        const bar = screen.getByTestId('offers-progress');
+        expect(bar.props.accessibilityValue).toMatchObject({ now: 0 });
+        expect(bar.props.accessibilityLabel).toBe(words.offersProgressA11y(0, 2));
+
+        await press('offers-stop');
+        expect(screen.queryByTestId('offers-progress')).toBeNull();
+      });
+
       it('offers a sort by saving and a filter to what is under the standard price', async () => {
         makeViewerWithAvatar();
         market = fakeMarket((itemId) => scanned(itemId === 10110000 ? SWORDS : [])).library;

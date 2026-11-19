@@ -10,6 +10,7 @@
 export { ArenaButton, type ArenaButtonProps, type ArenaButtonVariant } from './ArenaButton';
 export { ArenaText, type ArenaTextProps, type Tone } from './ArenaText';
 export { CompareBar, type CompareBarProps } from './CompareBar';
+export { ProgressBar, type ProgressBarProps } from './ProgressBar';
 export { FormField, type FormFieldProps } from './FormField';
 export { RecordBadge, type RecordBadgeProps } from './RecordBadge';
 export { ScreenScaffold, screenGutter, type ScreenScaffoldProps } from './ScreenScaffold';
