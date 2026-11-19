@@ -23,6 +23,13 @@ resolved to **2.0.2** where npm's latest is 2.3.2, and `jest-expo` was installed
 install. `expo-doctor` runs in CI to catch drift. The cost is being a version or two behind
 `latest` on individual libraries, which is the intended trade.
 
+**FlashList is the exception, 2026-11-19.** `@shopify/flash-list` is pinned at **2.3.2**, not the 2.0.2
+that `expo-doctor` asks for. On RN 0.86 version 2.0.2 shifts its render window by the list's distance
+from the top of the screen, so the top rows of the roster are never drawn (fixed once in `e7e0284`,
+2026-09-30). `npx expo install --fix` put 2.0.2 back on 2026-10-15 (`0c5dc9b`) and the bug returned on
+every build since. `expo.install.exclude` in `package.json` now keeps both `expo install --fix` and
+`expo-doctor` from reverting it. Drop the pin only after a FlashList release that the SDK itself lists.
+
 **Patch drift, 2026-08-20.** `expo-doctor` had been failing since Phase 0 — not on anything
 this project did, but because SDK 57 moved on: `expo`, `expo-router`, `expo-splash-screen`,
 `expo-linking` and `expo-background-task` were each a patch behind what the SDK expects.
