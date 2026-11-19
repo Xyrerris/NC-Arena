@@ -3165,3 +3165,16 @@ although raising it is just a matter of NCG.
 **Consequences.** Far-off listings add rows (a +0 for a +9 is a valid offer), and the verdict against
 the standard price still sets aside what is `dear`. Covered pieces add one market read each when the
 cost sheet is there, so a scan is longer for an owner who holds many spare pieces.
+
+## ADR-0050 — Offers can be sorted by saving and limited to what is under the standard price
+
+**Status.** Accepted (2026-11-19). Builds on ADR-0046.
+
+**Decision.** `Offer.standard` exposes the standard price the verdict already compared `total` with.
+`saving = standard − total`, in NCG and whole hundredths; null when there is no standard (+0..+3, or
+costs not read). The offers view gains a SAVING sort (biggest first, no-standard last, ties in the
+price order) and an UNDER STANDARD filter that keeps `verdict === 'good'`; rows with a positive
+saving say so. The default price order is unchanged, and the ranking and lot assignment are untouched.
+
+**Not priced.** As in ADR-0046, `standard` excludes the price of the +0 piece and the materials, so
+the saving is an absolute NCG figure against raising from +0, not a percentage.

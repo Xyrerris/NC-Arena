@@ -100,6 +100,10 @@ export const color = {
     accentWashFaint: accent(0.03),
     accentEdge: accent(0.22),
     accentHairline: accent(0.14),
+    /** The light upper half and the moving glint of a progress bar fill, for depth. */
+    sheen: onSurface(0.3),
+    /** The darker lower edge of a progress bar fill. */
+    shade: 'rgba(7, 16, 13, 0.28)',
   },
 
   /** Bar fills and record colours. Colour alone is not sufficient — see ROADMAP Phase 6. */

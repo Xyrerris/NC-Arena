@@ -28,6 +28,15 @@ import type { OfferTarget } from './offersUiState';
 /** Scans in flight together. */
 export const OFFER_SCAN_CONCURRENCY = 3;
 
+/**
+ * The answers that arrive while reading are handed to the screen at most this often. Each hand-over
+ * ranks every offer read so far and redraws the list, so doing it per answer starved the JS thread
+ * and made every tap wait seconds; the first answer and the last are never held back.
+ */
+export const OFFER_FLUSH_MS = 1000;
+
+const NO_OFFERS: BestOffers = { offers: [], overpriced: [], withoutOffer: [] };
+
 export type OffersPhase = 'idle' | 'running' | 'done' | 'stopped';
 
 type Outcome =
@@ -81,7 +90,11 @@ export const useBestOffers = (
   const markSold = useCallback((productId: string) => {
     setSold((now) => (now.has(productId) ? now : new Set(now).add(productId)));
   }, []);
+  // The offers last ranked: shown while a read is running, since ranking waits for its end.
+  const [shown, setShown] = useState<BestOffers>(NO_OFFERS);
   const run = useRef<AbortController | null>(null);
+  // Hands over what the running read has gathered but not yet shown (see `OFFER_FLUSH_MS`).
+  const flushNow = useRef<(() => void) | null>(null);
 
   // The answers of another set of pieces are not this set's.
   const current: Reading =
@@ -91,6 +104,7 @@ export const useBestOffers = (
   useEffect(
     () => () => {
       run.current?.abort();
+      flushNow.current = null;
     },
     [signature],
   );
@@ -102,12 +116,31 @@ export const useBestOffers = (
       run.current = controller;
       setReading({ signature, phase: wanted.length === 0 ? 'done' : 'running', outcomes: kept });
 
-      const put = (key: string, outcome: Outcome): void => {
+      // Answers wait here and reach the state in batches: the first at once, then one a second.
+      let waiting: Record<string, Outcome> = {};
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let lastFlush = 0;
+      const flush = (): void => {
+        if (timer !== null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        const batch = waiting;
+        if (Object.keys(batch).length === 0) return;
+        waiting = {};
+        lastFlush = Date.now();
         setReading((now) =>
-          now.signature === signature
-            ? { ...now, outcomes: { ...now.outcomes, [key]: outcome } }
-            : now,
+          now.signature === signature ? { ...now, outcomes: { ...now.outcomes, ...batch } } : now,
         );
+      };
+      flushNow.current = flush;
+
+      const put = (key: string, outcome: Outcome): void => {
+        waiting[key] = outcome;
+        if (timer !== null) return;
+        const wait = Math.max(0, lastFlush + OFFER_FLUSH_MS - Date.now());
+        if (wait === 0) flush();
+        else timer = setTimeout(flush, wait);
       };
 
       let next = 0;
@@ -136,7 +169,11 @@ export const useBestOffers = (
       void Promise.all(
         Array.from({ length: Math.min(OFFER_SCAN_CONCURRENCY, wanted.length) }, worker),
       ).then(() => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          if (timer !== null) clearTimeout(timer);
+          return;
+        }
+        flush();
         setReading((now) => (now.signature === signature ? { ...now, phase: 'done' } : now));
       });
     },
@@ -150,6 +187,8 @@ export const useBestOffers = (
         if (identity.ok && identity.value !== null) setAgent(identity.value.agentAddress);
       });
     }
+    // A new read starts from nothing: the earlier offers are not shown while it runs.
+    setShown(NO_OFFERS);
     read(targets, {});
   }, [avatar, avatarSource, read, targets]);
 
@@ -164,37 +203,47 @@ export const useBestOffers = (
   }, [current.outcomes, read, targets]);
 
   const stop = useCallback(() => {
+    // What was read before STOP is kept and shown.
+    flushNow.current?.();
     run.current?.abort();
     setReading((now) =>
       now.signature === signature && now.phase === 'running' ? { ...now, phase: 'stopped' } : now,
     );
   }, [signature]);
 
-  const result = useMemo(
+  // Ranking every offer read so far is the heavy part, and it grows with the list: while the market
+  // is being read it is not done at all, only at the end or on STOP. A read that adds to a previous
+  // one (retrying what failed) keeps showing the earlier result meanwhile.
+  const running = current.phase === 'running';
+  const ranked = useMemo(
     () =>
-      bestOffers(
-        targets.flatMap((target) => {
-          const outcome = current.outcomes[target.piece.key];
-          return outcome?.kind === 'ready'
-            ? [
-                {
-                  ...target.missing,
-                  ...(target.raisedFrom === undefined ? {} : { raisedFrom: target.raisedFrom }),
-                  listings:
-                    sold.size === 0
-                      ? outcome.listings
-                      : outcome.listings.filter((listing) => !sold.has(listing.productId)),
-                },
-              ]
-            : [];
-        }),
-        {
-          ...(agent === null ? {} : { excludeSeller: agent }),
-          ...(costs === null ? {} : { costs }),
-        },
-      ),
-    [targets, current.outcomes, agent, costs, sold],
+      running
+        ? null
+        : bestOffers(
+            targets.flatMap((target) => {
+              const outcome = current.outcomes[target.piece.key];
+              return outcome?.kind === 'ready'
+                ? [
+                    {
+                      ...target.missing,
+                      ...(target.raisedFrom === undefined ? {} : { raisedFrom: target.raisedFrom }),
+                      listings:
+                        sold.size === 0
+                          ? outcome.listings
+                          : outcome.listings.filter((listing) => !sold.has(listing.productId)),
+                    },
+                  ]
+                : [];
+            }),
+            {
+              ...(agent === null ? {} : { excludeSeller: agent }),
+              ...(costs === null ? {} : { costs }),
+            },
+          ),
+    [running, targets, current.outcomes, agent, costs, sold],
   );
+  if (ranked !== null && ranked !== shown) setShown(ranked);
+  const result = ranked ?? shown;
 
   const outcomes = Object.values(current.outcomes);
   return {

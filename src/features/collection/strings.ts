@@ -151,7 +151,11 @@ export const collectionStrings = {
   offersStopA11y: 'Stop reading the market',
   offersReading: (done: number, total: number) =>
     `Reading the market… ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}. ` +
-    'The order can change until it is done.',
+    'The offers appear when it is done, or when you stop it.',
+  offersProgressA11y: (done: number, total: number) =>
+    `Reading the market, ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}`,
+  offersToTop: '↑ TOP',
+  offersToTopA11y: 'Scroll back to the top of the offers',
   offersStopped: (done: number, total: number, found: number) =>
     `Stopped after ${done} of ${total} ${total === 1 ? 'piece' : 'pieces'}: ` +
     `${found} ${found === 1 ? 'offer' : 'offers'} found so far, the rest not read.`,
@@ -197,6 +201,12 @@ export const collectionStrings = {
   offersSortPriceA11y: 'Sort the offers by what they cost, cheapest first',
   offersSortLevel: 'LEVEL',
   offersSortLevelA11y: 'Sort the offers by the level of the piece, highest first',
+  offersSortSaving: 'SAVING',
+  offersSortSavingA11y: 'Sort the offers by how much they save against the standard price',
+  offersUnderStandard: 'UNDER STANDARD',
+  offersUnderStandardA11y: 'Show only the offers at or under the standard price',
+  offersUnderStandardNone: 'No offer is at or under the standard price.',
+  offersSavingLine: (ncg: string) => `saves ${ncg} NCG against raising from +0`,
   offersLevelAll: 'ALL LEVELS',
   offersLevelAllA11y: 'Show the offers of every level',
   offersLevelChip: (level: number) => `+${level}`,

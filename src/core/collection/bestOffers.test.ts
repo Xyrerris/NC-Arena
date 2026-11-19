@@ -401,6 +401,28 @@ describe('bestOffers with upgrade costs', () => {
     expect(result.withoutOffer).toHaveLength(1);
   });
 
+  it('exposes the standard price the verdict used: the cumulative cost from +0', () => {
+    const result = run([legend({ level: 8, price: 100 })]);
+    expect(result.offers[0]).toMatchObject({ total: 420, standard: 640, verdict: 'good' });
+  });
+
+  it('sums the standard over the picks of a counted piece', () => {
+    const result = bestOffers(
+      [
+        {
+          ...piece(req(10110000, 9), 2),
+          listings: [
+            legend({ level: 9, price: 100, productId: 'a' }),
+            legend({ level: 9, price: 200, productId: 'b' }),
+          ],
+        },
+      ],
+      { costs },
+    );
+    expect(result.offers[0]?.picks).toHaveLength(2);
+    expect(result.offers[0]?.standard).toBe(1280);
+  });
+
   it('adds nothing without the costs: exact levels only, no verdict', () => {
     const result = bestOffers([
       {
@@ -409,6 +431,11 @@ describe('bestOffers with upgrade costs', () => {
       },
     ]);
     expect(result.offers).toHaveLength(1);
-    expect(result.offers[0]).toMatchObject({ price: 900, verdict: null, upgradeNcg: 0 });
+    expect(result.offers[0]).toMatchObject({
+      price: 900,
+      verdict: null,
+      standard: null,
+      upgradeNcg: 0,
+    });
   });
 });

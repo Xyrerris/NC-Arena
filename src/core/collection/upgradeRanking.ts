@@ -33,8 +33,9 @@ export interface GradeRange {
 /** Grades 7 (Valkyrie), 8 (Transcendent) and 9 (Ultimate); a grade not here is not offered. */
 export const GRADE_RANGES: Readonly<Record<number, GradeRange>> = {
   9: { opening: 12, target: 3, optimum: 1 },
-  8: { opening: 11.5, target: 2.5, optimum: 0.8 },
-  7: { opening: 9.5, target: 8, optimum: 4 },
+  // Grades 8 and 7 have a flat default ceiling (the owner's choice, 2026-11-18): no ramp.
+  8: { opening: 6, target: 6, optimum: 0.8 },
+  7: { opening: 5, target: 5, optimum: 4 },
 };
 
 /** When the ramp starts: the day the ranges above were measured against the market. */
@@ -118,6 +119,8 @@ export interface RankOptions {
   readonly now: Date;
   /** Replaces the ceiling of a grade (the screen lets the owner edit it), in NCG per Gexp. */
   readonly ceilings?: Readonly<Record<number, number>>;
+  /** Replaces the bargain threshold (`optimum`) of a grade, in NCG per Gexp. */
+  readonly optimums?: Readonly<Record<number, number>>;
   /** The cheapest NCG per Gexp seen per grade, for grades with no range yet. */
   readonly floors?: Readonly<Record<number, number>>;
   /** Keep only pieces raised above +0. */
@@ -151,7 +154,9 @@ export function rankMaterials(
 
   for (const listing of listings) {
     if (listing.sellerAgentAddress === options.ownAgentAddress) continue;
-    const range = rangeFor(listing.grade, options.floors);
+    const known = rangeFor(listing.grade, options.floors);
+    const optimum = options.optimums?.[listing.grade];
+    const range = known !== null && optimum !== undefined ? { ...known, optimum } : known;
     const scored =
       range === null
         ? null

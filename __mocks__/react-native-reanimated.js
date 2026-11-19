@@ -36,6 +36,7 @@ const Easing = {
   ease: identityEasing,
   quad: identityEasing,
   cubic: identityEasing,
+  sin: identityEasing,
   bezier: () => ({ factory: () => identityEasing }),
   in: (fn) => fn,
   out: (fn) => fn,
@@ -70,6 +71,10 @@ module.exports = {
   withTiming: settle,
   withSpring: settle,
   withDelay: (_delay, animation) => animation,
+  // Loops do not run in a Node renderer: reduced motion is on, so nothing repeats.
+  withRepeat: settle,
+  cancelAnimation: () => {},
+  useReducedMotion: () => true,
   runOnJS: (fn) => fn,
   runOnUI: (fn) => fn,
   clamp: (value, low, high) => Math.min(Math.max(value, low), high),

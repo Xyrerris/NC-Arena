@@ -3,13 +3,13 @@
  * piece, ranked by NCG per Gexp against a ceiling for its grade, and bought through the cart.
  *
  * **Nothing is read until FIND MATERIAL is pressed** (`useUpgradeMarket`), and grade 7 — the biggest
- * read and the one with the least to gain — starts switched off. Offers over the ceiling are counted,
- * not listed. At the opening ceilings the bargains are pieces at +0, so "only raised" (on, as asked)
- * says how many +0 pieces it hides.
+ * read and the one with the least to gain — starts switched on (owner, 2026-11-18). Offers over the
+ * ceiling are counted, not listed. "Only raised" starts off; when on, it says how many +0 pieces it
+ * hides. The ceilings and the bargain thresholds can each be overridden per grade.
  */
 
-import { FlashList } from '@shopify/flash-list';
-import { useMemo, useState, type ReactNode } from 'react';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -123,6 +123,8 @@ interface UpgradeBodyProps {
 }
 
 const CEILING_GRADES = [9, 8, 7] as const;
+/** Scrolled further than this (px), the list shows the back-to-top button. */
+const SHOW_TOP_BUTTON_AFTER = 600;
 
 function UpgradeBody({
   planet,
@@ -133,7 +135,7 @@ function UpgradeBody({
   onChain,
   sectionTabs,
 }: UpgradeBodyProps) {
-  const [withValkyrie, setWithValkyrie] = useState(false);
+  const [withValkyrie, setWithValkyrie] = useState(true);
   const candidates = useMemo(
     () => materialCandidates(base, { minGrade: withValkyrie ? 7 : 8 }),
     [base, withValkyrie],
@@ -142,9 +144,11 @@ function UpgradeBody({
 
   const [grade, setGrade] = useState<number | null>(null);
   const [slot, setSlot] = useState<string | null>(null);
-  const [onlyRaised, setOnlyRaised] = useState(true);
+  const [onlyRaised, setOnlyRaised] = useState(false);
   const [showCeilings, setShowCeilings] = useState(false);
   const [ceilingText, setCeilingText] = useState<Readonly<Record<number, string>>>({});
+  const [showBargains, setShowBargains] = useState(false);
+  const [bargainText, setBargainText] = useState<Readonly<Record<number, string>>>({});
 
   const grades = useMemo(
     () => [...new Set(candidates.map((candidate) => candidate.grade))].sort((a, b) => b - a),
@@ -160,6 +164,14 @@ function UpgradeBody({
     }
     return own;
   }, [ceilingText]);
+  const optimums = useMemo(() => {
+    const own: Record<number, number> = {};
+    for (const g of CEILING_GRADES) {
+      const typed = parseCeiling(bargainText[g] ?? '');
+      if (typed !== null) own[g] = typed;
+    }
+    return own;
+  }, [bargainText]);
   const floors = useMemo(
     () => observedFloors(market.listings, base, levels),
     [market.listings, base, levels],
@@ -170,11 +182,23 @@ function UpgradeBody({
       rankMaterials(filterListings(market.listings, base, { grade, slot }), base, levels, {
         now: new Date(),
         ceilings,
+        optimums,
         floors,
         onlyRaised,
         ...(market.ownAgent === null ? {} : { ownAgentAddress: market.ownAgent }),
       }),
-    [market.listings, base, levels, grade, slot, ceilings, floors, onlyRaised, market.ownAgent],
+    [
+      market.listings,
+      base,
+      levels,
+      grade,
+      slot,
+      ceilings,
+      optimums,
+      floors,
+      onlyRaised,
+      market.ownAgent,
+    ],
   );
   const rows = useMemo(
     () => ranking.offers.map((scored) => ({ scored, ui: toMaterialRow(scored, catalog) })),
@@ -187,10 +211,11 @@ function UpgradeBody({
       rankMaterials(market.listings, base, levels, {
         now: new Date(),
         ceilings,
+        optimums,
         floors,
         ...(market.ownAgent === null ? {} : { ownAgentAddress: market.ownAgent }),
       }).offers,
-    [market.listings, base, levels, ceilings, floors, market.ownAgent],
+    [market.listings, base, levels, ceilings, optimums, floors, market.ownAgent],
   );
   const [planning, setPlanning] = useState(false);
 
@@ -203,6 +228,21 @@ function UpgradeBody({
     });
   };
   const chosen = ranking.offers.filter((scored) => selected.has(scored.listing.productId));
+  // A bargain is an offer under its grade's optimum (`band === 'optimum'`, see upgradeRanking.ts).
+  const bargains = useMemo(
+    () => ranking.offers.filter((scored) => scored.band === 'optimum'),
+    [ranking.offers],
+  );
+  const addBargains = (): void => {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const scored of bargains) next.add(scored.listing.productId);
+      return next;
+    });
+  };
+
+  const listRef = useRef<FlashListRef<(typeof rows)[number]>>(null);
+  const [farDown, setFarDown] = useState(false);
   // The batch as it was when BUY was pressed: its lines must not vanish as the pieces are bought.
   const [buying, setBuying] = useState<BatchPlan | null>(null);
   const bought = (productId: string): void => {
@@ -221,6 +261,12 @@ function UpgradeBody({
     <ScreenScaffold applyBottomInset={false}>
       <View style={styles.fill}>
         <FlashList
+          ref={listRef}
+          onScroll={(event) => {
+            const down = event.nativeEvent.contentOffset.y > SHOW_TOP_BUTTON_AFTER;
+            setFarDown((current) => (current === down ? current : down));
+          }}
+          scrollEventThrottle={100}
           data={rows}
           extraData={selected}
           keyExtractor={(row) => row.ui.key}
@@ -390,12 +436,28 @@ function UpgradeBody({
                   onPress={() => setOnlyRaised((current) => !current)}
                   testID="upgrade-only-raised"
                 />
+                {bargains.length === 0 ? null : (
+                  <ArenaButton
+                    label={words.addBargains(bargains.length)}
+                    accessibilityLabel={words.addBargainsA11y(bargains.length)}
+                    variant="secondary"
+                    onPress={addBargains}
+                    testID="upgrade-add-bargains"
+                  />
+                )}
                 <SortChip
                   label={words.ceilings}
                   accessibilityLabel={words.ceilingsA11y}
                   selected={showCeilings}
                   onPress={() => setShowCeilings((current) => !current)}
                   testID="upgrade-ceilings-toggle"
+                />
+                <SortChip
+                  label={words.bargains}
+                  accessibilityLabel={words.bargainsA11y}
+                  selected={showBargains}
+                  onPress={() => setShowBargains((current) => !current)}
+                  testID="upgrade-bargains-toggle"
                 />
               </View>
               {showCeilings
@@ -407,8 +469,24 @@ function UpgradeBody({
                       onChangeText={(text) =>
                         setCeilingText((current) => ({ ...current, [g]: text }))
                       }
+                      placeholder={formatNcg(ceilingAt(GRADE_RANGES[g]!, new Date()))}
                       hint={words.ceilingHint(formatNcg(ceilingAt(GRADE_RANGES[g]!, new Date())))}
                       testID={`upgrade-ceiling-${g}`}
+                    />
+                  ))
+                : null}
+              {showBargains
+                ? CEILING_GRADES.filter((g) => grades.includes(g)).map((g) => (
+                    <FormField
+                      key={g}
+                      label={words.bargainLabel(g)}
+                      value={bargainText[g] ?? ''}
+                      onChangeText={(text) =>
+                        setBargainText((current) => ({ ...current, [g]: text }))
+                      }
+                      placeholder={formatNcg(GRADE_RANGES[g]!.optimum)}
+                      hint={words.bargainHint(formatNcg(GRADE_RANGES[g]!.optimum))}
+                      testID={`upgrade-bargain-${g}`}
                     />
                   ))
                 : null}
@@ -438,6 +516,17 @@ function UpgradeBody({
           contentContainerStyle={styles.list}
           testID="upgrade-list"
         />
+        {farDown ? (
+          <View style={styles.toTop} pointerEvents="box-none">
+            <ArenaButton
+              label={words.toTop}
+              accessibilityLabel={words.toTopA11y}
+              variant="secondary"
+              onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+              testID="upgrade-to-top"
+            />
+          </View>
+        ) : null}
         {chosen.length === 0 ? null : (
           <View style={styles.bar} testID="upgrade-bar">
             <ArenaText
@@ -523,6 +612,7 @@ const styles = StyleSheet.create({
     gap: space[8],
   },
   rowTitle: { flex: 1 },
+  toTop: { position: 'absolute', right: layout.screenGutter, bottom: space[16] },
   bar: {
     paddingHorizontal: layout.screenGutter,
     paddingVertical: space[12],

@@ -50,3 +50,9 @@ example
 
 # Coverage reports from `jest --coverage`. Generated on demand, never a build input.
 coverage/
+docs/ArenaScoutResults/screen1.png
+docs/ArenaScoutResults/screen2.png
+docs/ArenaScoutResults/screen3.png
+docs/ArenaScoutResults/screen4.png
+docs/ArenaScoutResults/screen5.png
+docs/ArenaScoutResults/screen6.png

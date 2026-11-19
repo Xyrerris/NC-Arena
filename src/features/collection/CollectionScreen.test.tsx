@@ -639,6 +639,46 @@ describe('CollectionScreen', () => {
         expect(text('offers-status')).toBe(words.offersDone(1, 1));
       });
 
+      it('shows a progress bar while the market is read, and takes it away at the end', async () => {
+        makeViewerWithAvatar();
+        // A scan that never answers keeps the read running.
+        const scan = jest.fn(() => new Promise<never>(() => {}));
+        market = { scan } as unknown as MarketLibrary;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await openOffers();
+        expect(screen.queryByTestId('offers-progress')).toBeNull();
+
+        await press('offers-find');
+        const bar = screen.getByTestId('offers-progress');
+        expect(bar.props.accessibilityValue).toMatchObject({ now: 0 });
+        expect(bar.props.accessibilityLabel).toBe(words.offersProgressA11y(0, 2));
+
+        await press('offers-stop');
+        expect(screen.queryByTestId('offers-progress')).toBeNull();
+      });
+
+      it('offers a sort by saving and a filter to what is under the standard price', async () => {
+        makeViewerWithAvatar();
+        market = fakeMarket((itemId) => scanned(itemId === 10110000 ? SWORDS : [])).library;
+        await mountGated(jest.fn(() => Promise.resolve(ok(GAME_SHEETS))));
+        await openOffers();
+        await press('offers-find');
+        await act(async () => {});
+
+        expect(screen.getByTestId('offers-sort-saving')).toBeTruthy();
+        await press('offers-sort-saving');
+        expect(screen.getByTestId(SWORD_ROW)).toBeTruthy();
+
+        // These sheets carry no upgrade costs, so no offer has a verdict: none is under the standard.
+        await press('offers-under-standard');
+        expect(screen.queryByTestId(SWORD_ROW)).toBeNull();
+        expect(text('offers-under-standard-none')).toBe(words.offersUnderStandardNone);
+
+        await press('offers-under-standard');
+        expect(screen.getByTestId(SWORD_ROW)).toBeTruthy();
+        expect(screen.queryByTestId('offers-under-standard-none')).toBeNull();
+      });
+
       it('opens the lots of an offer one at a time, each on its own purchase card', async () => {
         makeViewerWithAvatar();
         market = fakeMarket((itemId) => scanned(itemId === 10110000 ? SWORDS : [])).library;
