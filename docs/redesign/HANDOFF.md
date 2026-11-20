@@ -7,7 +7,7 @@ rules), then this.
 ## Where we are
 
 Checkpoints 1–4 are done and approved. **No application code has changed for the redesign yet** — the only code
-change is the FlashList fix below. Checkpoint 5 (design system, `CHECKPOINT_5.md`) is approved with all 11 decisions. Next is **Checkpoint 6: screen mockups**. Before the form screens: the census of helper texts hidden until focus (CHECKPOINT_5 §7, item 8).
+change is the FlashList fix below. Checkpoint 5 (design system, `CHECKPOINT_5.md`) is approved with all 11 decisions. Checkpoint 6 (screen mockups, `CHECKPOINT_6.md`, `mockups/screens.html`) is **in progress: only the roster is drawn**. Before the form screens: the census of helper texts hidden until focus (CHECKPOINT_5 §7, item 8).
 
 | Checkpoint            | Document                                                               | Status                              |
 | --------------------- | ---------------------------------------------------------------------- | ----------------------------------- |
@@ -21,7 +21,7 @@ change is the FlashList fix below. Checkpoint 5 (design system, `CHECKPOINT_5.md
 
 1. **Direction: hybrid B+A.** Deep green-black, ivory text, mint accent; Cinzel only for the wordmark, screen
    titles and rank numerals; mono numerals; hairline lists instead of cards; one filled action per screen;
-   quiet underlined tabs; large title that scrolls with the list. Dark **and** light themes (light paper
+   quiet underlined tabs; **fixed app bar** (owner, 2026-11-20: replaces the scrolling large title). Dark **and** light themes (light paper
    `#f1eee6` from B, neutral A lists).
 2. **Fonts: keep the bundled trio** (Barlow, Cinzel, JetBrains Mono). No new font file, no download. Only bundled
    weights: Cinzel 500/700, Barlow 400–700, JetBrains Mono 400/500.
@@ -55,7 +55,10 @@ Requirements that came out of the work and must be in it:
 - **Roster row at 200 % font scale:** rank column sized in `em`; above a scale the row stacks — name, exact CP,
   rounded value on its own line, points below. Exact **and** rounded values always visible and unclipped
   (the Maestro `player-detail.yaml` gate asserts them).
-- **Large collapsing title** needs the header inside the list (also what the audit asked for).
+- **Fixed app bar on the roster** (supersedes the collapsing large title): 56 dp, Cinzel 20 title, season inline below 1.5× font scale
+  (in the list header above it), "+" add control at 48 dp. Sync shows as a thin strip only while syncing; the failed-sync
+  banner is fixed below 1.5× and scrolls with the list above it. Viewer, search and sort live in the list header.
+  Measured fixed chrome on a 728 dp screen: 150 dp at 1×, 163 dp at 2× (stage 1 of `CHECKPOINT_6.md`).
 - Check Cinzel's digits are tabular; otherwise right-align or fix the width of the rank cell.
 - **Known test impact:** moving the "exact value left · rounded value right" caption breaks
   `player-detail.yaml`; `SectionTabs.test.tsx` and the section screens' tests pin the current control.

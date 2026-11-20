@@ -1,0 +1,1221 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arena — screen mockups (Checkpoint 6)</title>
+    <style>
+      /* The bundled files, not system fonts: a silent fallback would invalidate every typographic judgement. */
+      @font-face {
+        font-family: 'Barlow';
+        font-weight: 400;
+        src: url('../../../assets/fonts/Barlow-Regular.ttf');
+      }
+      @font-face {
+        font-family: 'Barlow';
+        font-weight: 500;
+        src: url('../../../assets/fonts/Barlow-Medium.ttf');
+      }
+      @font-face {
+        font-family: 'Barlow';
+        font-weight: 600;
+        src: url('../../../assets/fonts/Barlow-SemiBold.ttf');
+      }
+      @font-face {
+        font-family: 'Barlow';
+        font-weight: 700;
+        src: url('../../../assets/fonts/Barlow-Bold.ttf');
+      }
+      @font-face {
+        font-family: 'Cinzel';
+        font-weight: 500;
+        src: url('../../../assets/fonts/Cinzel-Medium.ttf');
+      }
+      @font-face {
+        font-family: 'Cinzel';
+        font-weight: 700;
+        src: url('../../../assets/fonts/Cinzel-Bold.ttf');
+      }
+      @font-face {
+        font-family: 'JetBrainsMono';
+        font-weight: 400;
+        src: url('../../../assets/fonts/JetBrainsMono-Regular.ttf');
+      }
+      @font-face {
+        font-family: 'JetBrainsMono';
+        font-weight: 500;
+        src: url('../../../assets/fonts/JetBrainsMono-Medium.ttf');
+      }
+
+      /* ===== Tokens: CHECKPOINT_5 §1, name for name. Nothing below this block writes a colour. ===== */
+      :root {
+        --fs: 1;
+        --gutter: 22px;
+        --body-font: 'Barlow', sans-serif;
+        --display-font: 'Cinzel', serif;
+        --num-font: 'JetBrainsMono', monospace;
+      }
+      [data-theme='dark'] {
+        --background: #07100d;
+        --surface: #0e1a16;
+        --raised: #14241e;
+        --text-primary: #ece6d8;
+        --text-strong: #c3bfb3;
+        --text-body: #a59f90;
+        --text-muted: #9a998f;
+        --text-subtle: #8c8c83;
+        --accent: #5fd6a2;
+        --accent-bright: #8ce6c1;
+        --on-accent: #07100d;
+        --negative: #e0705f;
+        --warning: #e6b450;
+        --info: #7fb6e8;
+        --divider: rgba(236, 230, 216, 0.14);
+        --border: rgba(236, 230, 216, 0.4);
+        --fill: rgba(236, 230, 216, 0.07);
+        --accent-wash: rgba(95, 214, 162, 0.16);
+        --accent-wash-faint: rgba(95, 214, 162, 0.06);
+        --scrim: rgba(0, 0, 0, 0.52);
+      }
+      [data-theme='light'] {
+        --background: #f1eee6;
+        --surface: #faf8f2;
+        --raised: #ffffff;
+        --text-primary: #14201b;
+        --text-strong: #3c4540;
+        --text-body: #5c6259;
+        --text-muted: #646a64;
+        --text-subtle: #646a64;
+        --accent: #0f7a54;
+        --accent-bright: #0b6141;
+        --on-accent: #faf8f2;
+        --negative: #b53d2c;
+        --warning: #8a5a00;
+        --info: #1f5f9e;
+        --divider: rgba(20, 32, 27, 0.16);
+        --border: rgba(20, 32, 27, 0.5);
+        --fill: rgba(20, 32, 27, 0.07);
+        --accent-wash: rgba(15, 122, 84, 0.16);
+        --accent-wash-faint: rgba(15, 122, 84, 0.06);
+        --scrim: rgba(0, 0, 0, 0.52);
+      }
+
+      /* ===== Page chrome (not part of the app) ===== */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      body {
+        font:
+          14px system-ui,
+          sans-serif;
+        background: #cfd3d1;
+        color: #111;
+        padding: 20px;
+      }
+      .toolbar {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        align-items: center;
+        background: #cfd3d1;
+        padding: 8px 0 12px;
+      }
+      .toolbar .grp {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .toolbar b {
+        font-size: 12px;
+        margin-right: 4px;
+      }
+      .toolbar button {
+        font: 600 13px system-ui;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid #777;
+        background: #fff;
+        cursor: pointer;
+      }
+      .toolbar button.on {
+        background: #111;
+        color: #fff;
+        border-color: #111;
+      }
+      #fontcheck {
+        font: 12px system-ui;
+      }
+      h2.group {
+        font: 700 16px system-ui;
+        margin: 22px 0 10px;
+      }
+      .screens {
+        display: flex;
+        gap: 26px;
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }
+      figure {
+        width: var(--w, 360px);
+      }
+      figcaption {
+        font: 13px/1.4 system-ui;
+        margin-top: 8px;
+        color: #222;
+        max-width: var(--w, 360px);
+      }
+      figcaption b {
+        display: block;
+      }
+
+      /* ===== The phone: width is the dp width; text scales with --fs, spacing never does ===== */
+      .phone {
+        width: var(--w, 360px);
+        height: 740px;
+        position: relative;
+        overflow: hidden;
+        border-radius: 28px;
+        border: 6px solid #000;
+        background: var(--background);
+        color: var(--text-primary);
+        font-family: var(--body-font);
+        display: flex;
+        flex-direction: column;
+      }
+      .status {
+        height: 28px;
+        padding: 6px 18px 0;
+        display: flex;
+        justify-content: space-between;
+        font: 600 12px system-ui;
+        color: var(--text-body);
+        flex: none;
+      }
+      .scroll {
+        flex: 1;
+        overflow-y: auto;
+        scrollbar-width: none;
+        position: relative;
+      }
+      .barwrap {
+        flex: none;
+      }
+
+      /* Type roles (CHECKPOINT_5 §2). Sizes are multiplied by --fs; leading is unitless. */
+      .t-display {
+        font: 700 calc(32px * var(--fs)) / 1.05 var(--display-font);
+        color: var(--text-primary);
+      }
+      .t-heading {
+        font: 700 calc(20px * var(--fs)) / 1.1 var(--display-font);
+      }
+      .t-rank {
+        font: 500 calc(20px * var(--fs)) / 1 var(--display-font);
+        color: var(--accent);
+      }
+      .t-sub {
+        font: 600 calc(16px * var(--fs)) / 1.25 var(--body-font);
+      }
+      .t-body {
+        font: 400 calc(14px * var(--fs)) / 1.65 var(--body-font);
+        color: var(--text-body);
+      }
+      .t-caption {
+        font: 400 calc(12px * var(--fs)) / 1.4 var(--body-font);
+        color: var(--text-muted);
+      }
+      .t-label {
+        font: 600 calc(12px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .t-labelsm {
+        font: 600 calc(11px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .t-btn {
+        font: 600 calc(15px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .t-num-hero {
+        font: 500 calc(22px * var(--fs)) / 1.1 var(--num-font);
+      }
+      .t-num {
+        font: 500 calc(13px * var(--fs)) / 1.2 var(--num-font);
+      }
+      .t-num-sm {
+        font: 400 calc(11.5px * var(--fs)) / 1.6 var(--num-font);
+        color: var(--text-muted);
+      }
+      .accent {
+        color: var(--accent);
+      }
+      .neg {
+        color: var(--negative);
+      }
+      .muted {
+        color: var(--text-muted);
+      }
+      .ico {
+        width: 22px;
+        height: 22px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.75;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: none;
+      }
+
+      /* ===== Components ===== */
+      .gutter {
+        padding-left: var(--gutter);
+        padding-right: var(--gutter);
+      }
+      .titlerow {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+        padding-top: 8px;
+      }
+      .season {
+        font: 500 calc(11.5px * var(--fs)) / 1.2 var(--num-font);
+        letter-spacing: 0.12em;
+        color: var(--accent);
+      }
+      .sync {
+        padding-top: 6px;
+      }
+      .sync.live {
+        color: var(--accent);
+      }
+      .countrow {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px 8px;
+        padding-top: 10px;
+      }
+      .btn-quiet {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 48px;
+        color: var(--accent);
+        font: 600 calc(15px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .btn-quiet .ico {
+        width: 20px;
+        height: 20px;
+      }
+      .btn-primary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 48px;
+        padding: 0 22px;
+        border-radius: 8px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font: 600 calc(15px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 48px;
+        padding: 0 18px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        color: var(--text-primary);
+        font: 600 calc(15px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .field {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 48px;
+        padding: 0 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        font: 400 calc(14px * var(--fs)) / 1.2 var(--body-font);
+        margin-top: 4px;
+      }
+      .chips {
+        display: flex;
+        gap: 0;
+        overflow: hidden;
+        padding-top: 2px;
+      }
+      /* A chip is a 48 dp pressable with the pill drawn inside it. */
+      .chipbox {
+        display: flex;
+        align-items: center;
+        min-height: 48px;
+        padding-right: 8px;
+        flex: none;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 0 14px;
+        border-radius: 9999px;
+        background: var(--fill);
+        color: var(--text-strong);
+        font: 600 calc(12px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .chip.on {
+        background: var(--accent-wash);
+        color: var(--text-primary);
+      }
+      .chip.on .ico {
+        color: var(--accent);
+        width: 14px;
+        height: 14px;
+        stroke-width: 2.4;
+      }
+
+      .list {
+        border-top: 1px solid var(--divider);
+        margin-top: 4px;
+      }
+      /* Rank column is three digits' worth of the live text size: React Native has no em. */
+      .row {
+        display: grid;
+        grid-template-columns: calc(2.1 * 20px * var(--fs)) 1fr auto;
+        column-gap: 10px;
+        align-items: center;
+        min-height: 56px;
+        padding: 14px var(--gutter);
+        border-bottom: 1px solid var(--divider);
+      }
+      .row .rk {
+        text-align: right;
+      }
+      .row .meta {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+      .row .trail {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+      }
+      .row.me {
+        background: var(--accent-wash-faint);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      /* Past 1.5x the row stacks: name, exact CP, then the trailing facts on their own line. */
+      [data-stack='1'] .row {
+        grid-template-columns: calc(2.1 * 20px * var(--fs)) 1fr;
+        row-gap: 6px;
+      }
+      [data-stack='1'] .row .trail {
+        grid-column: 2;
+        align-items: flex-start;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+      }
+      .rec {
+        font: 500 calc(11.5px * var(--fs)) / 1.2 var(--num-font);
+        white-space: nowrap;
+      }
+      .rec .w {
+        color: var(--accent);
+      }
+      .rec .l {
+        color: var(--negative);
+      }
+      .viewer {
+        display: grid;
+        grid-template-columns: calc(2.1 * 20px * var(--fs)) 1fr auto;
+        column-gap: 10px;
+        align-items: center;
+        padding: 12px var(--gutter);
+        background: var(--accent-wash-faint);
+        box-shadow: inset 3px 0 0 var(--accent);
+        margin-top: 10px;
+        border-top: 1px solid var(--divider);
+      }
+      [data-stack='1'] .viewer {
+        grid-template-columns: calc(2.1 * 20px * var(--fs)) 1fr;
+        row-gap: 6px;
+      }
+      [data-stack='1'] .viewer .trail {
+        grid-column: 2;
+        align-items: flex-start;
+      }
+      .viewer .trail {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 2px;
+      }
+      .viewer-act {
+        padding: 0 var(--gutter);
+        border-bottom: 1px solid var(--divider);
+        background: var(--accent-wash-faint);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+
+      .banner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px 8px;
+        padding: 6px var(--gutter);
+      }
+      .banner .t {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        flex: 1 1 140px;
+        color: var(--negative);
+      }
+      .center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 0 var(--gutter);
+        text-align: center;
+      }
+      .center .glyph {
+        width: 48px;
+        height: 48px;
+        color: var(--text-muted);
+        stroke-width: 1.5;
+      }
+      .skel {
+        height: 14px;
+        border-radius: 4px;
+        background: var(--fill);
+      }
+
+      /* Bottom bar, Option 1: docked, no transition, divider on the top edge. */
+      .bottombar {
+        display: flex;
+        border-top: 1px solid var(--divider);
+        background: var(--surface);
+        min-height: 56px;
+      }
+      .bottombar .tab {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 6px 0;
+        color: var(--text-muted);
+      }
+      .bottombar .tab.on .ico {
+        color: var(--accent);
+      }
+      .pill-on {
+        display: inline-flex;
+        padding: 3px 16px;
+        border-radius: 9999px;
+      }
+      .tab.on .pill-on {
+        background: var(--accent-wash);
+      }
+      .tab.on .t-labelsm {
+        color: var(--text-primary);
+      }
+      .navbar-gap {
+        height: 10px;
+        flex: none;
+        background: var(--surface);
+      }
+
+      /* ===== Pushed screens: top bar, no bottom bar ===== */
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 56px;
+        padding: 0 8px 0 4px;
+        flex: none;
+      }
+      .iconbtn {
+        width: 48px;
+        height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-primary);
+      }
+      .tabs {
+        display: flex;
+        border-bottom: 1px solid var(--divider);
+        margin-top: 8px;
+      }
+      .tabs .tb {
+        flex: 1;
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-muted);
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        font: 600 calc(12px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .tabs .tb.on {
+        color: var(--text-primary);
+        border-bottom-color: var(--accent);
+      }
+      .stat {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 12px var(--gutter);
+        border-bottom: 1px solid var(--divider);
+        min-height: 48px;
+      }
+      .stat .nm {
+        flex: 0 0 calc(48px * var(--fs));
+      }
+      .stat .ex {
+        flex: 1;
+        text-align: right;
+      }
+      .stat .sh {
+        flex: 0 0 auto;
+        text-align: right;
+        min-width: calc(56px * var(--fs));
+      }
+      [data-stack='1'] .stat {
+        flex-wrap: wrap;
+      }
+      .h2h {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 14px var(--gutter);
+        border-bottom: 1px solid var(--divider);
+      }
+      .step {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 var(--gutter);
+        min-height: 56px;
+        border-bottom: 1px solid var(--divider);
+      }
+      .step .ctl {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .step .ctl .n {
+        min-width: 32px;
+        text-align: center;
+      }
+      .step .iconbtn.off {
+        color: var(--text-subtle);
+        opacity: 0.55;
+      }
+      .cmp {
+        padding: 12px var(--gutter);
+        border-bottom: 1px solid var(--divider);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .cmp .hd {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+      }
+      .cmp .bar {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--fill);
+        overflow: hidden;
+      }
+      .cmp .bar i {
+        display: block;
+        height: 100%;
+      }
+      .cmp .vals {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .ffield {
+        padding: 0 var(--gutter);
+        margin-top: 12px;
+      }
+      .ffield .lbl {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--text-strong);
+      }
+      .ffield .box {
+        display: flex;
+        align-items: center;
+        min-height: 48px;
+        padding: 0 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        font: 400 calc(14px * var(--fs)) / 1.2 var(--body-font);
+        color: var(--text-primary);
+      }
+      .ffield .box.num {
+        font-family: var(--num-font);
+      }
+      .ffield .box.ph {
+        color: var(--text-muted);
+      }
+      .ffield .box.focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px var(--accent);
+      }
+      .ffield .box.err {
+        border-color: var(--negative);
+      }
+      .ffield .help {
+        display: flex;
+        gap: 6px;
+        margin-top: 4px;
+        align-items: flex-start;
+      }
+      .ffield .help.err {
+        color: var(--negative);
+      }
+      .sec {
+        padding: 22px var(--gutter) 0;
+        color: var(--text-strong);
+      }
+      .actions {
+        padding: 22px var(--gutter) 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .actions .btn-primary {
+        width: 100%;
+      }
+      .btn-danger {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 48px;
+        color: var(--negative);
+        font: 600 calc(15px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .stickybar {
+        flex: none;
+        padding: 10px var(--gutter);
+        border-top: 1px solid var(--divider);
+        background: var(--raised);
+      }
+      .stickybar .btn-primary {
+        width: 100%;
+      }
+      .scrim {
+        position: absolute;
+        inset: 0;
+        background: var(--scrim);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 24px;
+      }
+      .dialog {
+        width: 100%;
+        max-width: 560px;
+        background: var(--raised);
+        border: 1px solid var(--divider);
+        border-radius: 16px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .dialog .acts {
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        margin-top: 6px;
+      }
+      .btn-textc {
+        display: inline-flex;
+        align-items: center;
+        min-height: 48px;
+        padding: 0 12px;
+        font: 600 calc(15px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .cand {
+        display: grid;
+        grid-template-columns: calc(2.1 * 20px * var(--fs)) 1fr auto;
+        column-gap: 10px;
+        align-items: center;
+        min-height: 56px;
+        padding: 14px var(--gutter);
+        border-bottom: 1px solid var(--divider);
+      }
+      .cand.cur {
+        background: var(--accent-wash-faint);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--text-primary);
+      }
+      .tag .ico {
+        color: var(--accent);
+        width: 16px;
+        height: 16px;
+        stroke-width: 2.4;
+      }
+
+      /* ===== Fixed app bar (owner decision, 2026-11-20): title, season (below 1.5x), add ===== */
+      .appbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 56px;
+        padding: 0 4px 0 var(--gutter);
+        flex: none;
+        border-bottom: 1px solid var(--divider);
+      }
+      .appbar .iconbtn {
+        margin-left: auto;
+        color: var(--accent);
+      }
+      [data-stack='1'] .appbar .season {
+        display: none;
+      }
+      .season-list {
+        display: none;
+        padding-top: 10px;
+      }
+      [data-stack='1'] .season-list {
+        display: block;
+      }
+      /* Only while there is something to say: syncing, or a failed sync with its retry. */
+      .syncstrip {
+        flex: none;
+        padding: 6px var(--gutter);
+        background: var(--surface);
+        border-bottom: 1px solid var(--divider);
+        color: var(--accent);
+      }
+      .syncstrip.errs {
+        padding: 0 var(--gutter) 0 var(--gutter);
+        color: var(--negative);
+      }
+      .listmeta {
+        padding-top: 10px;
+      }
+    </style>
+  </head>
+  <body data-theme="dark" id="root">
+    <div class="toolbar">
+      <div class="grp">
+        <b>Theme</b><button data-k="theme" data-v="dark" class="on">Dark</button
+        ><button data-k="theme" data-v="light">Light</button>
+      </div>
+      <div class="grp">
+        <b>Font scale</b><button data-k="fs" data-v="1" class="on">1×</button
+        ><button data-k="fs" data-v="1.3">1.3×</button><button data-k="fs" data-v="1.5">1.5×</button
+        ><button data-k="fs" data-v="2">2×</button>
+      </div>
+      <div class="grp">
+        <b>Width</b><button data-k="w" data-v="360" class="on">360 dp</button
+        ><button data-k="w" data-v="412">412 dp</button>
+      </div>
+      <span id="fontcheck"></span>
+    </div>
+
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24">
+          <path d="M20 11a8 8 0 0 0-14.9-3M4 4v4h4M4 13a8 8 0 0 0 14.9 3M20 20v-4h-4" />
+        </symbol>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="m20 20-4.2-4.2" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></symbol>
+        <symbol id="i-trophy" viewBox="0 0 24 24">
+          <path
+            d="M8 4h8v6a4 4 0 0 1-8 0V4ZM8 6H4v1a3 3 0 0 0 4 3M16 6h4v1a3 3 0 0 1-4 3M12 14v4M8.5 20h7"
+          />
+        </symbol>
+        <symbol id="i-grid" viewBox="0 0 24 24">
+          <rect x="4" y="4" width="6.5" height="6.5" rx="1.2" />
+          <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2" />
+          <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2" />
+          <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2" />
+        </symbol>
+        <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V6M6 11.5 12 5.5l6 6" /></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 7.5v5.5M12 16.4v.1" />
+        </symbol>
+        <symbol id="i-users" viewBox="0 0 24 24">
+          <circle cx="9" cy="9" r="3.2" />
+          <path
+            d="M3.5 19a5.5 5.5 0 0 1 11 0M16 6.2a3.2 3.2 0 0 1 0 5.6M17 14a5.5 5.5 0 0 1 3.5 5"
+          />
+        </symbol>
+        <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+        <symbol id="i-edit" viewBox="0 0 24 24">
+          <path d="M4 20h4L19 9l-4-4L4 16v4ZM13.5 6.5l4 4" />
+        </symbol>
+        <symbol id="i-image" viewBox="0 0 24 24">
+          <rect x="4" y="5" width="16" height="14" rx="2" />
+          <circle cx="9" cy="10" r="1.5" />
+          <path d="m5 17 5-5 3 3 2-2 4 4" />
+        </symbol>
+        <symbol id="i-info" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M12 11v5M12 7.6v.1" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <h2 class="group">1 · Roster (<code>/</code>) — Arena section</h2>
+    <div class="screens" id="roster-screens"></div>
+
+    <h2 class="group">2 · Roster states</h2>
+    <div class="screens" id="roster-states"></div>
+
+    <h2 class="group">3 · Player detail (<code>/player/[id]</code>)</h2>
+    <div class="screens" id="detail-screens"></div>
+
+    <h2 class="group">4 · Player form (<code>/player/new</code>, edit, <code>/me</code> top)</h2>
+    <div class="screens" id="form-screens"></div>
+
+    <h2 class="group">5 · “Who are you?” picker</h2>
+    <div class="screens" id="choice-screens"></div>
+
+    <script>
+      const ic = (n, c = '') =>
+        `<svg class="ico ${c}" aria-hidden="true"><use href="#i-${n}"/></svg>`;
+      const status = `<div class="status"><span>9:41</span><span>●●● ▮</span></div>`;
+      const bar = (on) => `<div class="barwrap"><div class="bottombar">
+        ${[
+          ['trophy', 'Arena'],
+          ['grid', 'Collection'],
+          ['up', 'Upgrade'],
+        ]
+          .map(
+            ([i, l]) =>
+              `<div class="tab ${on === l ? 'on' : ''}"><span class="pill-on">${ic(i)}</span><span class="t-labelsm">${l}</span></div>`,
+          )
+          .join('')}
+      </div><div class="navbar-gap"></div></div>`;
+      const fig = (cap, body, title) =>
+        `<figure><div class="phone">${status}${body}</div><figcaption><b>${title}</b>${cap}</figcaption></figure>`;
+
+      const players = [
+        ['01', 'Heimdall', '3,482,119,004', '8W · 2L', 5120],
+        ['02', 'Valkyrie_Eir', '3,401,877,350', '3W · 5L', 4980],
+        ['03', 'Sigrun', '3,290,004,116', null, 4875],
+        ['04', 'Odinson-Lars', '3,187,650,921', '6W · 0L', 4710],
+        ['05', 'Brynhildr', '3,022,415,508', '1W · 1L', 4590],
+        ['06', 'Ragnar the Unyielding', '2,980,331,270', '0W · 4L', 4402],
+        ['07', 'Xyrerris', '2,911,004,802', 'me', 4310],
+        ['08', 'Freyja', '2,860,119,433', '2W · 2L', 4220],
+        ['09', 'Loki', '2,790,552,019', null, 4101],
+      ];
+      const rec = (r) => {
+        if (!r || r === 'me') return '';
+        const [w, l] = r.split(' · ');
+        const wn = parseInt(w),
+          ln = parseInt(l);
+        return `<span class="rec"><span class="w">${wn}W</span> · <span class="${ln > wn ? 'l' : ''}">${ln}L</span></span>`;
+      };
+      const row = (p) => `<div class="row ${p[1] === 'Xyrerris' ? 'me' : ''}">
+        <span class="rk t-rank">${p[0]}</span>
+        <span class="meta"><span class="t-sub">${p[1]}</span><span class="t-num-sm">CP ${p[2]}</span></span>
+        <span class="trail">${rec(p[3])}<span class="t-caption">${p[4]} pts</span></span></div>`;
+
+      const appBar = (o = {}) =>
+        `<div class="appbar"><span class="t-heading">Arena</span>${o.noSeason ? '' : '<span class="season">SEASON 14</span>'}<span class="iconbtn" aria-label="New player">${ic('plus')}</span></div>`;
+      const syncStrip = `<div class="syncstrip t-caption" style="color:var(--accent)">Syncing…</div>`;
+      const errStrip = `<div class="syncstrip errs"><div class="banner" style="padding-left:0;padding-right:0"><span class="t">${ic('alert')}<span class="t-caption" style="color:var(--negative)">Could not reach the server. Showing what was read last.</span></span><span class="btn-quiet">Retry</span></div></div>`;
+      const header = (opts = {}) => `
+        <div class="gutter"><div class="season season-list">SEASON 14</div>
+        <div class="t-caption listmeta">${opts.noUpdated ? '' : 'Updated 4 minutes ago · '}${opts.count ?? '9 registered players'}</div></div>
+        ${
+          opts.noViewer
+            ? ''
+            : `<div class="viewer">
+          <span class="rk t-rank" style="text-align:right">07</span>
+          <span style="display:flex;flex-direction:column;gap:2px"><span class="t-labelsm" style="color:var(--text-strong)">Your avatar</span><span class="t-sub">Xyrerris</span><span class="t-caption">4310 pts</span></span>
+          <span class="trail"><span class="t-num-hero">2.91B</span><span class="t-num-sm">CP 2,911,004,802</span></span></div>
+        <div class="viewer-act"><span class="btn-quiet">${ic('refresh')}Update my stats</span></div>`
+        }
+        <div class="gutter"><div class="field">${ic('search')}${opts.query ?? 'Search players'}</div>
+        <div class="chips">${['Rank', 'CP', 'My wins']
+          .map(
+            (c, i) =>
+              `<span class="chipbox"><span class="chip ${i === 0 ? 'on' : ''}">${i === 0 ? ic('check') : ''}${c}</span></span>`,
+          )
+          .join('')}</div></div>`;
+
+      document.getElementById('roster-screens').innerHTML =
+        fig(
+          'The title, the season (below 1.5×) and the add control are a fixed app bar. Viewer is a ladder row (rank, CP rounded + exact) with “Update my stats” as a quiet action under it. Search and sort sit together. The row keeps rank, name, exact CP, your record and points; swipe win/loss is unchanged (labels appear under the row while dragging).',
+          `${appBar()}<div class="scroll">${header()}<div class="list">${players.map(row).join('')}</div></div>${bar('Arena')}`,
+          'Roster — ready',
+        ) +
+        fig(
+          'Failed sync: the message and its retry are fixed under the bar, above a list that stays usable (as today).',
+          `${appBar()}${errStrip}<div class="scroll">${header()}
+          <div class="list">${players.slice(0, 6).map(row).join('')}</div></div>${bar('Arena')}`,
+          'Roster — sync failed',
+        ) +
+        fig(
+          'Syncing: a thin strip under the bar reads “Syncing…” and replaces nothing; it exists only while a sync runs.',
+          `${appBar()}${syncStrip}<div class="scroll">${header({ noUpdated: true })}<div class="list">${players.map(row).join('')}</div></div>${bar('Arena')}`,
+          'Roster — syncing',
+        );
+
+      document.getElementById('roster-states').innerHTML =
+        fig(
+          'Reading the ladder. Skeleton rows keep the layout stable instead of a lone spinner.',
+          `${appBar({ noSeason: true })}<div class="scroll">
+          <div class="list" style="margin-top:12px">${[0, 1, 2, 3, 4]
+            .map(
+              () =>
+                `<div class="row"><span class="skel" style="width:30px;height:20px"></span><span class="meta"><span class="skel" style="width:60%"></span><span class="skel" style="width:40%;height:11px"></span></span><span class="skel" style="width:46px"></span></div>`,
+            )
+            .join('')}</div>
+          <div style="text-align:center;padding-top:14px" class="t-caption">Reading the ladder…</div></div>${bar('Arena')}`,
+          'Roster — loading',
+        ) +
+        fig(
+          'The whole ladder could not be read and nothing is on this device yet: ErrorState with a retry.',
+          `${appBar({ noSeason: true })}<div class="scroll">
+          <div class="center">${ic('alert', 'glyph neg')}<span class="t-sub">The ladder could not be read</span><span class="t-body" style="color:var(--negative);line-height:1.4">Could not reach the server.</span><span class="btn-secondary">Try again</span></div></div>${bar('Arena')}`,
+          'Roster — error',
+        ) +
+        fig(
+          'No players yet: the one filled action on the screen is “New player”.',
+          `${appBar()}<div class="scroll"><div class="gutter"><div class="season season-list">SEASON 14</div><div class="t-caption listmeta">Updated 4 minutes ago · 0 registered players</div></div>
+          <div class="center">${ic('users', 'glyph')}<span class="t-sub">No players yet</span><span class="t-body" style="line-height:1.45">Add the players you want to track. Everything stays on this device.</span><span class="btn-primary">${ic('plus')}New player</span></div></div>${bar('Arena')}`,
+          'Roster — empty',
+        ) +
+        fig(
+          'A search that matches nobody. No “add” action here — it would read as “create the person you were looking for”.',
+          `${appBar()}<div class="scroll">${header({ noViewer: true, query: 'zzq' })}
+          <div class="center" style="top:210px">${ic('search', 'glyph')}<span class="t-sub">No player by that name</span><span class="t-body" style="line-height:1.45">Nothing in the roster matches “zzq”.</span></div></div>${bar('Arena')}`,
+          'Roster — search without result',
+        );
+
+      // ===== phase 2: pushed screens (no bottom bar) =====
+      const topBar = (left, right = '') => `<div class="topbar">${left}<span>${right}</span></div>`;
+      const back = `<span class="iconbtn">${ic('back')}</span>`;
+      const pfig = (cap, body, title) => fig(cap, body, title);
+
+      const detailHead = `<div class="gutter" style="padding-top:4px">
+        <div class="t-label muted">Rank #07</div>
+        <div style="font:500 calc(30px*var(--fs))/1.15 var(--display-font);margin-top:4px">Xyrerris</div>
+        <div class="t-caption" style="margin-top:2px">Lv. 74 · #a984</div>
+        <div style="margin-top:14px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span class="t-labelsm muted">CP</span><span class="t-num-hero accent">2,911,004,802</span><span class="t-caption">2.91B</span></div></div>`;
+      const tabs = (on) =>
+        `<div class="tabs"><span class="tb ${on === 0 ? 'on' : ''}">Stats</span><span class="tb ${on === 1 ? 'on' : ''}">Vs you</span></div>`;
+      const stats = [
+        ['HP', '48,210,566', '48.2M'],
+        ['ATK', '3,990,412', '3.99M'],
+        ['DEF', '2,711,090', '2.71M'],
+        ['CRIT', '11,420', '11.4K'],
+        ['HIT', '9,882', '9.88K'],
+        ['SPD', '1,203', '1.20K'],
+      ];
+      const statRow = ([k, e, s]) =>
+        `<div class="stat"><span class="nm t-label muted">${k}</span><span class="ex t-num">${e}</span><span class="sh t-num-sm">${s}</span></div>`;
+      const edit = `<span class="btn-quiet" style="padding-right:10px">${ic('edit')}Edit</span>`;
+
+      const cmpRows = [
+        ['HP', 62, 48, '+14.0M', false, '48.2M', '34.2M'],
+        ['ATK', 40, 71, '−1.2M', true, '3.99M', '5.19M'],
+        ['DEF', 55, 52, '+0.1M', false, '2.71M', '2.60M'],
+      ];
+      const cmp = ([k, m, t, d, opp, mv, tv]) =>
+        `<div class="cmp"><div class="hd"><span class="t-label muted">${k}</span><span class="t-num-sm">${d}</span></div>
+        <div class="bar"><i style="width:${m}%;background:var(--accent)"></i></div>
+        <div class="bar"><i style="width:${t}%;background:var(--negative)"></i></div>
+        <div class="vals"><span class="t-num-sm" style="color:var(--text-strong)">you ${mv}</span><span class="t-num-sm" style="color:var(--text-strong)">them ${tv}</span></div></div>`;
+      const stepper = (lbl, n) =>
+        `<div class="step"><span class="t-label muted">${lbl}</span><span class="ctl"><span class="iconbtn ${n === 0 ? 'off' : ''}">${ic('minus')}</span><span class="n t-num">${n}</span><span class="iconbtn">${ic('plus')}</span></span></div>`;
+
+      document.getElementById('detail-screens').innerHTML =
+        pfig(
+          'Back and Edit become icon/quiet controls in a real top bar. Cinzel name, CP as the hero with exact and rounded side by side. Stats are one hairline list: label, exact value (left of the value block), rounded value right — the caption under the list is kept (moving it breaks `player-detail.yaml`, so it stays).',
+          `${topBar(back, edit)}<div class="scroll">${detailHead}${tabs(0)}${stats.map(statRow).join('')}
+          <div class="gutter t-num-sm" style="padding-top:12px">exact value left · rounded value right</div></div>`,
+          'Detail — Stats',
+        ) +
+        pfig(
+          'Head to head with the record stepper (add and remove, as today), then the stat comparison. The comparison bars keep the colour-plus-text rule: every bar has its value and delta printed.',
+          `${topBar(back, edit)}<div class="scroll">${detailHead}${tabs(1)}
+          <div class="h2h"><span><span class="t-labelsm muted">Head to head</span><br><span class="t-body" style="line-height:1.4">you won 3 of 5 matches</span></span><span class="rec"><span class="w">3W</span> · <span>2L</span></span></div>
+          ${stepper('Wins', 3)}${stepper('Losses', 2)}${cmpRows.map(cmp).join('')}</div>`,
+          'Detail — Vs you',
+        ) +
+        pfig(
+          'No avatar yet: the Stats tab stays readable; this is a missing comparison, not a broken screen.',
+          `${topBar(back, edit)}<div class="scroll">${detailHead}${tabs(1)}<div class="gutter" style="padding-top:22px"><div class="t-sub">No avatar to compare against</div><p class="t-body" style="margin-top:6px;line-height:1.5">Once the roster knows which player is yours, this tab compares the two of you stat by stat.</p></div></div>`,
+          'Detail — Vs you, no avatar',
+        ) +
+        pfig(
+          'Loading, not found and error use the shared states. Not found says what may have happened; error offers a retry.',
+          `${topBar(back)}<div class="scroll"><div class="center">${ic('users', 'glyph')}<span class="t-sub">No such player</span><span class="t-body" style="line-height:1.45">This link points at someone who is not on the ladder. They may have left the season, or the link may be stale.</span><span class="btn-secondary">Back to the roster</span></div></div>`,
+          'Detail — not found (loading and error as the roster states)',
+        );
+
+      // ---- form ----
+      const field = (lbl, val, o = {}) =>
+        `<div class="ffield"><span class="lbl t-label">${lbl}</span><div class="box ${o.num ? 'num' : ''} ${val ? '' : 'ph'} ${o.focus ? 'focus' : ''} ${o.err ? 'err' : ''}">${val || o.ph || ''}</div>${
+          o.help ? `<div class="help t-caption">${o.help}</div>` : ''
+        }${o.err ? `<div class="help err t-caption">${ic('alert').replace('class="ico', 'style="width:16px;height:16px" class="ico')}<span>${o.err}</span></div>` : ''}</div>`;
+      const scanBlock = (note = '') =>
+        `<div class="ffield" style="margin-top:8px"><span class="btn-secondary" style="width:100%">${ic('image')}Fill from screenshot</span>
+        <div class="help t-caption">Reads a profile screenshot from your photos and then deletes it. Nothing is saved to the roster until you press save.</div>${note}</div>`;
+      const sec = (t) => `<div class="sec t-label">${t}</div>`;
+      const formBody = (o = {}) => `
+        <div class="gutter" style="padding-top:2px">${o.eyebrow ? `<div class="t-labelsm" style="color:var(--text-strong)">Your avatar</div>` : ''}<div class="t-heading">${o.title}</div></div>
+        ${scanBlock(o.scanNote || '')}
+        ${sec('Identity')}
+        ${field('Name', o.name ?? '', { ph: 'Name', err: o.nameErr })}
+        ${field('Level', o.level ?? '', { num: true, ph: '0', focus: o.focusLevel, help: o.focusLevel ? 'The Lv. beside the name.' : '' })}
+        ${field('Game code (optional)', '', { ph: '#a984', help: '' })}
+        ${sec('Power')}
+        ${field('Combat power', o.cp ?? '', { num: true, ph: '0' })}
+        ${field('Score', o.score ?? '', { num: true, ph: '0', help: 'Not on the profile screen — type this one in.' })}
+        ${sec('Stats')}
+        ${['HP', 'ATK', 'DEF'].map((k) => field(k, o.stats ? o.stats[k] : '', { num: true, ph: '0' })).join('')}
+        ${field('Crit %', o.stats ? '113' : '', { num: true, ph: '0', help: o.focusCrit ? 'A whole percentage — 113 means 113 %.' : '' })}
+        ${['HIT', 'SPD'].map((k) => field(k, o.stats ? o.stats[k] : '', { num: true, ph: '0' })).join('')}
+        <div class="actions"><span class="btn-primary">${o.submit}</span>${o.canDelete ? '<span class="btn-danger">Remove player</span>' : ''}</div>
+        <div style="height:24px"></div>`;
+      const cancel = `<span class="btn-quiet" style="padding-left:12px">Cancel</span>`;
+      const vstats = {
+        HP: '48,210,566',
+        ATK: '3,990,412',
+        DEF: '2,711,090',
+        HIT: '9,882',
+        SPD: '1,203',
+      };
+
+      document.getElementById('form-screens').innerHTML =
+        pfig(
+          'Sections (Identity / Power / Stats) and a real top bar with Cancel. Labels sit above the fields in sentence case; borders are the 3:1 `border`. Helper text is shown only where census says it must be: Score (ADR-0024) and the scan caption (ADR-0026) are always visible; Level and Crit % show their helper only on focus; Game code carries “optional” in its label. One filled action, at the end.',
+          `${topBar(cancel)}<div class="scroll">${formBody({ title: 'New player', submit: 'Add player', focusLevel: true })}</div>`,
+          'Form — new player (Level focused)',
+        ) +
+        pfig(
+          'Edit of your own player (`/me` top): eyebrow “Your avatar”, a “Not you?” control, the scan result note, save label “Save my stats”, destructive action as text, not a filled red button. `/me` footer sections (avatar, keystore, account, backup) are drawn in phase 3.',
+          `${topBar(cancel, `<span class="btn-quiet" style="padding-right:10px">Not you?</span>`)}<div class="scroll">${formBody({ eyebrow: true, title: 'Xyrerris', name: 'Xyrerris', level: '74', cp: '2,911,004,802', score: '4310', stats: vstats, submit: 'Save my stats', scanNote: '<div class="help t-caption" style="color:var(--accent)">Stats loaded — every field was read.</div>' })}</div>`,
+          'Form — edit viewer (scan applied)',
+        ) +
+        pfig(
+          'Validation: the field gets a `negative` outline and an icon + message below it (never colour alone).',
+          `${topBar(cancel)}<div class="scroll">${formBody({ title: 'New player', name: '', nameErr: 'Enter a name.', submit: 'Add player' })}</div>`,
+          'Form — error',
+        ) +
+        pfig(
+          '<b style="display:inline">Alternate — needs your approval (sticky Save).</b> Same form with Save pinned above the keyboard/bottom edge. Visual-only default is the first figure.',
+          `${topBar(cancel)}<div class="scroll">${formBody({ title: 'New player', submit: 'Add player' }).replace(/<div class="actions">.*?<\/div>/s, '')}</div><div class="stickybar"><span class="btn-primary">Add player</span></div>`,
+          'Form — sticky Save (alternate)',
+        ) +
+        pfig(
+          'Remove confirmation: a dialog on a scrim, `raised`, destructive choice as text. Wording as today.',
+          `${topBar(cancel)}<div class="scroll">${formBody({ title: 'Freyja', name: 'Freyja', level: '70', canDelete: true, submit: 'Save changes' })}<div class="scrim"><div class="dialog"><span class="t-sub">Remove this player?</span><span class="t-body" style="line-height:1.45">They are removed from this device only, and the ranking closes up behind them.</span><span class="acts"><span class="btn-textc">Keep</span><span class="btn-textc neg">Remove</span></span></div></div></div>`,
+          'Form — remove dialog',
+        );
+
+      // ---- viewer choice ----
+      const cand = (p, cur) =>
+        `<div class="cand ${cur ? 'cur' : ''}"><span class="t-rank" style="text-align:right">${p[0]}</span><span class="meta" style="display:flex;flex-direction:column;gap:2px"><span class="t-sub">${p[1]}</span><span class="t-num-sm">CP ${p[2]}</span></span>${cur ? `<span class="tag t-labelsm">${ic('check')}This is you</span>` : ''}</div>`;
+      document.getElementById('choice-screens').innerHTML =
+        pfig(
+          'The current choice is marked with a check and text, not colour alone. Rows are the same ladder rows as the roster.',
+          `${topBar(cancel)}<div class="scroll"><div class="gutter"><div class="t-heading">Who are you?</div><p class="t-body" style="margin:8px 0 10px;line-height:1.5">Pick your own player. The roster marks them as your avatar, and their stats become the ones every comparison is made against.</p></div><div class="list">${players
+            .slice(0, 7)
+            .map((p) => cand(p, p[1] === 'Xyrerris'))
+            .join('')}</div></div>`,
+          'Choice — ready',
+        ) +
+        pfig(
+          'Nobody to pick yet: one filled action, as in the roster empty state.',
+          `${topBar(cancel)}<div class="scroll"><div class="center">${ic('users', 'glyph')}<span class="t-sub">Nobody to pick yet</span><span class="t-body" style="line-height:1.45">Add yourself to the roster first — then come back and say which player you are.</span><span class="btn-primary">${ic('plus')}New player</span></div></div>`,
+          'Choice — nobody',
+        );
+
+      // ===== page controls =====
+      const root = document.documentElement;
+      const bodyEl = document.body;
+      function apply(k, v) {
+        if (k === 'theme') bodyEl.dataset.theme = v;
+        if (k === 'fs') {
+          root.style.setProperty('--fs', v);
+          bodyEl.dataset.stack = parseFloat(v) >= 1.5 ? '1' : '0';
+        }
+        if (k === 'w') root.style.setProperty('--w', v + 'px');
+        document
+          .querySelectorAll(`.toolbar button[data-k="${k}"]`)
+          .forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+      }
+      document
+        .querySelectorAll('.toolbar button')
+        .forEach((b) => b.addEventListener('click', () => apply(b.dataset.k, b.dataset.v)));
+      const q = new URLSearchParams(location.search);
+      for (const k of ['theme', 'fs', 'w']) if (q.get(k)) apply(k, q.get(k));
+      (() => {
+        const need = [
+          '400 14px Barlow',
+          '600 14px Barlow',
+          '700 14px Barlow',
+          '700 14px Cinzel',
+          '500 14px Cinzel',
+          '400 14px JetBrainsMono',
+          '500 14px JetBrainsMono',
+        ];
+        // `check` is false for a face nothing has asked for yet, so request every one first.
+        Promise.all(need.map((f) => document.fonts.load(f)))
+          .then(() => need.every((f) => document.fonts.check(f)))
+          .catch(() => false)
+          .then((ok) => {
+            document.getElementById('fontcheck').textContent = ok
+              ? 'fonts: bundled files loaded'
+              : 'fonts: FALLBACK in use';
+            window.__fontsOk = ok;
+          });
+      })();
+    </script>
+  </body>
+</html>

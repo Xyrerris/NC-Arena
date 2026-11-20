@@ -5,6 +5,8 @@ bottom bar. This is the design system as a document and a token plan. **No code 
 either measured (contrast, WCAG 2.x relative luminance) or taken from a file in the repo; what is not verified is
 marked.
 
+> **Amended 2026-11-20:** the large collapsing title is replaced by a fixed `AppBar` (see `HANDOFF.md`, decision 1).
+
 ## 1. Colour
 
 Two themes, selected by the OS (`useColorScheme`), no in-app switch in this pass. Dark is B's green-black with
@@ -85,19 +87,19 @@ Bundled faces only (no new file): Cinzel 500/700, Barlow 400–700, JetBrains Mo
 everywhere except the wordmark. Line height stays a unitless multiplier, scaled by the live font scale in
 `ArenaText` (`typography.ts` header explains why); no token carries a pixel line height.
 
-| Role                 | Face · size · weight                 | Where                                           |
-| -------------------- | ------------------------------------ | ----------------------------------------------- |
-| Display / wordmark   | Cinzel 32 · 700                      | "Arena" wordmark; large title at rest           |
-| Heading (screen)     | Cinzel 20 · 700                      | Large title collapsed into the bar; sheet title |
-| Rank numeral         | Cinzel 20 · 500                      | Roster rank column                              |
-| Player name (detail) | Cinzel 30 · 500                      | Detail hero                                     |
-| Subheading           | Barlow 16 · 600                      | Section headers, row titles                     |
-| Body                 | Barlow 14 · 400 (leading 1.5)        | Prose, helper text                              |
-| Caption              | Barlow 12 · 400                      | Row meta, timestamps                            |
-| Label                | Barlow 12 · 600                      | Chips, tab labels, field labels                 |
-| Button               | Barlow 15 · 600                      | All buttons                                     |
-| Numeric hero         | JetBrains Mono 22 · 500              | Viewer combat power                             |
-| Numeric              | JetBrains Mono 13 · 500 / 11.5 · 400 | Exact values / dense list stats                 |
+| Role                 | Face · size · weight                 | Where                                    |
+| -------------------- | ------------------------------------ | ---------------------------------------- |
+| Display / wordmark   | Cinzel 32 · 700                      | "Arena" wordmark (splash, boot)          |
+| Heading (screen)     | Cinzel 20 · 700                      | App-bar title (all screens); sheet title |
+| Rank numeral         | Cinzel 20 · 500                      | Roster rank column                       |
+| Player name (detail) | Cinzel 30 · 500                      | Detail hero                              |
+| Subheading           | Barlow 16 · 600                      | Section headers, row titles              |
+| Body                 | Barlow 14 · 400 (leading 1.5)        | Prose, helper text                       |
+| Caption              | Barlow 12 · 400                      | Row meta, timestamps                     |
+| Label                | Barlow 12 · 600                      | Chips, tab labels, field labels          |
+| Button               | Barlow 15 · 600                      | All buttons                              |
+| Numeric hero         | JetBrains Mono 22 · 500              | Viewer combat power                      |
+| Numeric              | JetBrains Mono 13 · 500 / 11.5 · 400 | Exact values / dense list stats          |
 
 **Fit with the existing scale (`typography.ts`, 24 roles).** The table above maps to existing roles
 (`displayLarge`, `displaySmall`, `displayName`, `titleMedium`, `titleSmall`, `label`, `bodyMedium`, `bodySmall`,
@@ -135,37 +137,37 @@ runtime check on `useWindowDimensions().fontScale` (proposal: ≥ 1.5), to be tu
   (chips). `xl 18` is dropped — no component in the new set needs it.
 - **Elevation:** none on lists (hairlines). Sheets and dialogs use a scrim (black at ~52 %, a decorative token),
   not a shadow; no `elevation` anywhere, which also avoids Android shadow artefacts on the dark theme.
-- **Motion:** 120 ms for press feedback, 200 ms ease-out for sheets and the large-title collapse; the bar has
-  none (`animation: 'none'`, Checkpoint 4). Reanimated is already in the project; no new animation dependency.
+- **Motion:** 120 ms for press feedback, 200 ms ease-out for sheets; the bottom bar
+  has none (`animation: 'none'`, Checkpoint 4). Reanimated is already in the project; no new animation dependency.
   Reduced motion (`AccessibilityInfo.isReduceMotionEnabled`) turns every transition into a cut.
 
 ## 4. Component library
 
 Status: **E** exists today and is restyled, **N** new, **N\*** built only when a mockup needs it.
 
-| Component                   | St. | Spec                                                                                                                                                                              |
-| --------------------------- | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ArenaButton`               | E   | Variants `primary` (filled accent, **max one per screen**), `secondary` (`border` outline), `quiet` (text). Height 48, radius `sm`, Barlow 15/600.                                |
-| `IconButton`                | N   | 24 px SVG in a 48 dp target; variants `plain`, `tonal`. `accessibilityLabel` is a required prop.                                                                                  |
-| `Icon`                      | N   | Thin wrapper over `react-native-svg`, one file per glyph in `core/design-system/icons`, stroke 1.75, colour from tokens only.                                                     |
-| `FormField`, `SearchField`  | E   | Outline = `border` (3:1), radius `sm`, height 48. Label above, always visible; helper text **only while focused or in error** (flow change F, needs your OK).                     |
-| Select / dropdown           | N\* | Opens a sheet of rows with a check on the selected one. Only for screens that already have a picker.                                                                              |
-| Checkbox, radio, switch     | N\* | 24 px glyph in a 48 dp target, `accent` when on.                                                                                                                                  |
-| `SegmentedTabs`             | E   | Quiet underlined tabs: label 12/600, 2 px `accent` underline on the selected one, no fill, 48 dp high.                                                                            |
-| `SortChip` / chips          | E   | Pill drawn inside a 48 dp pressable, `fill` background; selected = `accentWash` + **`primary` text** + `accent` check glyph (not colour alone; see the failing light pair in §1). |
-| `ListRow`                   | N   | Replaces cards in lists: hairline below, optional leading rank, trailing value block, 56 dp minimum, stacks above the font-scale threshold.                                       |
-| `InsetGroup`                | N   | A `surface` block with `md` radius for settings-like groups (account, filters in a sheet). The only place a "card" survives.                                                      |
-| `ViewerCard`                | E   | Becomes a tappable `ListRow` on `surface` (flow change F, needs your OK); hero numeral JetBrains Mono 22.                                                                         |
-| `LargeTitleHeader`          | N   | Header **inside** the list: Cinzel 32 collapses to 20 in a 56 dp bar as the list scrolls (the audit's ask).                                                                       |
-| `BottomBar`                 | N   | Option 1: docked, 3 sections, icon + label 11/600, `router.replace`, hidden on pushed screens and while the keyboard is open, no transition.                                      |
-| `Sheet`                     | N   | Modal bottom sheet, `lg` top radius, scrim, drag handle, max height 90 %, content scrolls, primary action sticky at the bottom.                                                   |
-| `Dialog`                    | N   | Centered, `lg` radius, width ≤ 560, title + one sentence + two buttons; destructive action uses `negative` text, never a filled red button.                                       |
-| `Toast`                     | N   | Bottom, above the bar, 4 s, one line + optional action, `accessibilityLiveRegion="polite"`. Replaces ad-hoc inline status text.                                                   |
-| `RecordBadge`               | E   | Icon + word + colour. Variants `mine`, `theirs`, `neutral`.                                                                                                                       |
-| `CompareBar`, `ProgressBar` | E   | Unchanged geometry; colours from the new tokens; the glint is dropped under reduced motion.                                                                                       |
-| `EmptyState`                | N   | Glyph 48, Barlow 16/600 title, one body sentence, at most one `secondary` action. No illustrations.                                                                               |
-| `ErrorState`                | N   | Same layout, `negative` glyph, a retry button. Distinguishes "could not reach the server" from "nothing here".                                                                    |
-| `LoadingState`              | N   | Skeleton rows (`fill` colour, static under reduced motion) for lists; the existing progress bar stays for offers.                                                                 |
+| Component                   | St. | Spec                                                                                                                                                                                                                |
+| --------------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ArenaButton`               | E   | Variants `primary` (filled accent, **max one per screen**), `secondary` (`border` outline), `quiet` (text). Height 48, radius `sm`, Barlow 15/600.                                                                  |
+| `IconButton`                | N   | 24 px SVG in a 48 dp target; variants `plain`, `tonal`. `accessibilityLabel` is a required prop.                                                                                                                    |
+| `Icon`                      | N   | Thin wrapper over `react-native-svg`, one file per glyph in `core/design-system/icons`, stroke 1.75, colour from tokens only.                                                                                       |
+| `FormField`, `SearchField`  | E   | Outline = `border` (3:1), radius `sm`, height 48. Label above, always visible; helper text **only while focused or in error** (flow change F, needs your OK).                                                       |
+| Select / dropdown           | N\* | Opens a sheet of rows with a check on the selected one. Only for screens that already have a picker.                                                                                                                |
+| Checkbox, radio, switch     | N\* | 24 px glyph in a 48 dp target, `accent` when on.                                                                                                                                                                    |
+| `SegmentedTabs`             | E   | Quiet underlined tabs: label 12/600, 2 px `accent` underline on the selected one, no fill, 48 dp high.                                                                                                              |
+| `SortChip` / chips          | E   | Pill drawn inside a 48 dp pressable, `fill` background; selected = `accentWash` + **`primary` text** + `accent` check glyph (not colour alone; see the failing light pair in §1).                                   |
+| `ListRow`                   | N   | Replaces cards in lists: hairline below, optional leading rank, trailing value block, 56 dp minimum, stacks above the font-scale threshold.                                                                         |
+| `InsetGroup`                | N   | A `surface` block with `md` radius for settings-like groups (account, filters in a sheet). The only place a "card" survives.                                                                                        |
+| `ViewerCard`                | E   | Becomes a tappable `ListRow` on `surface` (flow change F, needs your OK); hero numeral JetBrains Mono 22.                                                                                                           |
+| `AppBar`                    | N   | Fixed, 56 dp, bottom `divider`. Title Cinzel 20/700, optional inline season (hidden at ≥ 1.5× font scale), up to two 48 dp icon actions (roster: "+"). Replaces the planned `LargeTitleHeader` (owner, 2026-11-20). |
+| `BottomBar`                 | N   | Option 1: docked, 3 sections, icon + label 11/600, `router.replace`, hidden on pushed screens and while the keyboard is open, no transition.                                                                        |
+| `Sheet`                     | N   | Modal bottom sheet, `lg` top radius, scrim, drag handle, max height 90 %, content scrolls, primary action sticky at the bottom.                                                                                     |
+| `Dialog`                    | N   | Centered, `lg` radius, width ≤ 560, title + one sentence + two buttons; destructive action uses `negative` text, never a filled red button.                                                                         |
+| `Toast`                     | N   | Bottom, above the bar, 4 s, one line + optional action, `accessibilityLiveRegion="polite"`. Replaces ad-hoc inline status text.                                                                                     |
+| `RecordBadge`               | E   | Icon + word + colour. Variants `mine`, `theirs`, `neutral`.                                                                                                                                                         |
+| `CompareBar`, `ProgressBar` | E   | Unchanged geometry; colours from the new tokens; the glint is dropped under reduced motion.                                                                                                                         |
+| `EmptyState`                | N   | Glyph 48, Barlow 16/600 title, one body sentence, at most one `secondary` action. No illustrations.                                                                                                                 |
+| `ErrorState`                | N   | Same layout, `negative` glyph, a retry button. Distinguishes "could not reach the server" from "nothing here".                                                                                                      |
+| `LoadingState`              | N   | Skeleton rows (`fill` colour, static under reduced motion) for lists; the existing progress bar stays for offers.                                                                                                   |
 
 ## 5. Interaction states
 
