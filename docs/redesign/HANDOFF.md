@@ -7,7 +7,7 @@ rules), then this.
 ## Where we are
 
 Checkpoints 1–4 are done and approved. **No application code has changed for the redesign yet** — the only code
-change is the FlashList fix below. Next is **Checkpoint 5: the design system**.
+change is the FlashList fix below. Checkpoint 5 (design system, `CHECKPOINT_5.md`) is approved with all 11 decisions. Next is **Checkpoint 6: screen mockups**. Before the form screens: the census of helper texts hidden until focus (CHECKPOINT_5 §7, item 8).
 
 | Checkpoint            | Document                                                               | Status                              |
 | --------------------- | ---------------------------------------------------------------------- | ----------------------------------- |
@@ -15,7 +15,7 @@ change is the FlashList fix below. Next is **Checkpoint 5: the design system**.
 | 2 UI/UX audit         | `CHECKPOINT_2_AUDIT.md`                                                | approved                            |
 | 3 Three directions    | `CHECKPOINT_3.md`, `mockups/directions.html`                           | approved: hybrid B+A                |
 | 4 Decisions           | `CHECKPOINT_4.md`, `PROPOSAL_bottom_bar.md`, `mockups/bottom-bar.html` | approved, incl. bottom bar Option 1 |
-| 5 Design system       | —                                                                      | **next**                            |
+| 5 Design system       | `CHECKPOINT_5.md`                                                      | approved (1–11)                     |
 
 ## Decisions already made (do not reopen without the owner)
 
@@ -67,8 +67,8 @@ Requirements that came out of the work and must be in it:
 
 - **The roster-list bug is fixed.** `@shopify/flash-list` is pinned at 2.3.2 (`cdebe44`) and
   `expo.install.exclude` stops `expo install --fix` and `expo-doctor` from putting 2.0.2 back; DECISIONS.md has
-  the note. With 2.0.2 on RN 0.86 the top rows are never drawn. Verified on the emulator; not re-checked on the
-  physical device after the fix.
+  the note. With 2.0.2 on RN 0.86 the top rows are never drawn. Verified on the emulator and, by the owner on
+  2026-11-20, on the physical device. PR [#7](https://github.com/Xyrerris/NC-Arena/pull/7) puts it on `main`.
 - **Dev setup used today:** emulator `Galaxy_S22_Ultra` (1440x3088, density 560), `npx expo start --dev-client`
   on port 8081 plus `adb reverse tcp:8081 tcp:8081`. A Metro process may still be running on this machine.
   Deep links work: `arenascout://me`, `/upgrade`, `/collection`, `/player/new`, `/account`, `/catalogue`.
@@ -81,6 +81,6 @@ Requirements that came out of the work and must be in it:
 
 ## Open items
 
-- Confirm the list fix and the 200 % bar on the **physical device** (owner).
-- Merge to `main` is the owner's call; the fix also lives on `fix/roster-flashlist-2.3.2` (same commit).
+- List fix confirmed on the physical device (2026-11-20); the 200 % bar is still to check.
+- PR #7 (`fix/roster-flashlist-2.3.2` → `main`) is open; merging it is the owner's call.
 - Hooks in this environment ask for a short "facts" statement before creating or editing files; give it, retry.
