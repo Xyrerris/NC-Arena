@@ -482,7 +482,7 @@
         display: flex;
         gap: 8px;
         align-items: flex-start;
-        flex: 1 1 140px;
+        flex: 1 1 60%;
         color: var(--negative);
       }
       .center {
@@ -1353,9 +1353,14 @@
         `<div class="tabs">${labels.map((l, i) => `<span class="tb ${i === on ? 'on' : ''}">${l}</span>`).join('')}</div>`;
       const filterHead = (open) =>
         `<div class="filterhead"><span class="t-label">Filters <span class="muted">· Open</span></span><span class="t-label" style="color:var(--accent)">${open ? 'Reset' : 'Edit'}</span></div>`;
-      const collProgress = `<div class="progress"><div class="t-sub">12 of 38 unlocked</div>
+      const collHead = (
+        notes = '',
+      ) => `<div class="progress"><div class="t-sub">12 of 38 unlocked</div>
         <div class="pbar"><i style="flex:12"></i><b style="flex:26"></b></div>
-        <div class="t-caption" style="margin-top:6px">Updated 3 minutes ago · chain</div></div>`;
+        <div class="t-caption" style="margin-top:6px">Updated 3 minutes ago · chain</div>${notes}</div>`;
+      const collProgress = collHead();
+      const note = (kind, txt) =>
+        `<div class="t-caption" style="margin-top:6px;${kind === 'neg' ? 'color:var(--negative)' : kind === 'acc' ? 'color:var(--accent)' : ''}">${kind === 'neg' ? ic('alert') + ' ' : ''}${txt}</div>`;
       const collRow = (id, items, status, bonus, owned) =>
         `<div class="block"><div class="line"><span class="t-sub">Collection ${id}</span><span class="t-num-sm">${items.length} items</span></div>
         <span class="t-body" style="line-height:1.4;color:var(--text-strong)">${status}</span>
@@ -1367,9 +1372,11 @@
         n,
         tot,
         o = {},
-      ) => `<div class="selbar"><div class="t-sub">${n} ${n === 1 ? 'piece' : 'pieces'} selected · ${tot} NCG</div>
+      ) => `<div class="selbar"><div class="t-sub">${n} ${o.noun || 'piece'}${n === 1 ? '' : 's'} selected · ${tot} NCG</div>
+        ${o.units ? `<div class="t-caption extra">${o.units}</div>` : ''}
         ${o.noBalance ? '' : '<div class="t-caption extra">You hold 14,200 NCG · Would leave 9,100 NCG</div>'}
-        <div class="t-caption extra" style="line-height:1.4">Asking prices, read a little while ago. Each piece is checked again before it is bought.</div>
+        ${o.raise ? `<div class="t-caption extra">${o.raise}</div>` : ''}
+        <div class="t-caption extra" style="line-height:1.4">${o.note || 'Asking prices, read a little while ago. Each piece is checked again before it is bought.'}</div>
         <div class="acts"><span class="btn-primary">Buy the selection</span><span class="btn-quiet">Clear</span></div></div>`;
       const offerRow = (name, price, helps, verdict, on) =>
         `<div class="offer ${on ? 'sel' : ''}"><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="t-sub">${name}</span><span class="t-num-sm">${price}</span><span class="t-caption">${helps} · ${verdict}</span></span><span class="select ${on ? 'on' : ''}">${on ? ic('check') + 'Selected' : 'Select'}</span></div>`;
@@ -1401,20 +1408,110 @@
           'Collection — filters open',
         ) +
         fig(
-          'Offers: the one filled action is “Find offers” (here shown after a read as “Read again”); sort, level and “under standard” are chips in scrollers; each offer is a hairline row with a Select control (check + word when selected). The purchase bar docks above the bottom bar with the same facts as today and “Buy the selection” as its one filled action.',
+          'Offers before a read (as built, restyled). The header (progress, tabs, <b style="display:inline">Filters</b>) is shared by all three views and the filters are the <i>scope</i> of the read. Before a read only the intro, the notices and “Find offers” are shown; sort, level and “under standard” appear only once offers exist, exactly as today. So Offers already follows the “scope, then read” pattern of the Upgrade alternate: no flow change here.',
+          `${sbar('Collection')}<div class="scroll">${collProgress}${utabs(['Collections', 'Items', 'Offers'], 2)}${filterHead(false)}
+          <div class="gutter t-caption" style="padding-top:10px;line-height:1.4">9 pieces still to find in 4 collections. The cheapest offer for each, by asking price. The list follows the filters above.</div>
+          <div class="gutter t-caption" style="padding-top:6px;color:var(--accent)">2 pieces you hold are under a target and can be raised to it. A listing is shown only if it costs less than that raise; materials for the raise are not counted.</div>
+          <div class="gutter t-caption" style="padding-top:6px">1 piece cannot be searched (not in the game data, or not on the market).</div>
+          <div class="gutter" style="padding-top:12px"><span class="btn-primary">Find offers</span></div></div>${bar('Collection')}`,
+          'Collection — Offers, before reading',
+        ) +
+        fig(
+          'Reading: “Stop” replaces Find (secondary), a progress bar, and the live status line. The offers appear when it is done or stopped, as the status line says.',
           `${sbar('Collection')}<div class="scroll">${utabs(['Collections', 'Items', 'Offers'], 2)}<div class="gutter t-caption" style="padding-top:10px;line-height:1.4">9 pieces still to find in 4 collections. The cheapest offer for each, by asking price. The list follows the filters above.</div>
-          <div class="gutter" style="padding-top:8px;display:flex;gap:8px"><span class="btn-secondary">Read again</span></div>
-          <div class="progress"><div class="pbar"><i style="flex:9"></i></div><div class="t-caption" style="margin-top:6px">9 offers found, 0 with nothing on sale.</div></div>
-          <div style="padding-top:6px">${chipRow(['Price', 'Level', 'Saving', 'Under standard'], 0)}${chipRow(['All levels', '+9', '+12', '+15'], 0)}</div>
-          ${offerRow('Valkyrie Blade +12 · Fire', '1,200 NCG (+320 NCG to +15)', 'helps 2 collections', 'good price', true)}
-          ${offerRow('Arena Cloak +9 · Water', '880 NCG', 'helps 1 collection', 'fair price', false)}
-          ${offerRow('Iron Helm +6 · Land', '240 NCG', 'helps 1 collection', 'above the standard price', false)}</div>${sel(1, '1,200')}${bar('Collection')}`,
-          'Collection — Offers, one piece selected',
+          <div class="gutter" style="padding-top:12px"><span class="btn-secondary">Stop</span></div>
+          <div class="progress"><div class="pbar"><i style="flex:3"></i><b style="flex:6"></b></div><div class="t-caption" style="margin-top:6px;color:var(--accent)">Reading the market… 3 of 9 pieces. The offers appear when it is done, or when you stop it.</div></div></div>${bar('Collection')}`,
+          'Collection — Offers, reading',
+        ) +
+        fig(
+          'Results with one offer selected. “Find offers” became “Read again” (secondary), so the purchase bar holds the only filled action. Sort, level and “Under standard” are chips in scrollers. A row has two targets, as built: the row opens the offer card, the Select control toggles the selection. The bar keeps today’s lines (balance, units, raise) below 1.5×; from 1.5× only title, Buy and Clear (option B).',
+          `${sbar('Collection')}<div class="scroll">${utabs(['Collections', 'Items', 'Offers'], 2)}<div class="gutter" style="padding-top:12px"><span class="btn-secondary">Read again</span></div>
+          <div class="progress"><div class="t-caption" style="color:var(--accent)">9 offers found, 0 with nothing on sale.</div></div>
+          <div style="padding-top:2px">${chipRow(['Price', 'Level', 'Saving', 'Under standard'], 0)}${chipRow(['All levels', '+9', '+12', '+15'], 0)}</div>
+          ${offerRow('Valkyrie Blade +12 · Fire', '1,200 NCG (+320 NCG to +15)', 'good price · helps 2 collections · bought as +12', '', true)}
+          ${offerRow('Arena Cloak +9 · Water', '880 NCG', 'fair price · helps 1 collection · seller 0x12ab', '', false)}
+          ${offerRow('Iron Helm +6 · Land', '240 NCG', 'above the standard price · helps 1 collection', '', false)}</div>${sel(1, '1,200', { noun: 'offer', units: '1 unit in all', raise: 'Plus 320 NCG still to spend raising the pieces after buying them.', note: 'Asking prices, read a little while ago. Nothing is bought from here: each offer is bought on its own card, which checks the price again.' })}${bar('Collection')}`,
+          'Collection — Offers, one offer selected',
+        ) +
+        fig(
+          'Scrolled down, with the notices that sit above the list: offers above the standard price (left out, with a text action to show them at the end) and pieces that could not be read (negative text with an icon and a retry). The “↑ Top” pill appears after 600 dp of scrolling. “Under standard” with no match says so in text.',
+          `${sbar('Collection')}<div class="scroll"><div class="gutter t-caption" style="padding-top:10px;color:var(--negative)">${ic('alert')} Your inventory is not read, so pieces you already own may be listed as missing.</div>
+          <div class="banner"><span class="t">${ic('alert')}<span class="t-caption" style="color:var(--negative)">2 pieces could not be read.</span></span><span class="btn-quiet">Read them again</span></div>
+          <div class="banner"><span class="t"><span class="t-caption">3 offers are above the standard price and left out.</span></span><span class="btn-quiet">Show them</span></div>
+          <div class="gutter t-caption" style="padding-top:4px">No offer is at or under the standard price.</div>
+          ${offerRow('Iron Helm +6 · Land', '240 NCG', 'above the standard price · helps 1 collection', '', false)}
+          ${offerRow('Dusk Ring +9 · Wind', '2,300 NCG', 'above the standard price · helps 2 collections', '', false)}</div><div style="position:absolute;right:var(--gutter);bottom:72px"><span class="btn-secondary">↑ Top</span></div>${bar('Collection')}`,
+          'Collection — Offers, notices and “Top”',
+        ) +
+        fig(
+          'Nothing left to find: every piece is already in the bag (as built).',
+          `${sbar('Collection')}<div class="scroll">${utabs(['Collections', 'Items', 'Offers'], 2)}<div class="center"><span class="t-sub">Nothing left to find</span><span class="t-body" style="line-height:1.45">Every piece these collections ask for is already in the bag.</span></div></div>${bar('Collection')}`,
+          'Collection — Offers, nothing to find',
         ) +
         fig(
           'No avatar yet: one action, to the screen where the avatar is chosen.',
           `${sbar('Collection')}<div class="scroll"><div class="center">${ic('users', 'glyph')}<span class="t-sub">No avatar yet</span><span class="t-body" style="line-height:1.45">Say which Nine Chronicles avatar is yours, and its collections show up here.</span><span class="btn-primary">Open You</span></div></div>${bar('Collection')}`,
           'Collection — no avatar',
+        ) +
+        fig(
+          'Items view: the same header, tabs and filters; no sort chips or skill legend (those belong to the Collections view). Equipment is grouped under a kind heading; each line is the piece, whether it carries the skill, and what it would finish. The heading uses the label role, in `accent`. The unlisted note stays above. As built: no row opens anything.',
+          `${sbar('Collection')}<div class="scroll">${collProgress}${utabs(['Collections', 'Items', 'Offers'], 1)}${filterHead(false)}
+          <div class="gutter t-caption" style="padding-top:8px">4 costume and material slots are not in this list yet.</div>
+          ${[
+            [
+              'Weapon',
+              ['Valkyrie Blade +12 · Fire · with skill', 'helps 2 collections · you have 2'],
+              ['Arena Blade +9 · Land · no skill', 'helps 1 collection'],
+            ],
+            [
+              'Armor',
+              ['Arena Cloak +9 · Water · no skill', 'helps 1 collection'],
+              ['Iron Helm +6 · Land · no skill', 'helps 1 collection · you have 1'],
+            ],
+          ]
+            .map(
+              (g) =>
+                `<div class="gutter t-labelsm" style="padding-top:16px;color:var(--accent)">${g[0]}</div>${g
+                  .slice(1)
+                  .map(
+                    (r) =>
+                      `<div style="padding:8px var(--gutter);min-height:48px;display:flex;flex-direction:column;justify-content:center;border-bottom:1px solid var(--divider)"><span class="t-body">${r[0]}</span><span class="t-caption">${r[1]}</span></div>`,
+                  )
+                  .join('')}`,
+            )
+            .join('')}
+          <div class="gutter t-labelsm" style="padding-top:16px;color:var(--accent)">Items Costume…</div>
+          <div style="padding:8px var(--gutter);min-height:48px;display:flex;align-items:center;border-bottom:1px solid var(--divider)"><span class="t-body">40100012 · helps 2 collections</span></div></div>${bar('Collection')}`,
+          'Collection — Items view',
+        ) +
+        fig(
+          'Empty state, centred and quiet, as the roster’s: a view whose filters leave nothing (“Nothing here”). Items with nothing left reads “Nothing left to find / Every collection in the list is unlocked.” <b style="display:inline">To flag:</b> the family heading reads “Items Costume…”, which looks truncated; its wording is a copy decision for you.',
+          `${sbar('Collection')}<div class="scroll">${collProgress}${utabs(['Collections', 'Items', 'Offers'], 0)}${filterHead(false)}<div class="center"><span class="t-sub">Nothing here</span><span class="t-body" style="line-height:1.45">No collection matches this filter.</span></div></div>${bar('Collection')}`,
+          'Collection — empty (filtered)',
+        ) +
+        fig(
+          'Header notices, all as built: the chain read failed (the list stays usable beneath, with a text retry), the inventory failed (the owned marks are absent), the chain lists collections this list does not include, and the sample-data note. Negative text always carries an icon.',
+          `${sbar('Collection')}<div class="scroll"><div class="progress"><div class="t-caption" style="color:var(--accent)">Sample data. The real collection list is not part of this build yet.</div><div class="t-sub" style="margin-top:6px">12 of 38 unlocked</div><div class="pbar"><i style="flex:12"></i><b style="flex:26"></b></div><div class="t-caption" style="margin-top:6px">Updated 3 hours ago · chain</div>${note('neg', 'The chain lists 2 unlocked collections that this list does not include, so the progress above is at least what it shows.')}</div>
+          <div class="banner"><span class="t">${ic('alert')}<span class="t-caption" style="color:var(--negative)">Could not reach the chain. Showing what was read last.</span></span><span class="btn-quiet">Retry</span></div>
+          <div class="gutter">${note('neg', 'Could not read your inventory. The pieces you own are not marked.')}</div>
+          ${utabs(['Collections', 'Items', 'Offers'], 0)}${filterHead(false)}
+          ${collRow(8, [['Iron Helm +6 · Land', '', false]], '1 of 1 pieces still to find', 'Rewards: DEF +80', '')}</div>${bar('Collection')}`,
+          'Collection — header notices',
+        ) +
+        fig(
+          'Reading: the chain refresh and the inventory read are one accent line each (live regions); “no collections for this avatar yet” is a muted line.',
+          `${sbar('Collection')}<div class="scroll"><div class="progress"><div class="t-sub">12 of 38 unlocked</div><div class="pbar"><i style="flex:12"></i><b style="flex:26"></b></div>${note('acc', 'Reading the chain…')}${note('acc', 'Reading your inventory…')}${note('', 'The chain has no collections for this avatar yet.')}</div>${utabs(['Collections', 'Items', 'Offers'], 0)}</div>${bar('Collection')}`,
+          'Collection — reading',
+        ) +
+        fig(
+          'Before the game sheets arrive the screen is the title and one muted sentence.',
+          `${sbar('Collection')}<div class="scroll"><div class="center"><span class="t-body" style="color:var(--text-muted)">Loading the collection list…</span></div></div>${bar('Collection')}`,
+          'Collection — loading the game data',
+        ) +
+        fig(
+          'The game data could not be read: negative text with an icon and “Try again” as the screen’s one filled action. Three wordings as built (offline, malformed, other); drawn with the offline one.',
+          `${sbar('Collection')}<div class="scroll"><div class="center"><span class="t-body" style="line-height:1.45;color:var(--negative);display:flex;gap:6px;align-items:flex-start">${ic('alert')}<span>Could not reach the game data. Check the connection and try again.</span></span><span class="btn-primary">Try again</span></div></div>${bar('Collection')}`,
+          'Collection — game data failed',
         );
 
       const upRows = [

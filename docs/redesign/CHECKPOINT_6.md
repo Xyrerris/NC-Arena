@@ -136,9 +136,28 @@ view filters (grade, slot, Only raised) and "Plan an upgrade" are removed from t
 until a read exists, and appear only in the after-read alternate. This is a flow change (Plan and the filters hidden
 until results), so it still needs approval; the as-built figure keeps everything visible.
 
-**Not drawn yet in this stage:** the Items view, Collection `READ`/refresh states, the Offers running state with Stop,
-overpriced and failed rows, the planner and the four sheets, "Add all bargains", the number fields of ceilings and
-bargains.
+**Collection completed (2026-11-20), read from `CollectionScreen.tsx`, `OffersView.tsx`, `strings.ts`.** Now drawn: Items
+view (kind headings, piece lines, unlisted note), empty states, header notices (chain failed with retry, inventory,
+unknown collections, sample data), reading lines, the game-data loading and failure screens, and Offers in all its states
+(before reading, reading with Stop, results with a selection, notices with "↑ Top", nothing to find).
+
+- **Offers needs no flow change.** As built, the header filters are the scope of the read, and sort, level and "Under
+  standard" appear only once offers exist, so Offers already works as "scope, then read". The earlier Offers figure
+  was wrong in omitting the shared header and in showing sort chips as if always present; replaced. This is also the
+  pattern the Upgrade alternate proposes.
+- **Row targets:** an Offers row opens the offer card; the Select control toggles the selection (Upgrade rows toggle
+  on the whole row). Kept as built; drawn with the Select control only.
+- **Offers purchase bar** keeps its real lines (units, balance, raise, note); from 1.5× only title, Buy and Clear
+  (option B). Measured 205 dp at 2× on 740 dp (28 %). At 1× it is tall with every line present, which is today's content.
+- **Today's header does not scroll** (a stated implementation reason: controls in a recycled list header). The mockups
+  scroll it with the list, as for the roster; at implementation the app bar and tabs stay fixed and the rest goes in the
+  list header, with the same recycling care the roster needed.
+- **To flag (copy, your call):** the Items "other" family heading reads `Items Costume…`, which looks truncated. The
+  "↑ Top" pill floats over the last row text at 2×; acceptable as built, to place with a bottom inset at implementation.
+- **Not drawn:** the market sheet and offer sheet (next, with the other sheets), Collections rows with partial owned
+  counts and "Not sold on the market" (row states not yet drawn).
+
+**Still not drawn:** the planner and the four sheets (market, offer, batch, purchase), in the next phase.
 
 ## Still to do (inventory still to be taken from the components)
 
