@@ -200,7 +200,7 @@ the real-purchase switch, unsettled purchases, offline notice and backup with it
   "Yes, this is me" / "Change", the unchecked case ("Save without checking" / "Cancel") and the failures open in a
   sheet, as in stage 4. On the page stay only the format error under the field (before any check) and the "Saved" note.
 - **Real purchases: switch on top, confirmation in a sheet (owner, 2026-11-20).** The section is now "Purchases" (new
-  label, was "Purchase limits"): the real-purchase line and its button come first, the limits below a hairline.
+  label: in the code the limits and the mode sit inside the keystore block, with no heading): the real-purchase line and its button come first, the limits below a hairline.
   Turning them on opens a sheet with the warning and "Yes, turn them on" as negative text with Cancel as text (it arms
   paying but does not pay; only the purchase confirmation's amount button is filled, stage 4). Turning off needs no
   confirmation. The ON line is negative text.
@@ -230,8 +230,81 @@ list every control and state, draw all of them. The undecided flow changes (filt
 sheets, "Read again" in a toolbar, sticky Save) are **drawn in the visual-only layout by default**, with the flow
 version as a labelled alternate.
 
+## Approved: You as a settings hub, entry by an app-bar icon (owner, 2026-11-20)
+
+Requested through a peer session and confirmed by you in this chat ("Sì, disegnalo come alternativa"). Drawn in section 10
+of the mockup, now labelled approved (option B, a fourth bottom-bar item, is kept as "not chosen"); section 9's figures are the page contents unchanged and are not duplicated.
+Advisor consulted before drawing (structure, entry point, rows) and after (see "Advisor" below).
+
+**The problem, from the code.** `/me` is two things in one route: `ViewerScreen` (the viewer's form, or the picker when
+nobody is chosen) and, passed as a `footer` slot to **both** faces, the device settings (avatar, keystore and
+purchases, account, backup). The slot is deliberately on both: the state where the backup matters most is the one with no
+viewer (a wiped phone). Hence the binding constraint of any redesign: **the settings must stay reachable with no viewer
+chosen.** Today `/me` is reached from the roster's viewer row and from Collection's "Open You"; the sheets' notes say
+"the You tab" (batch limit, keystore) and **no You tab exists**.
+
+**Proposal.**
+
+1. `/me` keeps the form and the picker, with **no footer**.
+2. A new **You** root (`/you`), a **pushed** screen (back and title, no bottom bar): a hairline list, one row per page,
+   each with a one-line state and a chevron. Rows: Your player (or "Who are you?" with nobody chosen), Nine Chronicles
+   avatar, Keystore and purchases, Roster backup, Account (only while unpaired, as built). "Real purchases: ON" and
+   "Purchases not settled" (a row of its own, only when any exist) are shown on the root in negative text with an icon.
+3. Pages `/you/avatar`, `/you/wallet`, `/you/backup`; `/account` and the launch gate unchanged. A page has a filled
+   action only when it has exactly one commit ("Save avatar"); wallet and backup are all-secondary. **The avatar page has a
+   nobody-chosen state** ("Choose who you are first." and one action that opens the picker): it is where Collection's
+   "Open You" lands, so the avatar row is a normal row (a disabled row would hide the reason). **The wallet page keeps
+   the approved unit:** unsettled purchases first when any, then Purchases (real purchases on top, limits directly below,
+   because the warning says "set a low limit first"), then the keystore.
+4. **Entry, option A (approved): a person icon in the app bar of Arena, Collection and Upgrade**, neutral colour
+   (navigation, not the section's action), beside the roster's "+". Option B, a fourth bottom-bar item, was not chosen. Collection's
+   "Open You" goes to `/you/avatar`. The roster's "Who are you?" and "Update my stats" keep opening `/me`; the viewer card
+   opens the detail (decision 9, approved).
+5. Drawn (section 10): flow map (as built vs proposed), the as-built long screen restyled, the form without footer, the
+   app-bar entry, the root in three states, the avatar page (with and without a viewer), the wallet page, and one
+   four-tab figure for option B.
+
+**Measured, not assumed (360 dp, mockup).**
+
+- **Option A fits at every scale.** Roster at 1.3× with the season inline and two 48 dp icons: no overlap. Collection at 2×
+  (title 255 dp, the widest): 13 dp to spare. Bars stay 56 dp. On a 320 dp screen Collection at 2× would clip: not drawn.
+- **Option B fails at 2×.** Slots are equal in React Native (about 87 dp at 360); "Collection" is 98 dp and is clipped
+  ("Collectio"). Three items fit with room (the approved Option 1).
+- The sprite had no chevron or single-person glyph: `i-chev` and `i-person` were added to the mockup.
+
+**Costs.** `src/app/me.tsx` loses the footer and `ViewerScreen` its `footer` prop (and both faces); new routes `/you`,
+`/you/avatar`, `/you/wallet`, `/you/backup`; the three section app bars gain an icon (option A) or `SectionTabs` a fourth
+item (option B, against the approved Option 1); the section features cannot be imported by a You feature (the boundaries
+rule), so **each feature must export its own row component and the route stacks them**; tests for `ViewerScreen`, the
+sections and the app bars change. **No Maestro flow touches `/me`** (`.maestro` holds boot, catalogue and player-detail).
+The two "You tab" notes in the sheets (batch limit, keystore) become "You screen" under option A: new copy and tests.
+**ADRs (read in `docs/DECISIONS.md`):** ADR-0033 Decision 9 ("the controls live on `/me`, in a slot both of its faces
+render. No new screen.") is **superseded** and needs an amendment; ADR-0038 puts "Connect to server" on the You screen,
+which moves with the Account row; ADR-0022 is untouched (the form and the picker stay on `/me`, the choice stays
+component state). The avatar section's home is named only in code comments (ADR-0044 does not decide it).
+**Dropped sentence, recorded:** pushing straight to the setup screen loses the offline notice's explanation; the Account
+row summary carries its essence ("the players here are sent up with the first sync").
+
+**Advisor (consulted before drawing and after the first draft; both rounds applied).** Before: settings must stay
+reachable with no viewer; entry via the bottom bar first; keep `/me` as the form; additive section 10; list rows with
+state summaries; sub-pages with a filled action only for one commit. After the measurements and the first draft: lead
+flipped to the app-bar icon (option B clips at 2×); the avatar page needed a nobody-chosen state and the root row must
+not be disabled; the wallet page must keep Purchases as a unit (limits under the switch) and put unsettled first; the
+"as built" figure was reordered and now matches the code (limits and mode inside the keystore block, no heading); the
+"Purchases" heading is wholly new copy (there was never a "Purchase limits"); the flow map gained "Update my stats".
+
 ## Copy and test impact noted so far
 
 Sentence case means editing strings stored in uppercase (`RETRY`, the season label, the sort chips `RANK` / `CP` /
-`MY WINS`, `TRY AGAIN`) and the tests that assert them. New copy so far: none (the mockup uses existing strings;
-"Retry" / "Try again" are the sentence-case forms of existing ones).
+`MY WINS`, `TRY AGAIN`) and the tests that assert them.
+
+**New copy, in one list (everything else is an existing string in sentence case).**
+
+- Upgrade alternate: "Ceilings and bargains · default", "Changing grade 7 clears what has been read."
+- Sheets over You: "Could not check the address", "Turn on real purchases?", "No avatar was found at that address.",
+  and the section label "Purchases".
+- You as a settings hub (alternate): the row titles and one-line summaries ("Your player", "Nine Chronicles avatar",
+  "Keystore and purchases", "Roster backup", "Account", "Purchases not settled" and their summaries), the page titles,
+  "Choose who you are", the shortened avatar hint on the nobody-chosen page, and "You screen" replacing "You tab" in two notes.
+- Composed here, not re-read from code (to match at implementation): the listing detail line, `describeStep` rows, the
+  stored-keystore and "opened" lines, the unsettled entry line, the backup stakes sentence and results, the boot-failure message.
