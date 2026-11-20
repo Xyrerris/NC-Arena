@@ -1047,6 +1047,50 @@
       .sheet .ffield {
         padding: 0;
       }
+
+      /* /me sections (stage 5): hairline-separated blocks instead of boxed cards. */
+      .msec {
+        padding: 20px var(--gutter) 6px;
+        border-top: 1px solid var(--divider);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .msec > * {
+        flex-shrink: 0;
+      }
+      .msec .ffield {
+        padding: 0;
+        margin-top: 0;
+      }
+      .msec .btn-primary,
+      .msec .btn-secondary,
+      .msec .btn-quiet,
+      .msec .btn-danger {
+        align-self: flex-start;
+      }
+      .secretbox {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-family: var(--num-font);
+        font-size: calc(14px * var(--fs));
+        line-height: 1.5;
+        color: var(--text-primary);
+        word-break: break-all;
+        background: var(--surface);
+      }
+      .noticeline {
+        border-left: 3px solid var(--accent);
+        padding: 2px 0 2px 10px;
+      }
+      .btnrow {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 4px 16px;
+      }
     </style>
   </head>
   <body data-theme="dark" id="root">
@@ -1140,6 +1184,9 @@
 
     <h2 class="group">8 · Sheets and the planner</h2>
     <div class="screens" id="sheet-screens"></div>
+
+    <h2 class="group">9 · You, account, boot and the remaining notices</h2>
+    <div class="screens" id="account-screens"></div>
 
     <script>
       const ic = (n, c = '') =>
@@ -1740,8 +1787,8 @@
           `<span class="t-body">Valkyrie Blade +12 · Fire</span>
           ${msg('neg', 'You are about to pay 1,200 NCG for Valkyrie Blade +12 · Fire. The payment cannot be undone once it is sent.')}
           ${pass}
-          <span class="btn-primary" style="align-self:flex-start">Confirm and pay 1,200 NCG</span>
-          <span class="btn-quiet" style="align-self:flex-start">Cancel</span>`,
+          <div class="btnrow"><span class="btn-primary">Confirm and pay 1,200 NCG</span>
+          <span class="btn-quiet">Cancel</span></div>`,
           'Purchase card — confirm',
         ) +
         sheetFig(
@@ -1774,8 +1821,8 @@
           `<span class="t-sub">3 pieces · 3,540 NCG in all</span>
           ${msg('neg', 'You are about to pay 3,540 NCG for 3 pieces, in groups of up to 10. Each payment cannot be undone once it is sent. If something goes wrong the rest are not bought.')}
           ${pass}
-          <span class="btn-primary" style="align-self:flex-start">Confirm and pay 3,540 NCG</span>
-          <span class="btn-quiet" style="align-self:flex-start">Cancel</span>`,
+          <div class="btnrow"><span class="btn-primary">Confirm and pay 3,540 NCG</span>
+          <span class="btn-quiet">Cancel</span></div>`,
           'Batch sheet — confirm',
         ) +
         sheetFig(
@@ -1834,7 +1881,197 @@
           <span class="btn-primary" style="align-self:flex-start;opacity:.45">Select these pieces</span>`,
           'Planner — other states',
         );
-      // Account, /me footer, boot and catalogue: next stage.
+
+      // ===== stage 5: /me sections, account, boot, remaining notices =====
+      const mtop = topBar(`<span class="btn-quiet" style="padding-left:12px">Cancel</span>`);
+      const sect = (title, hint, body) =>
+        `<div class="msec"><div class="t-label" style="color:var(--text-strong)">${title}</div>${hint ? `<div class="t-caption" style="line-height:1.45">${hint}</div>` : ''}${body}</div>`;
+      const fld = (lbl, val, hint, o = {}) =>
+        `<div class="ffield"><span class="lbl t-label">${lbl}</span><div class="box ${o.num ? 'num' : ''} ${val ? '' : 'ph'} ${o.err ? 'err' : ''}" style="${o.tall ? 'min-height:120px;align-items:flex-start;padding-top:12px' : ''}">${val || o.ph || ''}</div>${o.err ? `<div class="help err t-caption">${ic('alert')}${o.err}</div>` : ''}${hint ? `<div class="help t-caption">${hint}</div>` : ''}</div>`;
+      const chipsFlex = (list, on) =>
+        `<div style="display:flex;gap:8px;flex-wrap:wrap">${list.map((c, i) => chipEl(c, i === on)).join('')}</div>`;
+      const line = (kind, txt) =>
+        `<div class="t-caption" style="line-height:1.45;${kind === 'neg' ? 'color:var(--negative)' : kind === 'acc' ? 'color:var(--accent)' : ''}">${kind === 'neg' ? ic('alert') + ' ' : ''}${txt}</div>`;
+      const mfig = (cap, body, label) =>
+        fig(cap, `${mtop}<div class="scroll">${body}</div>`, label);
+      const gfield = (html) =>
+        html.replace(
+          'class="ffield"',
+          'class="ffield" style="padding:0 var(--gutter);margin-top:16px"',
+        );
+      const gtitle = (t) =>
+        `<div class="gutter" style="padding-top:28px"><div class="t-heading" style="font-size:calc(24px*var(--fs))">${t}</div></div>`;
+
+      const avatarSect = (extra = '', saved = '') =>
+        sect(
+          'Your Nine Chronicles avatar',
+          'Used to track your collection. It follows who you are: choosing somebody else clears it.',
+          `<span class="t-body" style="color:var(--text-strong)">Xyrerris · Odin · 0x4f2a…91c3</span>
+          ${chipsFlex(['Odin', 'Heimdall'], 0)}
+          ${fld('Avatar address', '', '0x followed by 40 characters, as shown by the game or an explorer.', { ph: '0x…', num: true })}
+          <span class="btn-secondary">Save avatar</span>${extra}${saved}`,
+        );
+
+      // A sheet over a /me screen (owner, 2026-11-20): decisions and warnings leave the page.
+      const msheet = (cap, under, title, body, label, close = true) =>
+        fig(
+          cap,
+          `${mtop}<div class="scroll">${under}</div><div class="sheetwrap"><div class="sheet"><div class="hd"><span class="t-heading">${title}</span>${close ? '<span class="btn-quiet">Close</span>' : ''}</div><div class="bd">${body}</div></div></div>`,
+          label,
+        );
+      const identityLine = `<span class="t-body" style="color:var(--text-strong)">Xyrerris · level 494</span>`;
+      const realBlock = (on) =>
+        on
+          ? `<span class="t-body" style="color:var(--negative)">Real purchases: ON. A purchase spends NCG from your account.</span><span class="btn-secondary">Turn off real purchases</span>`
+          : `<span class="t-body">Real purchases: OFF. A purchase is a dry run and nothing is sent.</span><span class="btn-secondary">Turn on real purchases</span>`;
+      const limitsBody = `<span class="t-body">Limit per purchase: 2,000 NCG</span>
+            ${fld('Limit per purchase (NCG)', '', 'Nothing that costs more is bought. With no limit, nothing can be bought.', { num: true })}
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="btn-secondary">Save limit</span><span class="btn-quiet">Remove limit</span></div>
+            <span class="t-body">Batch limit: none</span>
+            ${fld('Limit for a whole batch (NCG)', '', 'The most a selection of offers may cost together. With none, no selection can be bought.', { num: true })}
+            <span class="btn-secondary">Save limit</span>`;
+      const purchSect = (on) =>
+        sect(
+          'Purchases',
+          '',
+          `${realBlock(on)}<div style="border-top:1px solid var(--divider)"></div>${limitsBody}`,
+        );
+
+      document.getElementById('account-screens').innerHTML =
+        mfig(
+          'The footer of <b style="display:inline">You</b>, drawn as sections separated by hairlines, not boxed cards: a label (sentence case, label role, replaces the uppercase eyebrow), one caption, the controls. No filled action: each section’s button is secondary, because the screen’s one filled action is the form’s Save above. Avatar section, idle. The hint stays (it says that choosing somebody else clears it).',
+          avatarSect(),
+          'You — avatar section',
+        ) +
+        msheet(
+          'After “Save avatar”, what used to appear under the button now opens in a sheet. The address was found: “Is this you?”, the identity, “Yes, this is me” as the one filled action and “Change” as text (it cancels and keeps the field). Copy as built; only the container changes.',
+          avatarSect(),
+          'Is this you?',
+          `${identityLine}<div class="btnrow"><span class="btn-primary">Yes, this is me</span><span class="btn-quiet">Change</span></div>`,
+          'You — avatar, confirm sheet',
+          false,
+        ) +
+        msheet(
+          'The check could not run (offline, or the node did not answer): the message, “Save without checking” as the choice to go on (secondary, because it skips the safeguard), and “Cancel” as text. The sheet has no filled action: nothing here is the recommended path.',
+          avatarSect(),
+          'Could not check the address',
+          `${line('', 'The address could not be checked just now. You can still save it.')}<div class="btnrow"><span class="btn-secondary">Save without checking</span><span class="btn-quiet">Cancel</span></div>`,
+          'You — avatar, unchecked sheet',
+          false,
+        ) +
+        msheet(
+          'Checking (a live line, the sheet stays until the answer) and the two failures after a check — no avatar at that address, or the node failed — as negative text with an icon and a text “Close”. What stays on the page: the format error under the field, before any check, and the “Saved” note after.',
+          avatarSect(
+            line('neg', 'That is not an avatar address: it is 0x followed by 40 hex digits.'),
+            line('acc', 'Saved. It reaches your account on the next refresh.'),
+          ),
+          'Checking the address',
+          `${line('', 'Checking the address…')}${line('neg', 'No avatar was found at that address.')}${line('neg', 'The address could not be checked just now.')}`,
+          'You — avatar, checking and failures',
+        ) +
+        mfig(
+          'Wallet keystore, nothing stored yet: the paste field (multiline; its hint is always visible, it says where the text comes from), “Save keystore”, and after a removal the note that nothing is left. The section hint is always visible: it says the passphrase is never saved.',
+          sect(
+            'Wallet keystore',
+            'Paste your Nine Chronicles keystore (the JSON file) so the app can check that it is yours. The passphrase is never saved, and nothing here can spend: buying is not built yet.',
+            `${fld('Keystore text', '', 'Open the file in any text editor, copy everything, paste it here.', { tall: true })}<span class="btn-secondary">Save keystore</span>${line('', 'Removed. Nothing of the keystore is left on this device.')}`,
+          ),
+          'You — keystore, empty',
+        ) +
+        mfig(
+          'Keystore stored: the stored line, the “still locked” note, passphrase (hint always visible), “Test passphrase”, then the possible results — opening, wrong passphrase, opened and matching (accent), file names another address — and “Remove keystore” as negative text, since it deletes. The stored and opened lines are composed, not re-read from `storedLine` / `describeOpened`.',
+          sect(
+            'Wallet keystore',
+            'Paste your Nine Chronicles keystore (the JSON file) so the app can check that it is yours.',
+            `<span class="t-body">Keystore saved for 0x4f2a…91c3</span>${line('acc', 'Saved. It is still locked: the next step is to test the passphrase.')}
+            ${fld('Passphrase', '••••••••', 'Typed for this check only. It is not saved.', { num: true })}<span class="btn-secondary">Test passphrase</span>
+            ${line('', 'Opening the keystore… this can take a few seconds.')}${line('neg', 'Wrong passphrase, or the keystore was changed.')}
+            ${line('acc', 'Opened. The key matches the address saved with it.')}${line('', 'The file names another address than the key inside it. The key is what counts.')}
+            <span class="btn-danger">Remove keystore</span>`,
+          ),
+          'You — keystore, stored',
+        ) +
+        mfig(
+          'Purchases (owner, 2026-11-20): the real-purchase switch moves to the top of the section, where it is seen first, in its current state (OFF). Below a hairline, the limits as before: a number field with its always-visible hint, Save / Remove limit, the same for a whole batch. The section label “Purchases” is new copy (it was “Purchase limits”).',
+          purchSect(false),
+          'You — purchases, real purchases off',
+        ) +
+        msheet(
+          'Turning real purchases on asks in a sheet: the warning in negative text with an icon, “Yes, turn them on” as negative text (it arms paying, it does not pay) and “Cancel” as text. Copy as built; only the container moves.',
+          purchSect(false),
+          'Turn on real purchases?',
+          `${line('neg', 'With real purchases on, confirming a purchase pays NCG from your account and cannot be undone. Set a low limit first, and try a cheap piece.')}<div class="btnrow"><span class="btn-danger">Yes, turn them on</span><span class="btn-quiet">Cancel</span></div>`,
+          'You — purchases, turn-on sheet',
+          false,
+        ) +
+        mfig(
+          'Real purchases ON: the top line is negative text (it states that a purchase spends NCG), the one action is “Turn off real purchases”, which needs no confirmation (it only makes things safer).',
+          purchSect(true),
+          'You — purchases, real purchases on',
+        ) +
+        mfig(
+          'Purchases not settled (shown only when there are any): negative title, the explanation (always visible: it says why the offer is blocked and when clearing is safe), and per entry its line and “I checked: clear it”. The entry wording is composed here, not re-read from `unsettledLine`.',
+          sect(
+            'Purchases not settled',
+            'A real purchase whose end is not known keeps its offer blocked, so it is not bought twice. Look at your inventory and your balance; only if you are sure, clear it.',
+            `<span class="t-body">Valkyrie Blade +12 · 1,200 NCG · sent 2 hours ago</span><span class="btn-secondary">I checked: clear it</span>
+            <span class="t-body">Arena Cloak +9 · 880 NCG · sent yesterday</span><span class="btn-secondary">I checked: clear it</span>`,
+          ).replace(
+            '<div class="t-label" style="color:var(--text-strong)">Purchases not settled</div>',
+            '<div class="t-label" style="color:var(--negative)">Purchases not settled</div>',
+          ),
+          'You — unsettled purchases',
+        ) +
+        mfig(
+          'Offline roster and backup: the “Offline only” notice with “Connect to server”, then the backup section — the stakes sentence (always visible), Export / Import as two secondary buttons (Export disabled when there is nothing to export; the sentence above says why), the result as accent or negative text. Replacing a roster asks in a dialog: “Keep” and “Replace” as text, Replace in negative. The stakes sentence wording is composed here (`stakes` comes from the hook).',
+          `${sect('Offline only', 'This roster is not synced. Connect it to create an account or join one with a recovery code; the players on this device are sent up with the first sync.', '<span class="btn-secondary">Connect to server</span>')}
+          ${sect('This roster lives only here', 'If this app is uninstalled or its data is cleared, the roster is gone. Export it to a file you can keep.', `<div style="display:flex;gap:8px;flex-wrap:wrap"><span class="btn-secondary" style="opacity:.45">Export roster</span><span class="btn-secondary">Import roster</span></div>${line('acc', 'Roster exported: 14 players.')}${line('neg', 'That file is not a roster backup.')}`)}
+          <div class="scrim"><div class="dialog"><span class="t-sub">Replace this roster?</span><span class="t-body" style="line-height:1.45">Every player and record on this device is removed and replaced by the file you pick. This cannot be undone.</span><span class="acts"><span class="btn-textc">Keep</span><span class="btn-textc neg">Replace</span></span></div></div>`,
+          'You — offline and backup',
+        ) +
+        fig(
+          'Account gate (the screen standing in front of the roster until the device is paired): title in the display role, the intro, the code field (its hint stays visible: it explains the empty-versus-filled choice), one filled action whose label follows the field (“Create an account” / “Link this device”), then “Continue offline” as the secondary with its hint. Copy as built.',
+          `${status}<div class="scroll">${gtitle('This ladder needs an account')}<div class="gutter" style="padding-top:10px"><span class="t-body" style="line-height:1.5">Your roster is stored on the server so it can follow you to another device. There is no email and no password — an account is just a key this device keeps.</span></div>${gfield(fld('Recovery code', '', 'Already set this up on another device? Enter its recovery code. Otherwise leave this empty and a new account will be created.', { num: true }))}
+          <div class="gutter" style="padding-top:16px;display:flex;flex-direction:column;gap:10px"><span class="btn-primary" style="width:100%">Create an account</span><span class="btn-secondary" style="width:100%">Continue offline</span><span class="t-caption" style="line-height:1.45">Keep this roster on this device only. You can connect it to the server later from the You screen — nothing you add meanwhile is lost.</span></div></div>`,
+          'Account gate — ask',
+        ) +
+        fig(
+          'The gate with a wrong code and while working, on one screen for comparison: the failure as negative text with an icon (three wordings as built: not recognised, offline, failed), the button busy (label kept, a working line beside it; skip disabled).',
+          `${status}<div class="scroll">${gtitle('This ladder needs an account')}${gfield(fld('Recovery code', 'k3Qx-7vN…', '', { num: true, err: 'That recovery code was not recognised. It is long, and every character counts — check it for a typo, or leave it empty to start a new roster instead.' }))}
+          <div class="gutter" style="padding-top:16px;display:flex;flex-direction:column;gap:10px"><span class="btn-primary" style="width:100%;opacity:.7">Link this device</span><span class="t-caption" style="text-align:center;color:var(--accent)">Working…</span><span class="btn-secondary" style="width:100%;opacity:.45">Continue offline</span></div></div>`,
+          'Account gate — error and working',
+        ) +
+        fig(
+          'After the account exists: the only time the secrets are shown. The warning in negative text with an icon (it names all three consequences), both secrets in bordered mono boxes (selectable, wrapping, never truncated), the key marked “you do not need to keep this one”, and one filled action, “I have written it down”. Android’s back button does nothing here, as built.',
+          `${status}<div class="scroll">${gtitle('Write this down before you continue')}<div class="gutter" style="padding-top:10px;display:flex;flex-direction:column;gap:12px">${line('neg', 'This is the only time either of these is shown. The recovery code is the only way to add a second device, or to get this roster back if this app is uninstalled or its data is cleared. Nothing on the server can send it to you again.')}
+          <span class="t-label">Recovery code — keep this</span><div class="secretbox">k3Qx7vN2mPz9WfA1sT4yH8uLbR6cJe0DqXoVgYi5nKtZ3MhE</div>
+          <span class="t-label">API key — already stored on this device</span><div class="secretbox">ak_9f2c71b8e4d05a36c1f7</div><span class="t-caption">You do not need to keep this one. It is saved here already.</span>
+          <span class="btn-primary" style="width:100%">I have written it down</span></div></div>`,
+          'Account gate — secrets',
+        ) +
+        fig(
+          'Boot failure (the app could not start): the title in the display role and the message in negative text with an icon, on the `background`. No action exists today: a person can only restart the app. <b style="display:inline">Observation, not drawn as a change:</b> a “Try again” action would be a flow change; say if you want it.',
+          `${status}<div class="scroll" style="display:flex;flex-direction:column;justify-content:center;gap:10px;padding:0 var(--gutter)"><div class="t-heading" style="font-size:calc(24px*var(--fs))">Arena could not start</div>${line('neg', 'The local database could not be opened.')}</div>`,
+          'Boot failure',
+        ) +
+        fig(
+          'Not found (an unmatched route): the message in the display role and a text link back to the roster, centred vertically; the route header reads “Not found”. Copy as built.',
+          `${topBar('<span class="t-sub" style="padding-left:12px">Not found</span>')}<div class="scroll" style="display:flex;flex-direction:column;justify-content:center;gap:10px;padding:0 var(--gutter)"><div class="t-heading" style="font-size:calc(24px*var(--fs))">That screen does not exist.</div><span class="btn-quiet" style="align-self:flex-start;padding:0">Back to the roster</span></div>`,
+          'Not found',
+        ) +
+        fig(
+          'Remaining notices. The form: “Freyja is already on the ladder. Saving updates that player rather than adding a second row.” sits under the name as a note with an accent rule (information, not an error), and the save button while saving (label kept, busy). The picker while reading (“Reading the ladder…”) and when it fails (negative text, retry).',
+          `${topBar(`<span class="btn-quiet" style="padding-left:12px">Cancel</span>`)}<div class="scroll"><div class="gutter" style="padding-top:8px"><div class="t-heading">New player</div></div>${fld('Name', 'Freyja', '').replace('class="ffield"', 'class="ffield" style="padding:0 var(--gutter)"')}<div class="gutter" style="padding-top:8px"><div class="noticeline t-caption" style="line-height:1.45">Freyja is already on the ladder. Saving updates that player rather than adding a second row.</div></div>
+          <div class="gutter" style="padding-top:16px"><span class="btn-primary" style="width:100%;opacity:.8">Update player · saving…</span></div>
+          <div class="gutter" style="padding-top:28px"><span class="t-body" style="color:var(--text-muted)">Reading the ladder…</span></div>
+          <div class="gutter" style="padding-top:16px;display:flex;flex-direction:column;gap:8px">${line('neg', 'The ladder could not be read')}<span class="btn-secondary" style="align-self:flex-start">Try again</span></div></div>`,
+          'Form and picker — notices',
+        ) +
+        fig(
+          'Detail, the record error: when taking a win or loss back finds nothing to take back, one line of negative text with an icon under the stepper (“There is no match left to take back.”), a live region, gone on the next press.',
+          `${topBar(back, '<span class="btn-quiet" style="padding-right:10px">Edit</span>')}<div class="scroll">${detailHead}${tabs(1)}<div class="gutter" style="padding-top:12px"><div class="t-sub">Record vs you</div><div class="t-num-sm" style="padding-top:4px">0W · 0L</div>${line('neg', 'There is no match left to take back.')}</div></div>`,
+          'Detail — record error',
+        );
 
       // ===== page controls =====
       const root = document.documentElement;

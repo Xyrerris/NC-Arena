@@ -184,9 +184,43 @@ stack at 2× ("Before buying" wraps in the heading role); acceptable.
 **Not re-read from code:** the listing detail line (`toListingUi`: CP, seller, lot) is composed from the strings; the
 exact wording of `describeStep` rows. Both to match at implementation.
 
-**Still not drawn:** the account gate, the `/me` footer sections (avatar, keystore, account, backup), BootFailure /
-not-found, the Catalogue, the form notices ("already on the ladder", import notice, Saving) and the detail
-record-error line.
+## Stage 5 — You, account, boot and the remaining notices (2026-11-20)
+
+Drawn (section 9 of the mockup, 14 figures), read from `KeystoreSection`, `ViewerAvatarSection`,
+`RosterBackupControls`, `AccountConnectPrompt`, `AccountSetupScreen`, `+not-found`, `_layout` (BootFailure),
+`PlayerDetailScreen` and the form strings: avatar section (idle and every state), keystore (empty, stored), limits and
+the real-purchase switch, unsettled purchases, offline notice and backup with its replace dialog, the account gate
+(ask, error and working, secrets), boot failure, not found, form and picker notices, the detail record error.
+
+- **The `/me` footer loses its boxes.** Today each section is a bordered, filled card with an uppercase eyebrow; they
+  become hairline-separated sections with a sentence-case label (label role). No section has a filled action: the
+  screen's one filled action is the form's Save above. The one exception is a transient decision inside a section
+  ("Yes, this is me"), which is filled while it is the only decision on view.
+- **Avatar confirmation is a sheet (owner, 2026-11-20).** After "Save avatar" the checking line, "Is this you?" with
+  "Yes, this is me" / "Change", the unchecked case ("Save without checking" / "Cancel") and the failures open in a
+  sheet, as in stage 4. On the page stay only the format error under the field (before any check) and the "Saved" note.
+- **Real purchases: switch on top, confirmation in a sheet (owner, 2026-11-20).** The section is now "Purchases" (new
+  label, was "Purchase limits"): the real-purchase line and its button come first, the limits below a hairline.
+  Turning them on opens a sheet with the warning and "Yes, turn them on" as negative text with Cancel as text (it arms
+  paying but does not pay; only the purchase confirmation's amount button is filled, stage 4). Turning off needs no
+  confirmation. The ON line is negative text.
+- **Helper-text census (decision 8), this stage:** all of these stay visible, because each says something before an
+  action with a consequence: the keystore section hint and passphrase hint ("never saved"), the paste hint, the limit
+  hints ("with no limit, nothing can be bought"), the unsettled-purchases explanation, the gate's recovery-code hint
+  (it explains the empty-versus-filled choice) and the skip hint, the backup stakes sentence. Nothing here moves to
+  focus-only. The avatar address hint ("0x followed by 40 characters") is a format aid and could move to focus; left
+  visible since the field starts empty and the format is the whole task.
+- **At 2×** the gate and the secrets screen scroll (they are a `ScrollView` already); no button clips. On the secrets
+  screen the long warning pushes "I have written it down" below the first screen: acceptable, since the point is that
+  it is read before.
+- **Boot failure has no action** today; a "Try again" would be a flow change, not drawn (observation only).
+- **Catalogue (debug / visual-gate screen) is not redrawn**: it is not a user screen and takes the new tokens through
+  the components. Its Maestro baselines will need regenerating with the rest.
+- **Wording composed, not re-read from code:** the stored-keystore line, the "opened" results, the unsettled entry line,
+  the backup stakes sentence and success/failure messages, the boot-failure message. Match at implementation.
+
+**Checkpoint 6 is now fully drawn.** Before Checkpoint 7 (advisor review of all mockups, then your approval) the
+decisions that need your OK should be listed once, in one place.
 
 ## Still to do (inventory still to be taken from the components)
 
