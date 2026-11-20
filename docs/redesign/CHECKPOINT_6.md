@@ -77,10 +77,72 @@ values and delta as text. The detail screen keeps its caption, so `player-detail
 `CompareBar`'s exact current geometry was not re-read: the bars are drawn from its role (mine / theirs / delta), to be
 matched to the component at implementation.
 
+## Stage 3 — Collection and Upgrade
+
+Drawn: Collection (Collections view, filters open, Offers with one piece selected and the purchase bar, no avatar) and
+Upgrade (results with a selection, before reading, read with failures). Both share one pattern: app bar, progress line,
+underlined tabs, chips in single scrollers instead of wrapping blocks, hairline rows with a text-plus-check Select
+control, and a docked purchase bar. The undecided flow changes are **not** drawn (filters stay an inline panel, the
+Upgrade intro stays prose, "Read again" stays in place); the census of `categoryHint` / `statsHint` keeps both visible
+(they change what a selection means). Upgrade's `bargainHint` / `ceilingHint` stay with their number fields.
+
+**Controls kept.** Collection: progress and its bar, read time and source, unknown-note, refresh line with retry,
+inventory note, three views, filters (status, category + equipment type, rewards, reset), sort, skill legend, rows
+(title, count, status, bonus, owned summary, items with skill mark and owned tag, market note, "Find on market",
+action), offers (intro, notices, Find / Stop / Read again, progress, sorts, level chips, under-standard, overpriced
+toggle, failed + retry, to-top, rows with Select, purchase bar). Upgrade: intro, Find / Stop / Read again / Retry
+failed, grade-7 toggle, status, grade and slot chips, only-raised, ceilings and bargains (with number fields), left-out
+notices, rows with band and Select, Add all bargains, to-top, purchase bar with note, Plan an upgrade.
+
+**Finding that needs your decision: the purchase bar.** Measured in the mockup, the docked bar is 147 dp at 1× and
+**414 dp at 2×** of a 728 dp screen (57 %); with the 163 dp of fixed chrome, 79 % of the screen is fixed at 2× and the
+list is almost gone. (Today's bar has the same content; this is not a regression, but the redesign should not carry it
+over.) Options: **A** keep the bar as is (nothing changes, 2× stays poor); **B** below 1.5× show the full bar, from 1.5×
+show only the title line and "Buy the selection", with balance and note in the review sheet that already follows
+(moves prose into a sheet: a flow change, needs your OK); **C** from 1.5× the bar is no longer docked but is the last
+item of the list. I recommend **B**.
+
+**Correction (2026-11-20, after reading `UpgradeScreen.tsx` and `useUpgradeMarket.ts`).** The Upgrade figures above were
+drawn from `strings.ts` and the paragraph "Controls kept" for Upgrade was not an inventory of the component. Errors
+found: (1) before a read **every control is already on screen** (Grade 7, grade and slot chips, Only raised, Ceilings,
+Bargains, Plan, the idle notice): the "before reading" figure wrongly removed them; (2) grade chips derive from the
+candidates (grade 7 and above, not 4–6); (3) the Upgrade purchase bar has **no balance / "would leave" line** (that is
+the Offers bar): title, note, Buy, Clear only; (4) after a read the filled Find button becomes "Read again" and sits
+beside a filled Buy, which breaks the one-filled-action rule: it should turn secondary once results exist; (5) the row
+detail also carries "NCG per +0 piece"; (6) Plan an upgrade is disabled until something has been read; (7) the toggles
+change label by state (`GRADE 7 ON/OFF`, `ONLY RAISED` / `ALL LEVELS`), so turning them into check chips is copy and
+test impact. Facts that matter for the open question on thresholds: **Grade 7 scopes the read** — changing it changes
+the candidate set, which discards the current reading (phase back to idle, results cleared) and is not disabled while
+running; grade and slot filter what is already read; ceilings and bargains are free text that re-rank the existing read
+instantly and have defaults; they are plain component state. These Upgrade figures are to be redrawn.
+
+**Decision (owner, 2026-11-20): purchase bar = option B.** Below 1.5× the full bar; from 1.5× only the title line, Buy and
+Clear, with the balance and the note moved to the review sheet (a flow change, approved). Applied to both purchase bars in
+the mockup. Measured on a 728 dp screen: Upgrade's bar 126 dp at 1×, 205 dp at 2× (it was 414 dp at 2× before, with
+the balance line and the note that the Upgrade bar never had); the Offers bar still carries its balance line below 1.5×.
+
+**Upgrade redrawn (2026-11-20).** Corrected as-built figure (all controls present before a read, Plan disabled, Find
+secondary once results exist, real bar content, grades 7+), plus **labelled alternates that need approval**: three
+levels (Grade 7 beside Find with a note that it clears the read; "Ceilings and bargains" as one collapsed line with a
+summary, available before any read; grade, slot and Only raised as view filters, also before a read), the expanded block
+(per grade a ceiling and a bargain field, hints visible) and the results figure. Collapsed block measured at 48 dp
+at 1× and 59 dp at 2×. New copy to list for the owner: "Ceilings and bargains · default" summary, "Changing grade 7
+clears what has been read."; test impact: the toggles' labels and testIDs (`upgrade-ceilings-toggle`,
+`upgrade-bargains-toggle`) move if the alternate is approved. Collection Offers is still to be reconciled with this.
+
+**Owner's correction (2026-11-20): "before reading" stays minimal.** In the alternate, before a read the screen holds
+only the intro, Find, Grade 7 (with its note) and the collapsed "Ceilings and bargains · default" line with Edit. The
+view filters (grade, slot, Only raised) and "Plan an upgrade" are removed from this state, since they act on nothing
+until a read exists, and appear only in the after-read alternate. This is a flow change (Plan and the filters hidden
+until results), so it still needs approval; the as-built figure keeps everything visible.
+
+**Not drawn yet in this stage:** the Items view, Collection `READ`/refresh states, the Offers running state with Stop,
+overpriced and failed rows, the planner and the four sheets, "Add all bargains", the number fields of ceilings and
+bargains.
+
 ## Still to do (inventory still to be taken from the components)
 
-Collection
-(collections, items, offers), Upgrade (with selection bar, planner), the four sheets, account gate, keystore /
+The four sheets and the planner, account gate, keystore /
 avatar / backup sections, BootFailure / not-found, Catalogue. For each: read the `*Screen.tsx` and `*UiState.ts`,
 list every control and state, draw all of them. The undecided flow changes (filters in a sheet, prose into info
 sheets, "Read again" in a toolbar, sticky Save) are **drawn in the visual-only layout by default**, with the flow

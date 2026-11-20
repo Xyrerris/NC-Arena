@@ -833,6 +833,167 @@
       .listmeta {
         padding-top: 10px;
       }
+
+      /* ===== Section screens (Collection, Upgrade) ===== */
+      .progress {
+        padding: 10px var(--gutter) 0;
+      }
+      .pbar {
+        display: flex;
+        height: 6px;
+        border-radius: 3px;
+        background: var(--fill);
+        overflow: hidden;
+        margin-top: 8px;
+      }
+      .pbar i {
+        background: var(--accent);
+      }
+      .chiprow {
+        display: flex;
+        overflow: hidden;
+        padding: 0 var(--gutter);
+        mask-image: linear-gradient(to right, #000 88%, transparent);
+        -webkit-mask-image: linear-gradient(to right, #000 88%, transparent);
+      }
+      .block {
+        padding: 14px var(--gutter);
+        border-bottom: 1px solid var(--divider);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .block .line {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .itemline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+      }
+      .itemline .nm {
+        flex: 1;
+        min-width: 0;
+      }
+      .skill {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        border: 1.5px solid var(--text-body);
+        flex: none;
+      }
+      .skill.on {
+        background: var(--text-body);
+      }
+      .tagtxt {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font: 600 calc(11px * var(--fs)) / 1.2 var(--body-font);
+        white-space: nowrap;
+      }
+      .tagtxt .ico {
+        width: 14px;
+        height: 14px;
+        stroke-width: 2.4;
+        color: var(--accent);
+      }
+      .filterhead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 48px;
+        padding: 0 var(--gutter);
+        border-bottom: 1px solid var(--divider);
+      }
+      .fpanel {
+        padding: 6px var(--gutter) 10px;
+        border-bottom: 1px solid var(--divider);
+        background: var(--surface);
+      }
+      .fpanel .sec {
+        padding: 12px 0 0;
+      }
+      .fpanel .chips {
+        flex-wrap: wrap;
+        padding-top: 2px;
+      }
+      .selbar {
+        flex: none;
+        background: var(--raised);
+        border-top: 1px solid var(--divider);
+        padding: 10px var(--gutter) 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .selbar .acts {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .selbar .btn-primary {
+        flex: 1 1 auto;
+      }
+      .select {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 48px;
+        padding: 0 4px;
+        color: var(--accent);
+        font: 600 calc(13px * var(--fs)) / 1.2 var(--body-font);
+      }
+      .select.on {
+        color: var(--text-primary);
+      }
+      .select .ico {
+        width: 18px;
+        height: 18px;
+        color: var(--accent);
+      }
+      .offer {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        column-gap: 10px;
+        align-items: center;
+        padding: 10px var(--gutter);
+        border-bottom: 1px solid var(--divider);
+      }
+      .offer.sel {
+        background: var(--accent-wash-faint);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      [data-stack='1'] .offer {
+        grid-template-columns: 1fr;
+      }
+
+      /* Option B (owner, 2026-11-20): from 1.5x the purchase bar keeps title + Buy; the rest moves to the review sheet. */
+      [data-stack='1'] .selbar .extra {
+        display: none;
+      }
+      .cfg {
+        border-bottom: 1px solid var(--divider);
+      }
+      .lvl {
+        padding: 12px var(--gutter) 0;
+        color: var(--text-strong);
+      }
+      .alt {
+        display: inline-block;
+        margin-bottom: 4px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: #ffe9a8;
+        color: #3a2a00;
+        font: 700 11px system-ui;
+      }
     </style>
   </head>
   <body data-theme="dark" id="root">
@@ -917,6 +1078,12 @@
 
     <h2 class="group">5 · “Who are you?” picker</h2>
     <div class="screens" id="choice-screens"></div>
+
+    <h2 class="group">6 · Collection (<code>/collection</code>)</h2>
+    <div class="screens" id="collection-screens"></div>
+
+    <h2 class="group">7 · Upgrade (<code>/upgrade</code>)</h2>
+    <div class="screens" id="upgrade-screens"></div>
 
     <script>
       const ic = (n, c = '') =>
@@ -1175,6 +1342,160 @@
           `${topBar(cancel)}<div class="scroll"><div class="center">${ic('users', 'glyph')}<span class="t-sub">Nobody to pick yet</span><span class="t-body" style="line-height:1.45">Add yourself to the roster first — then come back and say which player you are.</span><span class="btn-primary">${ic('plus')}New player</span></div></div>`,
           'Choice — nobody',
         );
+
+      // ===== phase 3: Collection and Upgrade =====
+      const sbar = (title) => `<div class="appbar"><span class="t-heading">${title}</span></div>`;
+      const chipEl = (c, on) =>
+        `<span class="chipbox"><span class="chip ${on ? 'on' : ''}">${on ? ic('check') : ''}${c}</span></span>`;
+      const chipRow = (list, onIdx = 0) =>
+        `<div class="chiprow">${list.map((c, i) => chipEl(c, i === onIdx)).join('')}</div>`;
+      const utabs = (labels, on) =>
+        `<div class="tabs">${labels.map((l, i) => `<span class="tb ${i === on ? 'on' : ''}">${l}</span>`).join('')}</div>`;
+      const filterHead = (open) =>
+        `<div class="filterhead"><span class="t-label">Filters <span class="muted">· Open</span></span><span class="t-label" style="color:var(--accent)">${open ? 'Reset' : 'Edit'}</span></div>`;
+      const collProgress = `<div class="progress"><div class="t-sub">12 of 38 unlocked</div>
+        <div class="pbar"><i style="flex:12"></i><b style="flex:26"></b></div>
+        <div class="t-caption" style="margin-top:6px">Updated 3 minutes ago · chain</div></div>`;
+      const collRow = (id, items, status, bonus, owned) =>
+        `<div class="block"><div class="line"><span class="t-sub">Collection ${id}</span><span class="t-num-sm">${items.length} items</span></div>
+        <span class="t-body" style="line-height:1.4;color:var(--text-strong)">${status}</span>
+        <span class="t-caption">${bonus}</span>
+        ${owned ? `<span class="t-label" style="color:var(--text-primary)">${owned}</span>` : ''}
+        ${items.map((it) => `<div class="itemline"><span class="skill ${it[2] ? 'on' : ''}"></span><span class="nm t-num-sm">${it[0]}</span>${it[1] ? `<span class="tagtxt" style="color:var(--text-primary)">${ic('check')}${it[1]}</span>` : `<span class="tagtxt muted">To find</span>`}</div>`).join('')}
+        <span class="btn-secondary" style="align-self:flex-start;margin-top:4px">Find on market</span></div>`;
+      const sel = (
+        n,
+        tot,
+        o = {},
+      ) => `<div class="selbar"><div class="t-sub">${n} ${n === 1 ? 'piece' : 'pieces'} selected · ${tot} NCG</div>
+        ${o.noBalance ? '' : '<div class="t-caption extra">You hold 14,200 NCG · Would leave 9,100 NCG</div>'}
+        <div class="t-caption extra" style="line-height:1.4">Asking prices, read a little while ago. Each piece is checked again before it is bought.</div>
+        <div class="acts"><span class="btn-primary">Buy the selection</span><span class="btn-quiet">Clear</span></div></div>`;
+      const offerRow = (name, price, helps, verdict, on) =>
+        `<div class="offer ${on ? 'sel' : ''}"><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="t-sub">${name}</span><span class="t-num-sm">${price}</span><span class="t-caption">${helps} · ${verdict}</span></span><span class="select ${on ? 'on' : ''}">${on ? ic('check') + 'Selected' : 'Select'}</span></div>`;
+
+      document.getElementById('collection-screens').innerHTML =
+        fig(
+          'Compact progress header with the bar and its read time. The three views are quiet underlined tabs. Filters collapse to one line (“Filters · Open”) — visual-only: the panel opens inline, as today. Sort chips sit in one scroller instead of wrapping. Rows are hairline blocks, not cards; owned/missing is text + a check, never colour alone.',
+          `${sbar('Collection')}<div class="scroll">${collProgress}${utabs(['Collections', 'Items', 'Offers'], 0)}${filterHead(false)}<div style="padding-top:4px">${chipRow(['Fewest items', 'List order'], 0)}</div>
+          <div class="gutter" style="padding-top:2px;display:flex;gap:8px;align-items:center"><span class="skill on"></span><span class="t-caption">Marks a piece that needs a skill</span></div>
+          ${collRow(
+            7,
+            [
+              ['Valkyrie Blade +12 · Fire', 'In bag ×2', true],
+              ['Arena Cloak +9 · Water', '', false],
+            ],
+            '1 of 2 pieces still to find',
+            'Rewards: ATK +120, HIT +60',
+            '1 of 2 already in your bag',
+          )}
+          ${collRow(8, [['Iron Helm +6 · Land', 'In bag', false]], 'Complete', 'Rewards: DEF +80', '')}</div>${bar('Collection')}`,
+          'Collection — Collections view',
+        ) +
+        fig(
+          '<b style="display:inline">Filter panel open</b> (visual-only layout): sections with their existing captions, chips wrapping inside the panel only, Reset as a text action. Census: `categoryHint` and `statsHint` (“any of” vs “all of”) change what a selection means, so they stay always visible.',
+          `${sbar('Collection')}<div class="scroll">${collProgress}${utabs(['Collections', 'Items', 'Offers'], 0)}${filterHead(true)}<div class="fpanel">
+          <div class="sec t-label">Status</div><div class="chips">${['Open', 'Disputed', 'Unlocked', 'All'].map((c, i) => chipEl(c, i === 0)).join('')}</div>
+          <div class="sec t-label">Category</div><div class="t-caption">Collections that ask for any of the selected</div><div class="chips">${['Equipment', 'Grimoire', 'Costume', 'Title', 'Food', 'Other'].map((c, i) => chipEl(c, i === 0)).join('')}</div>
+          <div class="sec t-label">Rewards</div><div class="t-caption">Collections that give all of the selected</div><div class="chips">${['ATK', 'DEF', 'HP', 'HIT'].map((c) => chipEl(c, false)).join('')}</div></div></div>${bar('Collection')}`,
+          'Collection — filters open',
+        ) +
+        fig(
+          'Offers: the one filled action is “Find offers” (here shown after a read as “Read again”); sort, level and “under standard” are chips in scrollers; each offer is a hairline row with a Select control (check + word when selected). The purchase bar docks above the bottom bar with the same facts as today and “Buy the selection” as its one filled action.',
+          `${sbar('Collection')}<div class="scroll">${utabs(['Collections', 'Items', 'Offers'], 2)}<div class="gutter t-caption" style="padding-top:10px;line-height:1.4">9 pieces still to find in 4 collections. The cheapest offer for each, by asking price. The list follows the filters above.</div>
+          <div class="gutter" style="padding-top:8px;display:flex;gap:8px"><span class="btn-secondary">Read again</span></div>
+          <div class="progress"><div class="pbar"><i style="flex:9"></i></div><div class="t-caption" style="margin-top:6px">9 offers found, 0 with nothing on sale.</div></div>
+          <div style="padding-top:6px">${chipRow(['Price', 'Level', 'Saving', 'Under standard'], 0)}${chipRow(['All levels', '+9', '+12', '+15'], 0)}</div>
+          ${offerRow('Valkyrie Blade +12 · Fire', '1,200 NCG (+320 NCG to +15)', 'helps 2 collections', 'good price', true)}
+          ${offerRow('Arena Cloak +9 · Water', '880 NCG', 'helps 1 collection', 'fair price', false)}
+          ${offerRow('Iron Helm +6 · Land', '240 NCG', 'helps 1 collection', 'above the standard price', false)}</div>${sel(1, '1,200')}${bar('Collection')}`,
+          'Collection — Offers, one piece selected',
+        ) +
+        fig(
+          'No avatar yet: one action, to the screen where the avatar is chosen.',
+          `${sbar('Collection')}<div class="scroll"><div class="center">${ic('users', 'glyph')}<span class="t-sub">No avatar yet</span><span class="t-body" style="line-height:1.45">Say which Nine Chronicles avatar is yours, and its collections show up here.</span><span class="btn-primary">Open You</span></div></div>${bar('Collection')}`,
+          'Collection — no avatar',
+        );
+
+      const upRows = [
+        [
+          'Valkyrie Blade +0 · Fire',
+          '3,100 NCG',
+          '1.8 NCG per Gexp · 1,720 Gexp · 1,800 NCG per +0 piece',
+          'bargain',
+          false,
+        ],
+        [
+          'Aegis Plate +3 · Land',
+          '2,450 NCG',
+          '2.1 NCG per Gexp · 1,166 Gexp · 1,590 NCG per +0 piece',
+          'in range',
+          true,
+        ],
+        [
+          'Arena Cloak +0 · Water',
+          '1,900 NCG',
+          '2.4 NCG per Gexp · 791 Gexp · 1,900 NCG per +0 piece',
+          'in range',
+          false,
+        ],
+      ];
+      const upRow = (r) =>
+        `<div class="offer ${r[4] ? 'sel' : ''}"><span style="display:flex;flex-direction:column;gap:2px;min-width:0"><span class="t-sub">${r[0]}</span><span class="t-num-sm">${r[1]}</span><span class="t-caption">${r[2]}</span><span class="t-caption" style="color:${r[3] === 'bargain' ? 'var(--text-primary)' : 'var(--text-muted)'}">${r[3]}</span></span><span class="select ${r[4] ? 'on' : ''}">${r[4] ? ic('check') + 'Selected' : 'Select'}</span></div>`;
+      const upIntro = `<div class="gutter t-body" style="padding-top:10px;line-height:1.5">Equipment bought as material for raising another piece, ranked by NCG per billion experience (Gexp) against a ceiling for its grade. Nothing is read until you ask.</div>`;
+      const g7 = (on) =>
+        `<span class="chipbox" style="padding-right:0"><span class="chip ${on ? 'on' : ''}">${on ? ic('check') : ''}Grade 7 ${on ? 'on' : 'off'}</span></span>`;
+      const planBtn = (dis) =>
+        `<span class="btn-secondary" style="${dis ? 'opacity:.45' : ''}">Plan an upgrade</span>`;
+      const viewFilters = `<div style="padding-top:6px">${chipRow(['All grades', 'Grade 7', 'Grade 8', 'Grade 9'], 0)}${chipRow(['All slots', 'Weapon', 'Armor', 'Belt', 'Necklace', 'Ring'], 0)}</div>`;
+      const idleNote = `<div class="gutter t-caption" style="padding-top:8px">Nothing is in range yet. Read the market, or raise a ceiling.</div>`;
+      const cfgField = (lbl, ph, hint, val) =>
+        `<div class="ffield"><span class="lbl t-label">${lbl}</span><div class="box num ${val ? '' : 'ph'}">${val || ph}</div><div class="help t-caption">${hint}</div></div>`;
+      document.getElementById('upgrade-screens').innerHTML =
+        fig(
+          '<span class="alt" style="background:#cde7d6;color:#0b3a22">AS BUILT, RESTYLED</span><br>Corrected: everything the component shows before a read is here — Grade 7 (it scopes the read), Plan (disabled until something is read), grade and slot chips, Only raised, Ceilings and Bargains toggles, and the idle notice. Ceilings and bargains sit beside Only raised, as in the code.',
+          `${sbar('Upgrade')}<div class="scroll">${upIntro}
+          <div class="gutter" style="padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="btn-primary">Find material</span>${planBtn(true)}</div>
+          <div style="padding-top:2px">${chipRow(['Grade 7 on'], 0)}</div>
+          ${viewFilters}
+          <div style="padding-top:0">${chipRow(['All levels', 'Ceilings', 'Bargains'], -1)}</div>
+          ${idleNote}</div>${bar('Upgrade')}`,
+          'Upgrade — before reading (as built)',
+        ) +
+        fig(
+          '<span class="alt">ALTERNATE — NEEDS APPROVAL</span><br>Minimal, as the owner asked (2026-11-20). Before a read only what scopes it: Grade 7 beside Find (with a caption that changing it clears what was read) and “Ceilings and bargains” as one collapsed line with Edit. The view filters (grade, slot, Only raised) and Plan an upgrade appear only after a read (next figures). The summary line is new copy.',
+          `${sbar('Upgrade')}<div class="scroll">${upIntro}
+          <div class="gutter" style="padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="btn-primary">Find material</span>${g7(true)}</div>
+          <div class="gutter t-caption" style="padding-top:2px">Changing grade 7 clears what has been read.</div>
+          <div class="cfg" style="margin-top:6px"><div class="filterhead" style="border-top:1px solid var(--divider)"><span class="t-label">Ceilings and bargains <span class="muted">· default</span></span><span class="t-label" style="color:var(--accent)">Edit</span></div></div>
+          ${idleNote}</div>${bar('Upgrade')}`,
+          'Upgrade — before reading (alternate)',
+        ) +
+        fig(
+          '<span class="alt">ALTERNATE — NEEDS APPROVAL</span><br>The calculation block expanded: for each grade a ceiling and a bargain field, with their placeholders (the defaults) and the hints, which carry the current value and therefore stay visible. Same fields as today, grouped by grade instead of two separate lists.',
+          `${sbar('Upgrade')}<div class="scroll"><div class="cfg"><div class="filterhead"><span class="t-label">Ceilings and bargains <span class="muted">· custom: grade 8</span></span><span class="t-label" style="color:var(--accent)">Reset</span></div></div>
+          ${[9, 8, 7].map((g, i) => `<div class="lvl t-label">Grade ${g}</div>${cfgField(`Ceiling, NCG per Gexp`, ['2.4', '3.1', '3.8'][i], `Now ${['2.4', '3.1', '3.8'][i]}. Leave empty for the default.`, g === 8 ? '3.5' : '')}${cfgField(`Bargain threshold, NCG per Gexp`, ['1.6', '2.0', '2.6'][i], `An offer at or under this is a bargain. Now ${['1.6', '2.0', '2.6'][i]}. Leave empty for the default.`, '')}`).join('')}</div>${bar('Upgrade')}`,
+          'Upgrade — calculation block open (alternate)',
+        ) +
+        fig(
+          '<span class="alt">ALTERNATE — NEEDS APPROVAL (with option B)</span><br>After a read: “Find” becomes “Read again” and secondary, so the purchase bar holds the only filled action. The notices about thresholds stay next to the list (“over the ceiling, not listed”), with “Add all bargains”. The bar: title, note, Buy, Clear at 1×; from 1.5× only title + Buy + Clear (the note moves to the review sheet).',
+          `${sbar('Upgrade')}<div class="scroll"><div class="gutter" style="padding-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="btn-secondary">Read again</span>${g7(true)}</div>
+          <div class="progress"><div class="t-caption" style="color:var(--accent)">Read 23 of 23 items.</div></div>
+          <div class="cfg" style="margin-top:6px"><div class="filterhead" style="border-top:1px solid var(--divider)"><span class="t-label">Ceilings and bargains <span class="muted">· default</span></span><span class="t-label" style="color:var(--accent)">Edit</span></div></div>
+          ${viewFilters}<div>${chipRow(['Only raised'], -1)}</div>
+          <div class="gutter t-caption" style="padding-top:2px">2 offers are over the ceiling and not listed.</div>
+          <div class="gutter" style="padding-top:4px"><span class="btn-quiet">Add all bargains (1)</span></div>
+          ${upRows.map(upRow).join('')}</div>${sel(1, '2,450', { noBalance: true })}${bar('Upgrade')}`,
+          'Upgrade — results with a selection (alternate)',
+        ) +
+        fig(
+          'A read with failures (as built, restyled): the count with a text retry, the notice as `negative` text with an icon.',
+          `${sbar('Upgrade')}<div class="scroll"><div class="progress"><div class="pbar"><i style="flex:20"></i><b style="flex:3"></b></div><div class="t-caption" style="margin-top:6px">Read 20 of 23 items.</div></div>
+          <div class="banner"><span class="t">${ic('alert')}<span class="t-caption" style="color:var(--negative)">3 items could not be read.</span></span><span class="btn-quiet">Retry failed</span></div>
+          ${upRows.map(upRow).join('')}</div>${bar('Upgrade')}`,
+          'Upgrade — read with failures',
+        );
+      // Sheets, account, /me footer, boot and catalogue: next stage.
 
       // ===== page controls =====
       const root = document.documentElement;
