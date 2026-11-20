@@ -994,6 +994,59 @@
         color: #3a2a00;
         font: 700 11px system-ui;
       }
+
+      /* Bottom sheets (stage 4): scrim + raised surface, header with a text Close, body scrolls. */
+      .sheetwrap {
+        position: absolute;
+        inset: 0;
+        background: var(--scrim);
+        display: flex;
+        align-items: flex-end;
+      }
+      .sheet {
+        width: 100%;
+        max-height: 90%;
+        display: flex;
+        flex-direction: column;
+        background: var(--raised);
+        border-top: 1px solid var(--divider);
+        border-radius: 16px 16px 0 0;
+      }
+      .sheet .hd {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 4px 8px;
+        padding: 8px var(--gutter) 0;
+        color: var(--text-primary);
+      }
+      .sheet .bd {
+        overflow-y: auto;
+        scrollbar-width: none;
+        padding: 6px var(--gutter) 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .sheet .bd > * {
+        flex-shrink: 0;
+      }
+      .sheet .lrow {
+        padding: 8px 0;
+        min-height: 48px;
+        border-bottom: 1px solid var(--divider);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 2px;
+      }
+      .sheet .lrow.on {
+        border-bottom-color: var(--accent);
+      }
+      .sheet .ffield {
+        padding: 0;
+      }
     </style>
   </head>
   <body data-theme="dark" id="root">
@@ -1084,6 +1137,9 @@
 
     <h2 class="group">7 · Upgrade (<code>/upgrade</code>)</h2>
     <div class="screens" id="upgrade-screens"></div>
+
+    <h2 class="group">8 · Sheets and the planner</h2>
+    <div class="screens" id="sheet-screens"></div>
 
     <script>
       const ic = (n, c = '') =>
@@ -1592,7 +1648,193 @@
           ${upRows.map(upRow).join('')}</div>${bar('Upgrade')}`,
           'Upgrade — read with failures',
         );
-      // Sheets, account, /me footer, boot and catalogue: next stage.
+
+      // ===== stage 4: sheets and the planner =====
+      const under = `${sbar('Collection')}<div class="scroll">${collProgress}${utabs(['Collections', 'Items', 'Offers'], 0)}${collRow(
+        7,
+        [
+          ['Valkyrie Blade +12 · Fire', 'In bag ×2', true],
+          ['Arena Cloak +9 · Water', '', false],
+        ],
+        '1 of 2 pieces still to find',
+        'Rewards: ATK +120, HIT +60',
+        '1 of 2 already in your bag',
+      )}</div>${bar('Collection')}`;
+      const sheetFig = (cap, title, body, label) =>
+        fig(
+          cap,
+          `${under}<div class="sheetwrap"><div class="sheet"><div class="hd"><span class="t-heading">${title}</span><span class="btn-quiet">Close</span></div><div class="bd">${body}</div></div></div>`,
+          label,
+        );
+      const lrow = (price, detail, on = false) =>
+        `<div class="lrow ${on ? 'on' : ''}"><span class="t-num-sm">${price}</span><span class="t-caption">${detail}</span></div>`;
+      const pass = `<div class="ffield"><span class="lbl t-label">Keystore passphrase</span><div class="box num">••••••••</div><div class="help t-caption">Used once to sign, then forgotten. It is never saved.</div></div>`;
+      const msg = (kind, txt) =>
+        `<div class="t-caption" style="line-height:1.45;${kind === 'neg' ? 'color:var(--negative)' : kind === 'acc' ? 'color:var(--accent)' : ''}">${kind === 'neg' ? ic('alert') + ' ' : ''}${txt}</div>`;
+      const pcardOffer = `<div style="display:flex;flex-direction:column;gap:2px"><span class="t-num-sm">1,200 NCG</span><span class="t-caption">CP 8,420 · seller 0x12ab</span><span class="t-body" style="line-height:1.45">This would buy Valkyrie Blade +12 · Fire for 1,200 NCG.</span></div>
+        <div style="display:flex;flex-direction:column;gap:2px"><span class="t-body">You hold 14,200 NCG</span><span class="t-caption">Would leave 13,000 NCG</span></div>`;
+      const backLink = `<span class="btn-quiet" style="align-self:flex-start">Back</span>`;
+
+      document.getElementById('sheet-screens').innerHTML =
+        sheetFig(
+          'Market sheet, listings read. Chips switch piece and carry the count (“· 3”, “· …” reading, “· !” failed, “· –” not sold); the skill mark and “needs 2” sit on the piece line. Listings are hairline rows that open the purchase card in place; at most N are shown, with the rest counted. The unlisted note closes the sheet. The listing detail line (CP, seller, lot) is composed from the strings, not re-read from `toListingUi`.',
+          'Market · Collection 7',
+          `${chipRow(['Valkyrie Blade +12 · skill · 3', 'Arena Cloak +9 · 1', 'Dusk Ring · –'], 0)}
+          <div style="display:flex;gap:8px;align-items:center"><span class="skill on"></span><span class="t-sub">Valkyrie Blade +12 · Fire</span><span class="t-caption" style="color:var(--accent)">needs 2</span></div>
+          <span class="t-body" style="color:var(--text-strong)">3 listings · from 1,200 NCG each</span>
+          <span class="t-caption">Asking prices, not what was paid · 412 of this item read just now</span>
+          ${lrow('1,200 NCG each', 'CP 8,420 · seller 0x12ab')}${lrow('2 for 2,500 NCG', 'CP 8,420 · seller 0x77c1')}${lrow('1,380 NCG each', 'CP 8,100 · seller 0x91fe')}
+          <span class="t-caption">1 piece of this collection cannot be searched (not in the game data, or not on the market).</span>`,
+          'Market sheet — listings',
+        ) +
+        sheetFig(
+          'Market sheet states: reading with a live count, waiting for its turn, nothing on sale, not sold on the market. Each is one line; the failure has its own figure.',
+          'Market · Collection 7',
+          `${chipRow(['Valkyrie Blade +12 · …', 'Arena Cloak +9', 'Dusk Ring · –'], 0)}
+          <div style="display:flex;gap:8px;align-items:center"><span class="skill on"></span><span class="t-sub">Valkyrie Blade +12 · Fire</span></div>
+          ${msg('acc', 'Reading the market… 1,240 listings read')}
+          ${msg('', 'Waiting for its turn…')}
+          ${msg('', 'Nothing of this piece is on sale right now.')}
+          ${msg('', 'This piece is not sold on the market.')}`,
+          'Market sheet — reading, waiting, nothing',
+        ) +
+        sheetFig(
+          'Market read failed: negative text with an icon and a secondary “Try again”. Two wordings as built (offline, other).',
+          'Market · Collection 7',
+          `${chipRow(['Valkyrie Blade +12 · !', 'Arena Cloak +9'], 0)}
+          <div style="display:flex;gap:8px;align-items:center"><span class="skill on"></span><span class="t-sub">Valkyrie Blade +12 · Fire</span></div>
+          ${msg('neg', 'Could not reach the market. Check the connection and try again.')}
+          <span class="btn-secondary" style="align-self:flex-start">Try again</span>`,
+          'Market sheet — failed',
+        ) +
+        sheetFig(
+          'Offer sheet, an offer that takes several lots (a single lot opens the purchase card straight away). Name at the level it is sold at, the raise note when it is bought under target, then the lots to buy one at a time.',
+          'Offer',
+          `<span class="t-body" style="color:var(--text-strong)">Valkyrie Blade +12 · Fire · needs 3</span>
+          ${msg('', 'Bought at this level; raising it to +15 later costs about 320 NCG more.')}
+          <span class="t-body">This takes more than one lot. Buy them one at a time:</span>
+          ${lrow('2 for 2,500 NCG', 'CP 8,420 · seller 0x77c1')}${lrow('1,200 NCG each', 'CP 8,420 · seller 0x12ab')}`,
+          'Offer sheet — several lots',
+        ) +
+        sheetFig(
+          'Purchase card, <b style="display:inline">dry-run mode</b> (the default): the facts, the balance, the passphrase field and a secondary “Try buying (dry run)”, and the sentence that nothing is sent. The passphrase hint stays visible (it states that the passphrase is never kept, before you type it: census). Back is a text action.',
+          'Before buying',
+          `<span class="t-body">Valkyrie Blade +12 · Fire</span>${pcardOffer}
+          ${pass}
+          <span class="btn-secondary" style="align-self:flex-start">Try buying (dry run)</span>
+          <span class="t-caption">A dry run: checked and signed here, and nothing is sent.</span>
+          <span class="t-caption">Buying for real is not available yet. Nothing is ever sent from here.</span>${backLink}`,
+          'Purchase card — dry run',
+        ) +
+        sheetFig(
+          'Purchase card, <b style="display:inline">live mode</b>, before paying: the one filled action carries the price. Pressing it does not pay; it opens the confirmation (next figure). No passphrase is asked here.',
+          'Before buying',
+          `<span class="t-body">Valkyrie Blade +12 · Fire</span>${pcardOffer}
+          <span class="btn-primary" style="align-self:flex-start">Buy for real (1,200 NCG)</span>
+          <span class="t-caption">Real purchase: this spends NCG from the account of your keystore.</span>${backLink}`,
+          'Purchase card — live',
+        ) +
+        sheetFig(
+          'The confirmation, at the moment of paying: the warning in negative text with an icon, the passphrase, and the only button that pays, carrying the amount. Cancel is a text action. Copy as built.',
+          'Before buying',
+          `<span class="t-body">Valkyrie Blade +12 · Fire</span>
+          ${msg('neg', 'You are about to pay 1,200 NCG for Valkyrie Blade +12 · Fire. The payment cannot be undone once it is sent.')}
+          ${pass}
+          <span class="btn-primary" style="align-self:flex-start">Confirm and pay 1,200 NCG</span>
+          <span class="btn-quiet" style="align-self:flex-start">Cancel</span>`,
+          'Purchase card — confirm',
+        ) +
+        sheetFig(
+          'Purchase card, other states in one figure: checking (accent, live), gone, wrong passphrase, sent, confirmed, refused by the chain, “unknown” (must not be bought again) and no keystore. Negative text always has the icon; the confirmed line is accent text. After a confirmed or in-flight purchase no button offers to buy again.',
+          'Before buying',
+          `${msg('acc', 'Checking that the offer is still on sale…')}
+          ${msg('neg', 'This listing is no longer on sale: it was sold or withdrawn.')}
+          ${msg('neg', 'Wrong passphrase, or the keystore was changed.')}
+          ${msg('', 'Sent (0x3f1a2b…d4e5). Waiting for the chain…')}
+          ${msg('acc', 'Bought. The chain executed it (transaction 0x3f1a2b…d4e5). The piece is in your avatar’s inventory.')}
+          ${msg('neg', 'The chain refused it, so nothing was bought: insufficient balance.')}
+          ${msg('neg', 'The send got no clear answer. Do not buy this piece again until you have looked at your inventory and your balance (transaction 0x3f1a2b…d4e5).')}
+          ${msg('', 'Import your keystore on the You tab to try this.')}`,
+          'Purchase card — states',
+        ) +
+        sheetFig(
+          'Batch sheet, before buying (live): total, the batch limit, how the order works, one line per piece, what was left out, then the one filled action with the total. Without a limit no selection can be bought and the line says where to set it.',
+          'Buy the selection',
+          `<span class="t-sub">3 pieces · 3,540 NCG in all</span>
+          <span class="t-caption">Batch limit: 5,000 NCG</span>
+          <span class="t-caption" style="line-height:1.45">Bought in groups of up to 10, in this order. Each piece is checked again, and each group is one payment that is settled before the next. If a piece was sold meanwhile, the group is split to find it.</span>
+          <div class="lrow"><span class="t-body">Valkyrie Blade +12 · Fire</span></div><div class="lrow"><span class="t-body">Arena Cloak +9 · Water</span></div><div class="lrow"><span class="t-body">Iron Helm +6 · Land</span></div>
+          <span class="t-caption">1 selected offer left out: only single pieces of equipment can be bought from here so far.</span>
+          <span class="btn-primary" style="align-self:flex-start">Buy the selection for real (3,540 NCG)</span>`,
+          'Batch sheet — ready',
+        ) +
+        sheetFig(
+          'Batch confirmation, as the purchase card’s: the warning (count, total, groups of up to 10, nothing undone, the rest not bought if something fails), the passphrase, the paying button with the total, Cancel as text.',
+          'Buy the selection',
+          `<span class="t-sub">3 pieces · 3,540 NCG in all</span>
+          ${msg('neg', 'You are about to pay 3,540 NCG for 3 pieces, in groups of up to 10. Each payment cannot be undone once it is sent. If something goes wrong the rest are not bought.')}
+          ${pass}
+          <span class="btn-primary" style="align-self:flex-start">Confirm and pay 3,540 NCG</span>
+          <span class="btn-quiet" style="align-self:flex-start">Cancel</span>`,
+          'Batch sheet — confirm',
+        ) +
+        sheetFig(
+          'Batch stopped: each line gains its state (bought in accent, refused with its reason in negative with an icon, not attempted in muted); the result lines say where it stopped and what was spent. Dry-run wording (“checked and signed, nothing sent”) uses the same layout.',
+          'Buy the selection',
+          `<span class="t-sub">3 pieces · 3,540 NCG in all</span>
+          <div class="lrow"><span class="t-body">Valkyrie Blade +12 · Fire</span><span class="t-caption" style="color:var(--accent)">Bought (0x3f1a2b…d4e5).</span></div>
+          <div class="lrow"><span class="t-body">Arena Cloak +9 · Water</span><span class="t-caption" style="color:var(--negative)">${ic('alert')} The chain refused it, nothing was bought: insufficient balance</span></div>
+          <div class="lrow"><span class="t-body">Iron Helm +6 · Land</span><span class="t-caption">not attempted</span></div>
+          ${msg('neg', 'The batch stopped at Arena Cloak +9 · Water. 1 piece was not attempted.')}
+          ${msg('', 'Spent so far: 1,200 NCG.')}`,
+          'Batch sheet — stopped',
+        ) +
+        sheetFig(
+          'Batch, the other lines: preparing, wrong passphrase, no batch limit, nothing to buy, no keystore. One line each, same roles as the purchase card’s.',
+          'Buy the selection',
+          `${msg('', 'Checking and signing… this can take a few seconds.')}
+          ${msg('neg', 'Wrong passphrase, or the keystore was changed.')}
+          ${msg('neg', 'No batch limit is set, so no selection can be bought. Set one on the You tab.')}
+          ${msg('', 'Nothing in the selection can be bought from here yet.')}
+          ${msg('', 'Import your keystore on the You tab to try this.')}`,
+          'Batch sheet — other states',
+        ) +
+        sheetFig(
+          'Upgrade planner, choosing a piece: the sentence, slot chips, one hairline row per piece (name, Gexp, skill star, worn). The chosen row takes the accent. Copy as built.',
+          'Plan an upgrade',
+          `<span class="t-body">Choose the piece to raise:</span>${chipRow(['All slots', 'Weapon', 'Armor', 'Belt', 'Necklace', 'Ring'], 0)}
+          <div class="lrow"><span class="t-body">Valkyrie Blade +9 · Fire · 1,240 Gexp · ★ skill · worn</span></div>
+          <div class="lrow on"><span class="t-body" style="color:var(--accent)">Aegis Plate +7 · Land · 610 Gexp</span></div>
+          <div class="lrow"><span class="t-body">Arena Cloak +6 · Water · 300 Gexp</span></div>`,
+          'Planner — choose a piece',
+        ) +
+        sheetFig(
+          'Planner, a piece chosen: the list folds into one line with “Change”; the target level is a stepper with 48 dp − and + (disabled at the limits); the plan reads as plain lines and ends in the one filled action, which selects the pieces in the list (nothing is bought here).',
+          'Plan an upgrade',
+          `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><span class="t-body" style="color:var(--accent)">Aegis Plate +7 · Land · 610 Gexp</span><span class="btn-quiet">Change</span></div>
+          <div style="display:flex;align-items:center;gap:12px"><span class="btn-secondary" style="min-width:48px;justify-content:center">−</span><span class="t-sub">Target level: +9</span><span class="btn-secondary" style="min-width:48px;justify-content:center">+</span></div>
+          <span class="t-caption">+7 to +9 takes 3,100 Gexp more.</span>
+          <span class="t-body">2 pieces of material for 4,050 NCG.</span>
+          <span class="t-caption">The upgrade itself costs 600 NCG.</span>
+          <span class="t-body" style="color:var(--text-strong)">About 4,650 NCG in all.</span>
+          <span class="t-caption">1 upgrade action (50 pieces at most each).</span>
+          <span class="t-caption">120 Gexp would be left over.</span>
+          <span class="btn-primary" style="align-self:flex-start">Select these pieces</span>`,
+          'Planner — plan',
+        ) +
+        sheetFig(
+          'Planner, the other cases: reading the bag, no avatar, the bag could not be read (with a secondary “Read again”), nothing can be raised, nothing in this slot, and a plan the offers cannot reach (“fall … short”) with the select action disabled.',
+          'Plan an upgrade',
+          `${msg('acc', 'Reading your bag…')}
+          ${msg('neg', 'No avatar is set, so your pieces cannot be read.')}
+          ${msg('neg', 'Could not reach the node to read your bag. Check the connection.')}<span class="btn-secondary" style="align-self:flex-start">Read again</span>
+          ${msg('', 'No piece of grade 7 or more in your bag can be raised any further.')}
+          ${msg('', 'No piece of this slot can be raised.')}
+          ${msg('neg', 'The offers in range fall 900 Gexp short of this level: raise a ceiling or read grade 7.')}
+          <span class="btn-primary" style="align-self:flex-start;opacity:.45">Select these pieces</span>`,
+          'Planner — other states',
+        );
+      // Account, /me footer, boot and catalogue: next stage.
 
       // ===== page controls =====
       const root = document.documentElement;

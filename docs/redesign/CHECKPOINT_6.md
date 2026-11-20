@@ -157,7 +157,36 @@ unknown collections, sample data), reading lines, the game-data loading and fail
 - **Not drawn:** the market sheet and offer sheet (next, with the other sheets), Collections rows with partial owned
   counts and "Not sold on the market" (row states not yet drawn).
 
-**Still not drawn:** the planner and the four sheets (market, offer, batch, purchase), in the next phase.
+## Stage 4 — sheets and the planner (2026-11-20)
+
+Drawn (section 8 of the mockup, 15 figures), read from `MarketSheet`, `OfferSheet`, `PurchaseCard`, `PurchaseTry`,
+`BatchSheet`, `PlannerSheet` and their strings: market sheet (listings, reading / waiting / nothing / not sold,
+failed), offer sheet (several lots), purchase card (dry run, live, confirmation, every state), batch sheet (ready,
+confirmation, stopped, other lines), planner (choose, plan, other cases).
+
+**One pattern for all of them:** a bottom sheet on the Checkpoint 5 `scrim`, `raised` surface, rounded top, the title
+in the heading role and "Close" as a text action (it is a secondary button today); the body scrolls; one filled action
+per sheet; Cancel and Back are text actions; negative text always carries the icon. Today's sheets have no scrim
+("the design system has no overlay colour"): Checkpoint 5 now defines one, so this is a visual change only.
+
+**Copy and census.** The passphrase hint ("Used once to sign, then forgotten. It is never saved.") stays **always
+visible**: it says, before you type, that the secret is not kept. The live "Buy for real (price)" and "Confirm and pay
+(price)" keep the amount in the label; only the confirmation button pays. No wording changes in this stage (uppercase
+labels become sentence case, as everywhere).
+
+**Findings from looking at it at 2×:** every sheet except the shortest scrolls inside its body (as intended), but in the
+confirmations the **paying button falls below the fold** (935 dp of content in a 507 dp body). Recommendation, needs
+your OK: from 1.5× the one filled action of a sheet is pinned at the bottom of the sheet (as the sticky-Save alternate
+in the form). The mockup first clipped the pay button to two lines at 2× because the flex children shrank; fixed
+(buttons grow, 72 dp at 2×), and a rule for the implementation: **buttons wrap, never clip**. The title and "Close" also
+stack at 2× ("Before buying" wraps in the heading role); acceptable.
+
+**Not re-read from code:** the listing detail line (`toListingUi`: CP, seller, lot) is composed from the strings; the
+exact wording of `describeStep` rows. Both to match at implementation.
+
+**Still not drawn:** the account gate, the `/me` footer sections (avatar, keystore, account, backup), BootFailure /
+not-found, the Catalogue, the form notices ("already on the ladder", import notice, Saving) and the detail
+record-error line.
 
 ## Still to do (inventory still to be taken from the components)
 
